@@ -1,16 +1,50 @@
 /* ============================================================
-   AI Tutor (UET Master) – Unified Serverless & Local API Handler
+   AI Tutor (UET Master) - Unified Serverless & Local API Handler
    Handles /api/* on both Vercel Serverless Functions and local Node server
    ============================================================ */
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const tls = require("tls");
+
+// Load local .env if present (zero-dependency)
+(function loadDotEnv() {
+  try {
+    const envPath = path.join(__dirname, "..", ".env");
+    if (!fs.existsSync(envPath)) return;
+    const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
+    lines.forEach(function (line) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return;
+      const eq = trimmed.indexOf("=");
+      if (eq === -1) return;
+      const key = trimmed.slice(0, eq).trim();
+      let val = trimmed.slice(eq + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (key && process.env[key] === undefined) {
+        process.env[key] = val;
+      }
+    });
+  } catch (e) { /* ignore */ }
+})();
 
 const ADMIN_EMAIL = "phamduchieurobotics@gmail.com";
+const DEFAULT_ADMIN_NOTIFY_EMAIL = "phamduchieu.robotics@gmail.com";
+const PUBLIC_SITE_URL = String(process.env.PUBLIC_SITE_URL || "https://ai-tutor.phamduchieu.site").replace(/\/+$/, "");
 const DAY_MS = 86400000;
 const PAID_PLANS = ["bronze", "silver", "gold", "diamond"];
 const ALL_PLANS = ["unranked", "bronze", "silver", "gold", "diamond"];
 const PLAN_RANK = { none: 0, unranked: 1, bronze: 2, silver: 3, gold: 4, diamond: 5 };
+const PLAN_LABELS = {
+  none: "Free",
+  unranked: "Unranked",
+  bronze: "Bronze",
+  silver: "Silver",
+  gold: "Gold",
+  diamond: "Diamond"
+};
 
 const IS_SERVERLESS = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 const DB_PATH = IS_SERVERLESS
@@ -19,6 +53,7 @@ const DB_PATH = IS_SERVERLESS
 
 function defaultDb() {
   return {
+    registeredUsers: {},
     subscriptions: {},
     revokedSubscriptions: {},
     userApis: {},
@@ -28,8 +63,54 @@ function defaultDb() {
     vouchers: [],
     deletedVouchers: {},
     shares: {},
-    cloudUsers: {}
+    cloudUsers: {},
+    notificationLogs: []
   };
+}
+
+function backfillRegisteredUsers(db) {
+  if (!db.registeredUsers || typeof db.registeredUsers !== "object") db.registeredUsers = {};
+  const ensureUser = function (rawEmail, nameHint, createdHint, pictureHint) {
+    const em = String(rawEmail || "").trim().toLowerCase();
+    if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return;
+    if (!db.registeredUsers[em]) {
+      const ts = createdHint || new Date().toISOString();
+      db.registeredUsers[em] = {
+        uid: em,
+        email: em,
+        name: String(nameHint || em.split("@")[0]),
+        picture: String(pictureHint || ""),
+        createdAt: ts,
+        lastLoginAt: ts,
+        loginCount: 1,
+        notifiedNewUser: true
+      };
+    } else {
+      if (nameHint && (!db.registeredUsers[em].name || db.registeredUsers[em].name === em)) {
+        db.registeredUsers[em].name = String(nameHint);
+      }
+      if (pictureHint && !db.registeredUsers[em].picture) {
+        db.registeredUsers[em].picture = String(pictureHint);
+      }
+    }
+  };
+
+  Object.keys(db.subscriptions || {}).forEach(function (em) {
+    const s = db.subscriptions[em];
+    const sinceIso = s && s.since ? new Date(Number(s.since)).toISOString() : undefined;
+    ensureUser(em, "", sinceIso, "");
+  });
+  (db.payment_requests || []).forEach(function (r) {
+    if (r && r.userEmail) ensureUser(r.userEmail, r.userName, r.createdAt, "");
+  });
+  Object.keys(db.userApis || {}).forEach(function (em) {
+    const a = db.userApis[em];
+    ensureUser(em, "", a && a.updatedAt, "");
+  });
+  Object.keys(db.cloudUsers || {}).forEach(function (em) {
+    const c = db.cloudUsers[em];
+    ensureUser(em, c && c.userName, c && c.updatedAt, "");
+  });
 }
 
 function loadDb() {
@@ -38,13 +119,17 @@ function loadDb() {
     if (fs.existsSync(DB_PATH)) {
       const raw = JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
       const merged = Object.assign(def, raw);
+      backfillRegisteredUsers(merged);
       global.__AI_TUTOR_DB__ = merged;
       return merged;
     }
   } catch (e) { /* fallback to memory */ }
   if (global.__AI_TUTOR_DB__ && typeof global.__AI_TUTOR_DB__ === "object") {
-    return Object.assign(def, global.__AI_TUTOR_DB__);
+    const merged = Object.assign(def, global.__AI_TUTOR_DB__);
+    backfillRegisteredUsers(merged);
+    return merged;
   }
+  backfillRegisteredUsers(def);
   global.__AI_TUTOR_DB__ = def;
   return def;
 }
@@ -55,6 +140,323 @@ function saveDb(db) {
     fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
     fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), "utf8");
   } catch (e) { /* keep in memory on read-only fallback */ }
+}
+
+/* ============================================================
+   Asynchronous Non-Blocking Email Notification Service
+   Supports: Resend API, Direct Gmail/SMTP over TLS, or Webhook
+   ============================================================ */
+function getAdminNotificationEmail() {
+  return String(process.env.ADMIN_NOTIFICATION_EMAIL || DEFAULT_ADMIN_NOTIFY_EMAIL).trim();
+}
+
+function sendSmtpTlsEmail(opts) {
+  return new Promise(function (resolve, reject) {
+    const host = String(process.env.SMTP_HOST || "smtp.gmail.com").trim();
+    const port = Number(process.env.SMTP_PORT || 465);
+    const user = String(process.env.SMTP_USER || "").trim();
+    const pass = String(process.env.SMTP_PASS || "").trim();
+    if (!user || !pass) return reject(new Error("SMTP_USER or SMTP_PASS not configured"));
+
+    const socket = tls.connect(port, host, { servername: host, rejectUnauthorized: false });
+    let step = 0;
+    let buffer = "";
+    const timeout = setTimeout(function () {
+      try { socket.destroy(); } catch (e) { /* */ }
+      reject(new Error("SMTP timeout"));
+    }, 8000);
+
+    const finish = function (err, info) {
+      clearTimeout(timeout);
+      try { socket.end(); } catch (e) { /* */ }
+      if (err) reject(err);
+      else resolve(info);
+    };
+
+    const sendLine = function (line) {
+      socket.write(line + "\r\n");
+    };
+
+    socket.on("error", function (err) { finish(err); });
+    socket.on("data", function (chunk) {
+      buffer += chunk.toString("utf8");
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() || "";
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line || line.length < 3) continue;
+        if (line[3] === "-") continue; // multi-line response continuation
+        const code = parseInt(line.slice(0, 3), 10);
+        if (code >= 400) {
+          return finish(new Error("SMTP error " + code + ": " + line));
+        }
+        if (step === 0 && code === 220) {
+          step = 1;
+          sendLine("EHLO ai-tutor.local");
+        } else if (step === 1 && code === 250) {
+          step = 2;
+          sendLine("AUTH LOGIN");
+        } else if (step === 2 && code === 334) {
+          step = 3;
+          sendLine(Buffer.from(user, "utf8").toString("base64"));
+        } else if (step === 3 && code === 334) {
+          step = 4;
+          sendLine(Buffer.from(pass, "utf8").toString("base64"));
+        } else if (step === 4 && code === 235) {
+          step = 5;
+          sendLine("MAIL FROM:<" + user + ">");
+        } else if (step === 5 && code === 250) {
+          step = 6;
+          sendLine("RCPT TO:<" + opts.to + ">");
+        } else if (step === 6 && code === 250) {
+          step = 7;
+          sendLine("DATA");
+        } else if (step === 7 && code === 354) {
+          step = 8;
+          const subjB64 = Buffer.from(opts.subject, "utf8").toString("base64");
+          const msg = [
+            "From: \"AI Tutor Notification\" <" + user + ">",
+            "To: <" + opts.to + ">",
+            "Subject: =?UTF-8?B?" + subjB64 + "?=",
+            "MIME-Version: 1.0",
+            "Content-Type: text/html; charset=UTF-8",
+            "",
+            opts.html,
+            "."
+          ].join("\r\n");
+          sendLine(msg);
+        } else if (step === 8 && code === 250) {
+          step = 9;
+          sendLine("QUIT");
+          return finish(null, { provider: "smtp", to: opts.to });
+        }
+      }
+    });
+  });
+}
+
+async function sendAdminNotificationEmail(notification) {
+  const to = getAdminNotificationEmail();
+  const subject = String(notification.subject || "[AI Tutor] Notification");
+  const html = String(notification.html || "");
+  const text = String(notification.text || "");
+  const eventType = String(notification.eventType || "general");
+  const logEntry = {
+    id: "notif_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+    eventType: eventType,
+    to: to,
+    subject: subject,
+    createdAt: new Date().toISOString(),
+    status: "queued",
+    provider: "none"
+  };
+
+  try {
+    // 1. Try Resend API if RESEND_API_KEY is configured
+    if (process.env.RESEND_API_KEY && typeof fetch === "function") {
+      const fromAddr = String(process.env.EMAIL_FROM || "AI Tutor <onboarding@resend.dev>").trim();
+      const resp = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + String(process.env.RESEND_API_KEY).trim(),
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: fromAddr,
+          to: [to],
+          subject: subject,
+          html: html,
+          text: text
+        })
+      });
+      if (resp.ok) {
+        logEntry.status = "sent";
+        logEntry.provider = "resend";
+        return logEntry;
+      }
+      const errTxt = await resp.text().catch(function () { return ""; });
+      logEntry.error = "Resend HTTP " + resp.status + ": " + errTxt.slice(0, 200);
+    }
+
+    // 2. Try Direct SMTP over TLS if SMTP_USER and SMTP_PASS are configured
+    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      await sendSmtpTlsEmail({ to: to, subject: subject, html: html, text: text });
+      logEntry.status = "sent";
+      logEntry.provider = "smtp";
+      return logEntry;
+    }
+
+    // 3. Try Custom Webhook URL if EMAIL_WEBHOOK_URL is configured
+    if (process.env.EMAIL_WEBHOOK_URL && typeof fetch === "function") {
+      const resp = await fetch(String(process.env.EMAIL_WEBHOOK_URL).trim(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: to,
+          subject: subject,
+          html: html,
+          text: text,
+          eventType: eventType,
+          payload: notification.payload || {}
+        })
+      });
+      if (resp.ok) {
+        logEntry.status = "sent";
+        logEntry.provider = "webhook";
+        return logEntry;
+      }
+    }
+
+    if (!logEntry.error) {
+      logEntry.status = "logged_no_provider";
+      logEntry.error = "No email provider env configured (set RESEND_API_KEY or SMTP_USER/SMTP_PASS or EMAIL_WEBHOOK_URL)";
+    }
+  } catch (err) {
+    logEntry.status = "failed";
+    logEntry.error = (err && err.message) || "Email send error";
+  }
+  return logEntry;
+}
+
+function triggerNewUserEmailAsync(db, userRec) {
+  if (!userRec || !userRec.email) return;
+  const displayName = String(userRec.name || userRec.email);
+  const email = String(userRec.email);
+  const regTime = String(userRec.createdAt || new Date().toISOString());
+  const adminLink = PUBLIC_SITE_URL + "/admin/members";
+  const subject = "[AI Tutor] New User Registered: " + (displayName !== email ? (displayName + " (" + email + ")") : email);
+  const html =
+    '<div style="font-family:sans-serif;max-width:560px;line-height:1.6;color:#1e293b;border:1px solid #e2e8f0;border-radius:12px;padding:20px">' +
+      '<h2 style="margin:0 0 12px;color:#5347CD">AI Tutor - New User Registered</h2>' +
+      '<p style="margin:0 0 12px">A new user has registered an account on <strong>AI Tutor</strong>:</p>' +
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
+        '<tr><td style="padding:6px 0;color:#64748b;width:160px">Display Name:</td><td style="padding:6px 0;font-weight:700">' + displayName + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">User Email:</td><td style="padding:6px 0;font-weight:700">' + email + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">Registered At:</td><td style="padding:6px 0">' + regTime + '</td></tr>' +
+      '</table>' +
+      '<a href="' + adminLink + '" style="display:inline-block;background:#5347CD;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:700">Open Admin Panel (Members &amp; Plans)</a>' +
+    '</div>';
+  const text =
+    "AI Tutor - New User Registered\n" +
+    "Display Name: " + displayName + "\n" +
+    "User Email: " + email + "\n" +
+    "Registered At: " + regTime + "\n" +
+    "Admin Panel: " + adminLink;
+
+  // Non-blocking execution
+  Promise.resolve().then(function () {
+    return sendAdminNotificationEmail({
+      eventType: "new_user",
+      subject: subject,
+      html: html,
+      text: text,
+      payload: { name: displayName, email: email, createdAt: regTime, adminUrl: adminLink }
+    });
+  }).then(function (entry) {
+    try {
+      if (!Array.isArray(db.notificationLogs)) db.notificationLogs = [];
+      db.notificationLogs.push(entry);
+      if (db.notificationLogs.length > 100) db.notificationLogs = db.notificationLogs.slice(-100);
+      saveDb(db);
+    } catch (e) { /* ignore */ }
+  }).catch(function () { /* non-blocking */ });
+}
+
+function triggerPaymentRequestEmailAsync(db, reqRec) {
+  if (!reqRec || !reqRec.userEmail) return;
+  const userName = String(reqRec.userName || reqRec.userEmail);
+  const userEmail = String(reqRec.userEmail);
+  const planName = PLAN_LABELS[reqRec.plan] || String(reqRec.plan || "").toUpperCase();
+  const amountStr = Number(reqRec.amount || 0).toLocaleString("vi-VN") + " VND";
+  const refStr = [reqRec.memo, reqRec.transferNote, reqRec.voucher ? ("Voucher: " + reqRec.voucher) : ""].filter(Boolean).join(" | ") || "N/A";
+  const subTime = String(reqRec.createdAt || new Date().toISOString());
+  const adminLink = PUBLIC_SITE_URL + "/admin/requests";
+  const subject = "[AI Tutor] New Payment Confirmation Request: " + userEmail + " - " + planName;
+  const html =
+    '<div style="font-family:sans-serif;max-width:560px;line-height:1.6;color:#1e293b;border:1px solid #e2e8f0;border-radius:12px;padding:20px">' +
+      '<h2 style="margin:0 0 12px;color:#059669">AI Tutor - New Payment Confirmation Request</h2>' +
+      '<p style="margin:0 0 12px">A user has submitted a payment confirmation request awaiting your approval:</p>' +
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
+        '<tr><td style="padding:6px 0;color:#64748b;width:160px">User Name:</td><td style="padding:6px 0;font-weight:700">' + userName + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">User Email:</td><td style="padding:6px 0;font-weight:700">' + userEmail + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">Selected Plan:</td><td style="padding:6px 0;font-weight:700;color:#5347CD">' + planName + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">Amount:</td><td style="padding:6px 0;font-weight:700;color:#059669">' + amountStr + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">Transfer Reference:</td><td style="padding:6px 0">' + refStr + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">Submitted At:</td><td style="padding:6px 0">' + subTime + '</td></tr>' +
+      '</table>' +
+      '<a href="' + adminLink + '" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:700">Review &amp; Approve Payment in Admin Panel</a>' +
+    '</div>';
+  const text =
+    "AI Tutor - New Payment Confirmation Request\n" +
+    "User Name: " + userName + "\n" +
+    "User Email: " + userEmail + "\n" +
+    "Selected Plan: " + planName + "\n" +
+    "Amount: " + amountStr + "\n" +
+    "Transfer Reference: " + refStr + "\n" +
+    "Submitted At: " + subTime + "\n" +
+    "Payment Approvals: " + adminLink;
+
+  // Non-blocking execution
+  Promise.resolve().then(function () {
+    return sendAdminNotificationEmail({
+      eventType: "payment_request",
+      subject: subject,
+      html: html,
+      text: text,
+      payload: {
+        id: reqRec.id,
+        userName: userName,
+        userEmail: userEmail,
+        plan: planName,
+        amount: reqRec.amount,
+        transferReference: refStr,
+        createdAt: subTime,
+        adminUrl: adminLink
+      }
+    });
+  }).then(function (entry) {
+    try {
+      if (!Array.isArray(db.notificationLogs)) db.notificationLogs = [];
+      db.notificationLogs.push(entry);
+      if (db.notificationLogs.length > 100) db.notificationLogs = db.notificationLogs.slice(-100);
+      saveDb(db);
+    } catch (e) { /* ignore */ }
+  }).catch(function () { /* non-blocking */ });
+}
+
+function upsertRegisteredUser(db, userInput, opts) {
+  if (!db.registeredUsers || typeof db.registeredUsers !== "object") db.registeredUsers = {};
+  const em = String((userInput && userInput.email) || "").trim().toLowerCase();
+  if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return { isNew: false, user: null };
+  const nowIso = new Date().toISOString();
+  const existing = db.registeredUsers[em];
+  if (!existing) {
+    const newUser = {
+      uid: String(userInput.uid || em),
+      email: em,
+      name: String(userInput.name || em.split("@")[0]).trim(),
+      picture: String(userInput.picture || "").trim(),
+      createdAt: String(userInput.createdAt || nowIso),
+      lastLoginAt: String(userInput.lastLoginAt || nowIso),
+      loginCount: 1,
+      notifiedNewUser: true
+    };
+    db.registeredUsers[em] = newUser;
+    if (!opts || opts.suppressEmail !== true) {
+      triggerNewUserEmailAsync(db, newUser);
+    }
+    return { isNew: true, user: newUser };
+  }
+  if (userInput.name && String(userInput.name).trim()) existing.name = String(userInput.name).trim();
+  if (userInput.picture && String(userInput.picture).trim()) existing.picture = String(userInput.picture).trim();
+  if (userInput.uid) existing.uid = String(userInput.uid);
+  if (opts && opts.bumpLogin) {
+    existing.lastLoginAt = nowIso;
+    existing.loginCount = (Number(existing.loginCount) || 1) + 1;
+  } else if (userInput.lastLoginAt && String(userInput.lastLoginAt) > String(existing.lastLoginAt || "")) {
+    existing.lastLoginAt = String(userInput.lastLoginAt);
+  }
+  return { isNew: false, user: existing };
 }
 
 function decodeJwtEmail(authHeader) {
@@ -139,6 +541,25 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
   let changed = false;
   if (!db.revokedSubscriptions || typeof db.revokedSubscriptions !== "object") db.revokedSubscriptions = {};
   if (!db.deletedVouchers || typeof db.deletedVouchers !== "object") db.deletedVouchers = {};
+  if (!db.registeredUsers || typeof db.registeredUsers !== "object") db.registeredUsers = {};
+
+  // 0. Merge currentUser or registeredUsers
+  if (body.currentUser && typeof body.currentUser === "object" && body.currentUser.email) {
+    const uEm = String(body.currentUser.email).trim().toLowerCase();
+    if (isAdminCaller || uEm === callerEmail) {
+      const r = upsertRegisteredUser(db, body.currentUser, { bumpLogin: false });
+      if (r.isNew) changed = true;
+    }
+  }
+  if (isAdminCaller && body.registeredUsers && typeof body.registeredUsers === "object") {
+    Object.keys(body.registeredUsers).forEach(function (em) {
+      const u = body.registeredUsers[em];
+      if (u && typeof u === "object" && u.email) {
+        const r = upsertRegisteredUser(db, u, { suppressEmail: true });
+        if (r.isNew) changed = true;
+      }
+    });
+  }
 
   // 1. Merge subscriptions
   if (body.subscriptions && typeof body.subscriptions === "object") {
@@ -198,10 +619,15 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
           createdAt: r.createdAt || new Date().toISOString(),
           reviewedAt: r.reviewedAt || null,
           reviewedBy: r.reviewedBy || null,
-          rejectReason: String(r.rejectReason || "")
+          rejectReason: String(r.rejectReason || ""),
+          notifiedEmail: true
         };
         db.payment_requests.push(rec);
         byId[rec.id] = rec;
+        upsertRegisteredUser(db, { email: rEmail, name: rec.userName, createdAt: rec.createdAt }, { suppressEmail: true });
+        if (rec.status === "pending" && !r.notifiedEmail) {
+          triggerPaymentRequestEmailAsync(db, rec);
+        }
         changed = true;
       } else if (isAdminCaller && existing.status === "pending" && (r.status === "approved" || r.status === "rejected")) {
         existing.status = r.status;
@@ -277,8 +703,10 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
 function buildBillingResponse(db, isAdminCaller, caller) {
   if (!db.userApis || typeof db.userApis !== "object") db.userApis = {};
   if (!db.revokedUserApis || typeof db.revokedUserApis !== "object") db.revokedUserApis = {};
+  if (!db.registeredUsers || typeof db.registeredUsers !== "object") db.registeredUsers = {};
   if (isAdminCaller) {
     return {
+      registeredUsers: db.registeredUsers,
       subscriptions: db.subscriptions,
       revokedSubscriptions: db.revokedSubscriptions || {},
       userApis: db.userApis,
@@ -286,7 +714,9 @@ function buildBillingResponse(db, isAdminCaller, caller) {
       payment_requests: db.payment_requests,
       paymentConfig: db.paymentConfig,
       vouchers: db.vouchers,
-      deletedVouchers: db.deletedVouchers || {}
+      deletedVouchers: db.deletedVouchers || {},
+      notificationLogs: (db.notificationLogs || []).slice(-30),
+      adminNotificationEmail: getAdminNotificationEmail()
     };
   }
   const ownSubs = {};
@@ -324,6 +754,24 @@ module.exports = async function apiHandler(req, res) {
   try {
     if (p === "/api/health" && method === "GET") {
       return sendJson(res, 200, { ok: true, app: "AI Tutor" });
+    }
+
+    /* ---------- User Registration & Login Tracking API ---------- */
+    if (p === "/api/users/register" && method === "POST") {
+      const body = await readBody(req);
+      const caller = getCallerEmail(req) || String((body && body.email) || "").trim().toLowerCase();
+      if (!caller || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(caller)) {
+        return sendJson(res, 400, { error: "Email kh\u00f4ng h\u1ee3p l\u1ec7." });
+      }
+      const db = loadDb();
+      const result = upsertRegisteredUser(db, {
+        uid: (body && body.uid) || caller,
+        email: caller,
+        name: (body && body.name) || caller.split("@")[0],
+        picture: (body && body.picture) || ""
+      }, { bumpLogin: true });
+      saveDb(db);
+      return sendJson(res, 200, { ok: true, isNewUser: result.isNew, user: result.user });
     }
 
     /* ---------- Public Share Link / Short Code API ---------- */
@@ -404,6 +852,7 @@ module.exports = async function apiHandler(req, res) {
       const now = Date.now();
       db.subscriptions[caller] = { tier: "unranked", since: now, expires: now + 365 * DAY_MS };
       if (db.revokedSubscriptions) delete db.revokedSubscriptions[caller];
+      upsertRegisteredUser(db, { email: caller, name: (body && body.name) || caller.split("@")[0] });
       saveDb(db);
       return sendJson(res, 200, { ok: true, subscription: db.subscriptions[caller] });
     }
@@ -433,10 +882,13 @@ module.exports = async function apiHandler(req, res) {
         createdAt: body.createdAt || new Date().toISOString(),
         reviewedAt: null,
         reviewedBy: null,
-        rejectReason: ""
+        rejectReason: "",
+        notifiedEmail: true
       };
       db.payment_requests.push(rec);
+      upsertRegisteredUser(db, { email: caller, name: rec.userName });
       saveDb(db);
+      triggerPaymentRequestEmailAsync(db, rec);
       return sendJson(res, 201, { ok: true, request: rec });
     }
 
@@ -448,6 +900,11 @@ module.exports = async function apiHandler(req, res) {
       const db = loadDb();
       if (!db.revokedSubscriptions) db.revokedSubscriptions = {};
       if (!db.deletedVouchers) db.deletedVouchers = {};
+      if (!db.registeredUsers) db.registeredUsers = {};
+
+      if (p === "/api/admin/users" && method === "GET") {
+        return sendJson(res, 200, { ok: true, users: db.registeredUsers });
+      }
 
       const approveMatch = p.match(/^\/api\/admin\/payment-requests\/([^/]+)\/approve$/);
       if (approveMatch && method === "POST") {
@@ -469,6 +926,7 @@ module.exports = async function apiHandler(req, res) {
         const start = old && old.tier === rec.plan && Number(old.expires) > now ? Number(old.expires) : now;
         db.subscriptions[userEmail] = { tier: rec.plan, since: now, expires: start + 365 * DAY_MS };
         delete db.revokedSubscriptions[userEmail];
+        upsertRegisteredUser(db, { email: userEmail, name: rec.userName }, { suppressEmail: true });
         saveDb(db);
         return sendJson(res, 200, { ok: true, request: rec, subscription: db.subscriptions[userEmail] });
       }
@@ -498,6 +956,7 @@ module.exports = async function apiHandler(req, res) {
         const now = Date.now();
         db.subscriptions[em] = { tier: body.tier, since: now, expires: now + 365 * DAY_MS };
         delete db.revokedSubscriptions[em];
+        upsertRegisteredUser(db, { email: em }, { suppressEmail: true });
         saveDb(db);
         return sendJson(res, 200, { ok: true, subscription: db.subscriptions[em] });
       }
@@ -571,6 +1030,7 @@ module.exports = async function apiHandler(req, res) {
           ts: now
         };
         delete db.revokedUserApis[em];
+        upsertRegisteredUser(db, { email: em }, { suppressEmail: true });
         saveDb(db);
         return sendJson(res, 200, { ok: true, entry: db.userApis[em], userApis: db.userApis });
       }

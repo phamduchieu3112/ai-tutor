@@ -38,6 +38,7 @@ const KEYS = {
   apiKey: "uet_master_gemini_key",
   apiModel: "uet_master_gemini_model",
   userApis: "uet_master_user_apis",
+  users: "uet_master_registered_users",
   lang: "uet_master_lang",
   quizzes: "uet_master_studio_quizzes"
 };
@@ -148,7 +149,9 @@ const state = {
   adminTab: "requests",
   adminStatusFilter: "all",
   adminPlanFilter: "all",
-  adminQuery: ""
+  adminQuery: "",
+  adminMemberQuery: "",
+  adminMemberSort: "newest"
 };
 
 /* ------------------------------ Utilities ------------------------------ */
@@ -420,7 +423,50 @@ function mergeRemoteBillingSnap(snap) {
     });
     saveJSON(KEYS.userApis, mergedApis);
   }
+  if (snap.registeredUsers && typeof snap.registeredUsers === "object") {
+    const localUsers = loadObj(KEYS.users);
+    const mergedUsers = Object.assign({}, localUsers);
+    Object.keys(snap.registeredUsers).forEach(function (em) {
+      const k = String(em || "").trim().toLowerCase();
+      const u = snap.registeredUsers[em];
+      if (k && u && typeof u === "object") {
+        if (!mergedUsers[k] || JSON.stringify(mergedUsers[k]) !== JSON.stringify(u)) {
+          mergedUsers[k] = Object.assign({}, mergedUsers[k] || {}, u, { email: k });
+          changed = true;
+        }
+      }
+    });
+    saveJSON(KEYS.users, mergedUsers);
+  }
   return changed;
+}
+
+function recordLocalUserLogin(user, bumpLogin) {
+  if (!user || !user.email) return null;
+  const em = String(user.email).trim().toLowerCase();
+  const users = loadObj(KEYS.users);
+  const nowIso = new Date().toISOString();
+  const existing = users[em];
+  if (!existing) {
+    users[em] = {
+      uid: user.uid || em,
+      email: em,
+      name: String(user.name || em.split("@")[0]).trim(),
+      picture: String(user.picture || "").trim(),
+      createdAt: nowIso,
+      lastLoginAt: nowIso,
+      loginCount: 1
+    };
+  } else {
+    if (user.name && String(user.name).trim()) existing.name = String(user.name).trim();
+    if (user.picture && String(user.picture).trim()) existing.picture = String(user.picture).trim();
+    if (bumpLogin) {
+      existing.lastLoginAt = nowIso;
+      existing.loginCount = (Number(existing.loginCount) || 1) + 1;
+    }
+  }
+  saveJSON(KEYS.users, users);
+  return users[em];
 }
 
 async function syncWithBackend() {
@@ -437,7 +483,19 @@ async function syncWithBackend() {
       return false;
     }
     state.backendOnline = true;
+    if (state.user && state.user.email) {
+      apiCall("/api/users/register", "POST", {
+        uid: state.user.uid || state.user.email,
+        email: state.user.email,
+        name: state.user.name,
+        picture: state.user.picture
+      }).catch(function () { /* non-blocking */ });
+    }
+    const localUsers = loadObj(KEYS.users);
+    const curUserRec = state.user && state.user.email ? (localUsers[state.user.email.toLowerCase()] || state.user) : undefined;
     const payload = {
+      currentUser: curUserRec,
+      registeredUsers: isAdmin() ? localUsers : undefined,
       subscriptions: loadObj(KEYS.subs),
       payment_requests: loadArr(KEYS.payReqs),
       vouchers: loadArr(KEYS.vouchers),
@@ -547,6 +605,7 @@ function handleGoogleLogin(response) {
         credential: cred
       };
       saveJSON(KEYS.auth, user);
+      recordLocalUserLogin(user, true);
       hideLoginError();
       onAuthenticated(user);
     } else {
@@ -607,6 +666,7 @@ function enterGuestShareMode() {
 
 function onAuthenticated(user) {
   state.user = user;
+  recordLocalUserLogin(user, false);
   renderUserChrome();
   toggleEl("userChip", true);
   toggleEl("navTabs", true);
@@ -2288,12 +2348,108 @@ function adminActivatePaidTier(email, plan) {
   return saveJSON(KEYS.subs, subs);
 }
 
+function getAllRegisteredUsers() {
+  const usersObj = loadObj(KEYS.users);
+  const subs = loadObj(KEYS.subs);
+  const apis = loadObj(KEYS.userApis);
+  const profiles = loadObj(KEYS.profiles);
+  const reqs = loadArr(KEYS.payReqs);
+  const map = {};
+
+  const upsert = function (rawEmail, info) {
+    const em = String(rawEmail || "").trim().toLowerCase();
+    if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return;
+    if (!map[em]) {
+      map[em] = {
+        email: em,
+        name: em.split("@")[0],
+        picture: "",
+        createdAt: "",
+        lastLoginAt: ""
+      };
+    }
+    const cur = map[em];
+    if (info.name && String(info.name).trim() && (cur.name === em.split("@")[0] || cur.name === em || info.preferName)) {
+      cur.name = String(info.name).trim();
+    }
+    if (info.picture && String(info.picture).trim() && (!cur.picture || info.preferPic)) {
+      cur.picture = String(info.picture).trim();
+    }
+    if (info.createdAt) {
+      if (!cur.createdAt || String(info.createdAt) < String(cur.createdAt)) cur.createdAt = String(info.createdAt);
+    }
+    if (info.lastLoginAt) {
+      if (!cur.lastLoginAt || String(info.lastLoginAt) > String(cur.lastLoginAt)) cur.lastLoginAt = String(info.lastLoginAt);
+    }
+  };
+
+  Object.keys(usersObj).forEach(function (em) {
+    const u = usersObj[em];
+    if (u && typeof u === "object") {
+      upsert(em, {
+        name: u.name,
+        picture: u.picture,
+        createdAt: u.createdAt,
+        lastLoginAt: u.lastLoginAt || u.createdAt,
+        preferName: true
+      });
+    }
+  });
+  Object.keys(profiles).forEach(function (em) {
+    const p = profiles[em];
+    if (p && typeof p === "object") {
+      upsert(em, { name: p.displayName, picture: p.customAvatar, preferName: !!p.displayName, preferPic: !!p.customAvatar });
+    }
+  });
+  Object.keys(subs).forEach(function (em) {
+    const s = subs[em];
+    const sinceIso = s && s.since ? new Date(Number(s.since)).toISOString() : "";
+    upsert(em, { createdAt: sinceIso, lastLoginAt: sinceIso });
+  });
+  reqs.forEach(function (r) {
+    if (r && r.userEmail) {
+      upsert(r.userEmail, { name: r.userName, createdAt: r.createdAt, lastLoginAt: r.createdAt });
+    }
+  });
+  Object.keys(apis).forEach(function (em) {
+    const a = apis[em];
+    upsert(em, { createdAt: a && a.updatedAt, lastLoginAt: a && a.updatedAt });
+  });
+  if (state.user && state.user.email) {
+    upsert(state.user.email, {
+      name: state.user.name,
+      picture: state.user.picture,
+      lastLoginAt: new Date().toISOString()
+    });
+  }
+
+  return Object.keys(map).map(function (em) {
+    const u = map[em];
+    const sub = getActiveSub(em);
+    const tier = isAdminUser(em) ? (sub ? sub.tier : "diamond") : (sub ? sub.tier : "none");
+    const apiEntry = apis[em] && apis[em].apiKey ? apis[em] : null;
+    return {
+      email: em,
+      name: u.name || em.split("@")[0],
+      picture: u.picture || "",
+      createdAt: u.createdAt || u.lastLoginAt || "",
+      lastLoginAt: u.lastLoginAt || u.createdAt || "",
+      tier: tier,
+      sub: sub,
+      isAdminAccount: isAdminUser(em),
+      hasAssignedApi: !!apiEntry,
+      assignedApi: apiEntry
+    };
+  });
+}
+
 function renderAdmin() {
   if (!isAdmin()) { setHTML("adminBody", ""); return; }
   const reqs = loadArr(KEYS.payReqs);
   const pendingCnt = reqs.filter(function (r) { return r && r.status === "pending"; }).length;
   const approvedList = reqs.filter(function (r) { return r && r.status === "approved"; });
   const revenue = approvedList.reduce(function (acc, r) { return acc + (Number(r.amount) || 0); }, 0);
+  const allUsers = getAllRegisteredUsers();
 
   const tabs = [
     ["requests", "Duy\u1ec7t thanh to\u00e1n (" + pendingCnt + ")"],
@@ -2304,6 +2460,7 @@ function renderAdmin() {
   ];
   let h = '<h2>B\u1ea3ng \u0111i\u1ec1u khi\u1ec3n Qu\u1ea3n tr\u1ecb (Admin Panel)</h2>' +
     '<div class="admin-grid">' +
+      '<div class="kpi-card"><span class="kpi-label">T\u1ed5ng ng\u01b0\u1eddi d\u00f9ng \u0111\u0103ng k\u00fd</span><span class="kpi-value" style="color:var(--primary)">' + allUsers.length + '</span></div>' +
       '<div class="kpi-card"><span class="kpi-label">\u0110\u01a1n \u0111ang ch\u1edd duy\u1ec7t</span><span class="kpi-value" style="color:var(--amber)">' + pendingCnt + '</span></div>' +
       '<div class="kpi-card"><span class="kpi-label">\u0110\u01a1n \u0111\u00e3 duy\u1ec7t</span><span class="kpi-value" style="color:var(--emerald)">' + approvedList.length + '</span></div>' +
       '<div class="kpi-card"><span class="kpi-label">T\u1ed5ng doanh thu \u0111\u00e3 duy\u1ec7t</span><span class="kpi-value">' + esc(fmtMoney(revenue)) + '</span></div>' +
@@ -2320,6 +2477,8 @@ function renderAdmin() {
 
   setHTML("adminBody", h);
   if (state.adminTab === "requests") renderAdminRequestsTable();
+  else if (state.adminTab === "members") renderAdminMembersTable();
+  applyI18n($("adminBody"));
 }
 
 function adminRequestsHTML() {
@@ -2380,9 +2539,81 @@ function maskApiKeyDisplay(key) {
   return s.slice(0, 6) + "••••••••" + s.slice(-4);
 }
 
+function renderAdminMembersTable() {
+  const wrap = $("admAllUsersTableWrap");
+  if (!wrap) return;
+  const q = String(state.adminMemberQuery || "").trim().toLowerCase();
+  const sortMode = state.adminMemberSort || "newest";
+  const allUsers = getAllRegisteredUsers().filter(function (u) {
+    if (!q) return true;
+    return [u.email, u.name, u.tier].join(" ").toLowerCase().indexOf(q) !== -1;
+  });
+
+  allUsers.sort(function (a, b) {
+    if (sortMode === "login") {
+      return String(b.lastLoginAt || "").localeCompare(String(a.lastLoginAt || ""));
+    }
+    if (sortMode === "tier") {
+      const rDiff = (TIER_ORDER.indexOf(b.tier) || 0) - (TIER_ORDER.indexOf(a.tier) || 0);
+      if (rDiff !== 0) return rDiff;
+      return String(a.email).localeCompare(String(b.email));
+    }
+    if (sortMode === "email") {
+      return String(a.email).localeCompare(String(b.email));
+    }
+    return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+  });
+
+  if (allUsers.length === 0) {
+    wrap.innerHTML = '<div class="empty-state">Ch\u01b0a c\u00f3 ng\u01b0\u1eddi d\u00f9ng n\u00e0o ph\u00f9 h\u1ee3p v\u1edbi b\u1ed9 l\u1ecdc.</div>';
+    if (typeof applyI18n === "function") applyI18n(wrap);
+    return;
+  }
+
+  wrap.innerHTML = '<table class="data-table"><thead><tr>' +
+    '<th>Ng\u01b0\u1eddi d\u00f9ng</th>' +
+    '<th>G\u00f3i hi\u1ec7n t\u1ea1i</th>' +
+    '<th>Ng\u00e0y \u0111\u0103ng k\u00fd</th>' +
+    '<th>\u0110\u0103ng nh\u1eadp g\u1ea7n nh\u1ea5t</th>' +
+    '<th>H\u00e0nh \u0111\u1ed9ng</th>' +
+  '</tr></thead><tbody>' +
+  allUsers.map(function (u) {
+    const avSrc = u.picture || placeholderAvatar(u.name || u.email);
+    const tierInfo = TIERS[u.tier] || TIERS.none;
+    const planLabel = u.isAdminAccount
+      ? '<span class="tier-badge rank-diamond">👑 Admin (Diamond)</span>'
+      : '<span class="tier-badge ' + tierInfo.cls + '">' + tierInfo.icon + " " + esc(tierInfo.name) + '</span>';
+    const expSub = u.isAdminAccount
+      ? '<div class="muted" style="font-size:.75rem;margin-top:3px">To\u00e0n quy\u1ec1n kh\u00f4ng gi\u1edbi h\u1ea1n</div>'
+      : (u.sub && u.tier !== "unranked" && u.tier !== "none"
+          ? '<div class="muted" style="font-size:.75rem;margin-top:3px">H\u1ebft h\u1ea1n: ' + esc(fmtDate(u.sub.expires)) + '</div>'
+          : (u.tier === "unranked" ? '<div class="muted" style="font-size:.75rem;margin-top:3px">Mi\u1ec5n ph\u00ed</div>' : '<div class="muted" style="font-size:.75rem;margin-top:3px">Ch\u01b0a \u0111\u0103ng k\u00fd g\u00f3i</div>'));
+    const apiBadge = u.hasAssignedApi
+      ? ' <span class="badge badge-ok" title="\u0110\u00e3 g\u00e1n Gemini API">🔑 \u0110\u00e3 g\u00e1n API</span>'
+      : "";
+    return '<tr>' +
+      '<td><div style="display:flex;align-items:center;gap:10px">' +
+        '<img src="' + esc(avSrc) + '" alt="" class="avatar" style="width:34px;height:34px;flex-shrink:0" referrerpolicy="no-referrer">' +
+        '<div><strong>' + esc(u.name) + '</strong>' + apiBadge + '<br><span class="muted" style="font-size:.8rem">' + esc(u.email) + '</span></div>' +
+      '</div></td>' +
+      '<td>' + planLabel + expSub + '</td>' +
+      '<td>' + esc(u.createdAt ? fmtDateTime(u.createdAt) : "—") + '</td>' +
+      '<td>' + esc(u.lastLoginAt ? fmtDateTime(u.lastLoginAt) : "—") + '</td>' +
+      '<td><div class="deck-actions">' +
+        '<button type="button" class="btn btn-primary btn-sm" data-act="prefill-grant" data-email="' + esc(u.email) + '" data-tier="' + esc(u.tier !== "none" ? u.tier : "diamond") + '">C\u1ea5p / n\u00e2ng c\u1ea5p</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-act="prefill-api" data-email="' + esc(u.email) + '">🔑 G\u00e1n API</button>' +
+        (u.sub ? '<button type="button" class="btn btn-outline btn-sm" data-act="revoke" data-email="' + esc(u.email) + '">Thu h\u1ed3i g\u00f3i</button>' : "") +
+      '</div></td>' +
+    '</tr>';
+  }).join("") +
+  '</tbody></table>';
+  if (typeof applyI18n === "function") applyI18n(wrap);
+}
+
 function adminMembersHTML() {
   const subs = loadObj(KEYS.subs);
   const apis = loadObj(KEYS.userApis);
+  const allUsers = getAllRegisteredUsers();
   const members = Object.keys(subs).filter(function (e) { return getActiveSub(e); });
   const rows = members.length ? members.map(function (e) {
     const s = subs[e];
@@ -2411,12 +2642,27 @@ function adminMembersHTML() {
       '</div></td></tr>';
   }).join("") : '<tr><td colspan="5" class="muted">Ch\u01b0a c\u00f3 t\u00e0i kho\u1ea3n n\u00e0o \u0111\u01b0\u1ee3c Admin g\u00e1n Gemini API Key.</td></tr>';
 
-  return '<h3>1. C\u1ea5p / n\u00e2ng c\u1ea5p / thu h\u1ed3i g\u00f3i th\u1ee7 c\u00f4ng</h3><div class="admin-form">' +
+  return '<h3>Danh s\u00e1ch t\u1ea5t c\u1ea3 ng\u01b0\u1eddi d\u00f9ng \u0111\u00e3 \u0111\u0103ng k\u00fd (' + allUsers.length + ')</h3>' +
+    '<p class="muted" style="font-size:.82rem;margin:0 0 10px">Hi\u1ec3n th\u1ecb to\u00e0n b\u1ed9 t\u00e0i kho\u1ea3n \u0111\u00e3 \u0111\u0103ng k\u00fd tr\u00ean h\u1ec7 th\u1ed1ng. Khi c\u00f3 ng\u01b0\u1eddi d\u00f9ng m\u1edbi \u0111\u0103ng k\u00fd ho\u1eb7c g\u1eedi y\u00eau c\u1ea7u x\u00e1c nh\u1eadn thanh to\u00e1n, h\u1ec7 th\u1ed1ng s\u1ebd t\u1ef1 \u0111\u1ed9ng g\u1eedi th\u00f4ng b\u00e1o v\u1ec1 email qu\u1ea3n tr\u1ecb (<strong>phamduchieu.robotics@gmail.com</strong>).</p>' +
+    '<div class="filter-bar">' +
+      '<input type="search" id="admMemberQuery" placeholder="T\u00ecm ng\u01b0\u1eddi d\u00f9ng theo email ho\u1eb7c t\u00ean..." value="' + esc(state.adminMemberQuery) + '" style="flex:1;min-width:220px">' +
+      '<select id="admMemberSort" aria-label="S\u1eafp x\u1ebfp ng\u01b0\u1eddi d\u00f9ng">' +
+        '<option value="newest"' + (state.adminMemberSort === "newest" ? " selected" : "") + '>M\u1edbi \u0111\u0103ng k\u00fd nh\u1ea5t</option>' +
+        '<option value="login"' + (state.adminMemberSort === "login" ? " selected" : "") + '>\u0110\u0103ng nh\u1eadp g\u1ea7n nh\u1ea5t</option>' +
+        '<option value="tier"' + (state.adminMemberSort === "tier" ? " selected" : "") + '>H\u1ea1ng g\u00f3i cao nh\u1ea5t</option>' +
+        '<option value="email"' + (state.adminMemberSort === "email" ? " selected" : "") + '>Email (A-Z)</option>' +
+      '</select>' +
+    '</div>' +
+    '<div class="table-scroll" id="admAllUsersTableWrap" style="margin-bottom:24px"></div>' +
+
+    '<div style="padding-top:16px;border-top:2px dashed var(--border)">' +
+    '<h3>1. C\u1ea5p / n\u00e2ng c\u1ea5p / thu h\u1ed3i g\u00f3i th\u1ee7 c\u00f4ng</h3><div class="admin-form">' +
     '<label class="field">Email ng\u01b0\u1eddi d\u00f9ng<input type="email" id="grantEmail" placeholder="email@example.com"></label>' +
     '<label class="field">H\u1ea1ng g\u00f3i<select id="grantTier">' + opts + "</select></label>" +
     '<button type="button" class="btn btn-primary" data-act="grant">C\u1ea5p / n\u00e2ng c\u1ea5p</button>' +
     '<button type="button" class="btn btn-danger" data-act="revoke-form">Thu h\u1ed3i g\u00f3i</button></div>' +
     '<h3>Danh s\u00e1ch th\u00e0nh vi\u00ean \u0111ang ho\u1ea1t \u0111\u1ed9ng</h3><div class="table-scroll" style="margin-bottom:20px"><table class="data-table"><thead><tr><th>Email</th><th>G\u00f3i</th><th>H\u1ebft h\u1ea1n</th><th>H\u00e0nh \u0111\u1ed9ng</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+    '</div>' +
 
     '<div style="padding-top:16px;border-top:2px dashed var(--border)">' +
       '<h3>2. 🔑 G\u00e1n h\u1ed9 Google Gemini API Key theo Email ng\u01b0\u1eddi d\u00f9ng</h3>' +
@@ -2601,6 +2847,14 @@ async function onAdminClick(e) {
       const show = inp.type === "password";
       inp.type = show ? "text" : "password";
       b.textContent = show ? "🙈" : "👁️";
+    } else if (act === "prefill-grant") {
+      const em = String(b.getAttribute("data-email") || "").trim().toLowerCase();
+      const tr = String(b.getAttribute("data-tier") || "diamond").trim().toLowerCase();
+      const emInp = $("grantEmail");
+      const trSel = $("grantTier");
+      if (emInp) { emInp.value = em; emInp.focus(); }
+      if (trSel && TIERS[tr] && tr !== "none") trSel.value = tr;
+      showToast("\u0110\u00e3 ch\u1ecdn email " + em + " \u0111\u1ec3 c\u1ea5p / n\u00e2ng c\u1ea5p g\u00f3i.", "info");
     } else if (act === "prefill-api") {
       const em = String(b.getAttribute("data-email") || "").trim().toLowerCase();
       const emInp = $("assignApiEmail");
@@ -2651,6 +2905,7 @@ async function onAdminClick(e) {
     } else if (act === "export-backup") {
       const data = {
         exportedAt: new Date().toISOString(),
+        registeredUsers: loadObj(KEYS.users),
         subscriptions: loadObj(KEYS.subs),
         userApis: loadObj(KEYS.userApis),
         payment_requests: loadArr(KEYS.payReqs),
@@ -2665,9 +2920,12 @@ function onAdminChange(e) {
   if (!isAdmin() || !e.target) return;
   if (e.target.id === "admStatusFilter") { state.adminStatusFilter = e.target.value; renderAdminRequestsTable(); }
   else if (e.target.id === "admPlanFilter") { state.adminPlanFilter = e.target.value; renderAdminRequestsTable(); }
+  else if (e.target.id === "admMemberSort") { state.adminMemberSort = e.target.value; renderAdminMembersTable(); }
 }
 function onAdminInput(e) {
-  if (e.target && e.target.id === "admQuery") { state.adminQuery = e.target.value; renderAdminRequestsTable(); }
+  if (!e.target) return;
+  if (e.target.id === "admQuery") { state.adminQuery = e.target.value; renderAdminRequestsTable(); }
+  else if (e.target.id === "admMemberQuery") { state.adminMemberQuery = e.target.value; renderAdminMembersTable(); }
 }
 
 /* ------------------------------ Profile ------------------------------ */
@@ -2923,6 +3181,7 @@ function onKeyDown(e) {
 }
 
 /* ------------------------------ Multi-Language Engine (VI / EN / JA - Zero Font Change) ------------------------------ */
+/* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
@@ -3889,7 +4148,20 @@ const I18N_MAP = {
   "🇻🇳 Tiếng Việt": { vi: "🇻🇳 Tiếng Việt", en: "VI", ja: "VI" },
   "Gemini 2.0 Flash (Ổn định)": { vi: "Gemini 2.0 Flash (Ổn định)", en: "Gemini 2.0 Flash (Stable)", ja: "Gemini 2.0 Flash (安定)" },
   "Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt sẵn Gemini API Key đó cho AI Converter mà người dùng không cần tự nhập.": { vi: "Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt sẵn Gemini API Key đó cho AI Converter mà người dùng không cần tự nhập.", en: "When the user signs in with the assigned email, the system automatically activates that Gemini API Key for AI Converter without requiring manual entry.", ja: "指定されたメールアドレスでユーザーがログインすると、手動入力なしで AI Converter 用の Gemini API Key が自動的に有効化されます。" },
-  "Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt sẵn Google Gemini API Key đó cho AI Converter mà người dùng không cần tự nhập.": { vi: "Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt sẵn Google Gemini API Key đó cho AI Converter mà người dùng không cần tự nhập.", en: "When the user signs in with the assigned email, the system automatically activates that Google Gemini API Key for AI Converter without requiring manual entry.", ja: "指定されたメールアドレスでユーザーがログインすると、手動入力なしで AI Converter 用の Google Gemini API Key が自動的に有効化されます。" }
+  "Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt sẵn Google Gemini API Key đó cho AI Converter mà người dùng không cần tự nhập.": { vi: "Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt sẵn Google Gemini API Key đó cho AI Converter mà người dùng không cần tự nhập.", en: "When the user signs in with the assigned email, the system automatically activates that Google Gemini API Key for AI Converter without requiring manual entry.", ja: "指定されたメールアドレスでユーザーがログインすると、手動入力なしで AI Converter 用の Google Gemini API Key が自動的に有効化されます。" },
+  "Tổng người dùng đăng ký": { vi: "Tổng người dùng đăng ký", en: "Total Registered Users", ja: "登録ユーザー総数" },
+  "Gói hiện tại": { vi: "Gói hiện tại", en: "Current Plan", ja: "現在のプラン" },
+  "Ngày đăng ký": { vi: "Ngày đăng ký", en: "Registered At", ja: "登録日時" },
+  "Đăng nhập gần nhất": { vi: "Đăng nhập gần nhất", en: "Last Login", ja: "最終ログイン" },
+  "Mới đăng ký nhất": { vi: "Mới đăng ký nhất", en: "Newest Registered", ja: "登録日時（新しい順）" },
+  "Hạng gói cao nhất": { vi: "Hạng gói cao nhất", en: "Highest Plan Tier", ja: "プランランク順" },
+  "Email (A-Z)": { vi: "Email (A-Z)", en: "Email (A-Z)", ja: "メール (A-Z)" },
+  "Sắp xếp người dùng": { vi: "Sắp xếp người dùng", en: "Sort Users", ja: "ユーザー並び替え" },
+  "Tìm người dùng theo email hoặc tên...": { vi: "Tìm người dùng theo email hoặc tên...", en: "Search users by email or name...", ja: "メールまたは名前でユーザーを検索..." },
+  "Chưa có người dùng nào phù hợp với bộ lọc.": { vi: "Chưa có người dùng nào phù hợp với bộ lọc.", en: "No registered users match the current filter.", ja: "条件に一致する登録ユーザーはいません。" },
+  "Hiển thị toàn bộ tài khoản đã đăng ký trên hệ thống. Khi có người dùng mới đăng ký hoặc gửi yêu cầu xác nhận thanh toán, hệ thống sẽ tự động gửi thông báo về email quản trị (": { vi: "Hiển thị toàn bộ tài khoản đã đăng ký trên hệ thống. Khi có người dùng mới đăng ký hoặc gửi yêu cầu xác nhận thanh toán, hệ thống sẽ tự động gửi thông báo về email quản trị (", en: "Displays all registered accounts in the system. Whenever a new user registers or submits a payment confirmation request, an email alert is automatically sent to the admin email (", ja: "システムに登録された全アカウントを表示します。新規ユーザー登録または支払い確認リクエストが送信されると、管理者メール (" },
+  ").": { vi: ").", en: ").", ja: ") に自動通知されます。" },
+  "Hiển thị toàn bộ tài khoản đã đăng ký trên hệ thống. Khi có người dùng mới đăng ký hoặc gửi yêu cầu xác nhận thanh toán, hệ thống sẽ tự động gửi thông báo về email quản trị (phamduchieu.robotics@gmail.com).": { vi: "Hiển thị toàn bộ tài khoản đã đăng ký trên hệ thống. Khi có người dùng mới đăng ký hoặc gửi yêu cầu xác nhận thanh toán, hệ thống sẽ tự động gửi thông báo về email quản trị (phamduchieu.robotics@gmail.com).", en: "Displays all registered accounts in the system. Whenever a new user registers or submits a payment confirmation request, an email alert is automatically sent to the admin email (phamduchieu.robotics@gmail.com).", ja: "システムに登録された全アカウントを表示します。新規ユーザー登録または支払い確認リクエストが送信されると、管理者メール (phamduchieu.robotics@gmail.com) に自動通知されます。" }
 };
 
 const I18N_PATTERNS = [
@@ -4792,6 +5064,16 @@ const I18N_PATTERNS = [
     re: /^Đã mở bộ đề "(.+?)"\s*\((\d+)\s*câu\)\. Sẵn sàng làm bài!$/,
     en: (m) => "Opened deck \"" + m[1] + "\" (" + m[2] + " Qs). Ready to start!",
     ja: (m) => "問題集「" + m[1] + "」(" + m[2] + "問) を開きました。学習を始められます！"
+  },
+  {
+    re: /^Danh sách tất cả người dùng đã đăng ký\s*\((\d+)\)$/,
+    en: (m) => "All Registered Users (" + m[1] + ")",
+    ja: (m) => "全登録ユーザー一覧 (" + m[1] + ")"
+  },
+  {
+    re: /^Đã chọn email\s+(.+?)\s+để cấp \/ nâng cấp gói\.$/,
+    en: (m) => "Selected " + m[1] + " to grant / upgrade plan.",
+    ja: (m) => "プラン付与・アップグレード対象として " + m[1] + " を選択しました。"
   }
 ];
 /* END_VI_TRANSLATION_DICTIONARY */
@@ -4938,7 +5220,7 @@ window.UET = {
   isAdmin: isAdmin, isAdminUser: isAdminUser, currentTier: currentTier, tierRank: tierRank, effectiveLimits: effectiveLimits,
   can: can, requireFeature: requireFeature, promptUpgrade: promptUpgrade,
   getAssignedApiForUser: getActiveUserAssignedApi, getAssignedApiForEmail: getAssignedApiForEmail,
-  getLang: getLang, setLang: setLang, applyI18n: applyI18n, translateString: translateString, translateString: translateString, translateString: translateString,
+  getLang: getLang, setLang: setLang, applyI18n: applyI18n, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString,
   getDecks: function () { return state.decks; }, getUserDecks: getUserDecks, getDeck: getDeck,
   normalizeQuestion: normalizeQuestion, parseWorkbookRows: parseWorkbookRows, addOrMergeDeck: addOrMergeDeck,
   downloadTemplate: downloadTemplate, showTab: showTab, navigateTo: navigateTo, syncHistory: syncHistory, renderTab: renderTab, updateChrome: updateChrome,
