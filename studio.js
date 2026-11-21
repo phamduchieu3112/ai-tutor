@@ -128,7 +128,7 @@
     stopStudioTimer();
     sState.quiz = {
       id: "qz_" + Date.now(),
-      title: title || "Quiz từ UET Converter",
+      title: title || "Quiz từ AI Converter",
       tag: tag || "Tổng hợp",
       questions: items.map(function (q, i) {
         return {
@@ -210,6 +210,7 @@
       root.addEventListener("click", onStudioClick);
       root.addEventListener("change", onStudioChange);
     }
+    if (typeof U().applyI18n === "function") U().applyI18n(root);
   }
 
   /* ======================== HOME ======================== */
@@ -225,13 +226,13 @@
       '<div class="admin-grid" style="margin:12px 0 0">' +
         '<div class="deck-row"><strong>✍️ Tạo Quiz thủ công</strong><span class="muted" style="font-size:.8rem">Tự soạn từng câu hỏi với toolbar B/I/U, LaTeX &amp; ảnh</span>' +
           '<button type="button" class="btn btn-primary btn-sm" data-sact="new-manual">Tạo Quiz mới</button></div>' +
-        '<div class="deck-row"><strong>📚 Lấy từ Kho đề UET Master</strong><span class="muted" style="font-size:.8rem">Hiện có ' + decks.length + ' bộ đề trong Kho đề</span>' +
+        '<div class="deck-row"><strong>📚 Lấy từ Kho đề AI Tutor</strong><span class="muted" style="font-size:.8rem">Hiện có ' + decks.length + ' bộ đề trong Kho đề</span>' +
           (decks.length ? '<div style="display:flex;gap:6px"><select id="stPickDeck" style="flex:1;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text)">' +
             decks.map(function (d) { return '<option value="' + U().esc(d.id) + '">' + U().esc(d.title) + ' (' + d.questions.length + ' câu)</option>'; }).join("") +
             '</select><button type="button" class="btn btn-primary btn-sm" data-sact="import-deck">Mở</button></div>' : '<span class="muted" style="font-size:.78rem">Chưa có bộ đề nào</span>') +
         '</div>' +
-        '<div class="deck-row"><strong>✨ Nhập từ UET Converter</strong><span class="muted" style="font-size:.8rem">Hiện có ' + convCount + ' câu hợp lệ trong Converter</span>' +
-          '<button type="button" class="btn btn-emerald btn-sm" data-sact="import-conv"' + (convCount === 0 ? " disabled" : "") + '>Lấy từ Converter (' + convCount + ')</button></div>' +
+        '<div class="deck-row"><strong>✨ Nhập từ AI Converter</strong><span class="muted" style="font-size:.8rem">Hiện có ' + convCount + ' câu hợp lệ trong AI Converter</span>' +
+          '<button type="button" class="btn btn-emerald btn-sm" data-sact="import-conv"' + (convCount === 0 ? " disabled" : "") + '>Lấy từ AI Converter (' + convCount + ')</button></div>' +
       '</div></div>';
 
     h += '<div class="panel"><div class="panel-head"><h2>Danh sách Quiz đã tạo (' + quizzes.length + ')</h2></div>';
@@ -856,7 +857,7 @@
     }
     else if (act === "import-conv") {
       const qs = window.UETConverter ? window.UETConverter.getValidQuestions() : [];
-      if (qs.length) openFromQuestions("Quiz từ UET Converter", "UET Converter", qs);
+      if (qs.length) openFromQuestions("Quiz từ AI Converter", "AI Converter", qs);
     }
     else if (act === "edit-saved") {
       const qz = loadQuizzes().find(function (x) { return x && x.id === b.getAttribute("data-id"); });

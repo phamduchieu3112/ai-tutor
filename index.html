@@ -14,14 +14,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-  <link rel="stylesheet" href="/style.css?v=20261121e">
+  <link rel="stylesheet" href="/style.css?v=20261121f">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" defer></script>
-  <script src="/app.js?v=20261121e" defer></script>
-  <script src="/converter.js?v=20261121e" defer></script>
-  <script src="/studio.js?v=20261121e" defer></script>
-  <script src="/cloud-share-pdf.js?v=20261121e" defer></script>
+  <script src="/app.js?v=20261121f" defer></script>
+  <script src="/converter.js?v=20261121f" defer></script>
+  <script src="/studio.js?v=20261121f" defer></script>
+  <script src="/cloud-share-pdf.js?v=20261121f" defer></script>
 </head>
 <body>
   <header class="topbar no-print" id="topbar">
@@ -80,9 +80,18 @@
           </div>
           <button type="button" class="dd-item" data-dd="profile" role="menuitem">👤 Hồ sơ cá nhân</button>
           <button type="button" class="dd-item" data-dd="pricing" role="menuitem">🏆 Gói nâng cấp</button>
-          <button type="button" class="dd-item" data-dd="api" role="menuitem">🔑 Cài đặt API (Gemini) <span class="nav-dot" id="navApiDot"></span></button>
+          <button type="button" class="dd-item" data-dd="api" role="menuitem">🔑 Cài đặt API &amp; Ngôn ngữ <span class="nav-dot" id="navApiDot"></span></button>
           <button type="button" class="dd-item" data-dd="backup" role="menuitem">☁️ Sao lưu &amp; Khôi phục dữ liệu</button>
           <button type="button" class="dd-item dd-admin hidden" data-dd="admin" id="navAdmin" role="menuitem">🛡️ Quản trị duyệt đơn (Admin Panel) <span class="nav-badge hidden" id="navAdminBadge">0</span></button>
+          <div class="dd-sep"></div>
+          <div class="dd-lang-row" style="padding:6px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.78rem">
+            <span class="muted" style="font-weight:700">🌐 Ngôn ngữ</span>
+            <div class="seg" role="group" aria-label="Ngôn ngữ">
+              <button type="button" class="seg-btn" data-lang="vi" style="padding:3px 8px;font-size:.74rem">VI</button>
+              <button type="button" class="seg-btn" data-lang="en" style="padding:3px 8px;font-size:.74rem">EN</button>
+              <button type="button" class="seg-btn" data-lang="ja" style="padding:3px 8px;font-size:.74rem">JA</button>
+            </div>
+          </div>
           <div class="dd-sep"></div>
           <button type="button" class="dd-item dd-danger" data-dd="logout" id="logoutBtn" role="menuitem">🚪 Đăng xuất</button>
         </div>
@@ -107,9 +116,18 @@
       <div class="dd-sep"></div>
       <button type="button" class="drawer-item" data-tab="profile">👤 Hồ sơ cá nhân</button>
       <button type="button" class="drawer-item" data-tab="pricing">🏆 Gói nâng cấp</button>
-      <button type="button" class="drawer-item" data-tab="api">🔑 Cài đặt API (Gemini)</button>
+      <button type="button" class="drawer-item" data-tab="api">🔑 Cài đặt API &amp; Ngôn ngữ</button>
       <button type="button" class="drawer-item" data-tab="backup">☁️ Sao lưu &amp; Khôi phục</button>
       <button type="button" class="drawer-item hidden" data-tab="admin" id="drawerAdminBtn">🛡️ Quản trị duyệt đơn <span class="nav-badge hidden" id="drawerAdminBadge">0</span></button>
+      <div class="dd-sep"></div>
+      <div style="padding:8px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.82rem">
+        <span class="muted" style="font-weight:700">🌐 Ngôn ngữ</span>
+        <div class="seg" role="group" aria-label="Ngôn ngữ">
+          <button type="button" class="seg-btn" data-lang="vi" style="padding:4px 9px;font-size:.76rem">VI</button>
+          <button type="button" class="seg-btn" data-lang="en" style="padding:4px 9px;font-size:.76rem">EN</button>
+          <button type="button" class="seg-btn" data-lang="ja" style="padding:4px 9px;font-size:.76rem">JA</button>
+        </div>
+      </div>
     </nav>
   </aside>
 

@@ -21,6 +21,8 @@ function defaultDb() {
   return {
     subscriptions: {},
     revokedSubscriptions: {},
+    userApis: {},
+    revokedUserApis: {},
     payment_requests: [],
     paymentConfig: { bankName: "MBV Bank", bankId: "970414", accountNo: "31122007", accountName: "PHAM DUC HIEU" },
     vouchers: [],
@@ -243,14 +245,44 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
     }
   }
 
+  // 5. Merge Admin-assigned user Gemini API keys
+  if (!db.userApis || typeof db.userApis !== "object") db.userApis = {};
+  if (!db.revokedUserApis || typeof db.revokedUserApis !== "object") db.revokedUserApis = {};
+  if (isAdminCaller && body.userApis && typeof body.userApis === "object") {
+    Object.keys(body.userApis).forEach(function (rawEm) {
+      const em = String(rawEm || "").trim().toLowerCase();
+      const item = body.userApis[rawEm];
+      if (!em || !item || typeof item !== "object" || !item.apiKey) return;
+      const revAt = Number(db.revokedUserApis[em]) || 0;
+      const inTs = Number(item.ts) || 0;
+      if (revAt && inTs <= revAt) return;
+      const cur = db.userApis[em];
+      if (!cur || inTs > (Number(cur.ts) || 0)) {
+        db.userApis[em] = {
+          email: em,
+          apiKey: String(item.apiKey).trim(),
+          model: String(item.model || "gemini-2.5-flash"),
+          assignedBy: ADMIN_EMAIL,
+          updatedAt: item.updatedAt || new Date().toISOString(),
+          ts: inTs || Date.now()
+        };
+        changed = true;
+      }
+    });
+  }
+
   return changed;
 }
 
 function buildBillingResponse(db, isAdminCaller, caller) {
+  if (!db.userApis || typeof db.userApis !== "object") db.userApis = {};
+  if (!db.revokedUserApis || typeof db.revokedUserApis !== "object") db.revokedUserApis = {};
   if (isAdminCaller) {
     return {
       subscriptions: db.subscriptions,
       revokedSubscriptions: db.revokedSubscriptions || {},
+      userApis: db.userApis,
+      revokedUserApis: db.revokedUserApis,
       payment_requests: db.payment_requests,
       paymentConfig: db.paymentConfig,
       vouchers: db.vouchers,
@@ -259,12 +291,16 @@ function buildBillingResponse(db, isAdminCaller, caller) {
   }
   const ownSubs = {};
   if (caller && db.subscriptions[caller]) ownSubs[caller] = db.subscriptions[caller];
+  const ownApis = {};
+  if (caller && db.userApis[caller]) ownApis[caller] = db.userApis[caller];
   const ownReqs = db.payment_requests.filter(function (r) {
     return r && String(r.userEmail || "").toLowerCase() === caller;
   });
   return {
     subscriptions: ownSubs,
     revokedSubscriptions: db.revokedSubscriptions || {},
+    userApis: ownApis,
+    revokedUserApis: db.revokedUserApis,
     payment_requests: ownReqs,
     paymentConfig: db.paymentConfig,
     vouchers: db.vouchers,
@@ -512,6 +548,40 @@ module.exports = async function apiHandler(req, res) {
         }
         saveDb(db);
         return sendJson(res, 200, { ok: true, vouchers: db.vouchers });
+      }
+
+      if (!db.userApis) db.userApis = {};
+      if (!db.revokedUserApis) db.revokedUserApis = {};
+
+      if (p === "/api/admin/user-apis" && method === "POST") {
+        const body = await readBody(req);
+        const em = String((body && body.email) || "").trim().toLowerCase();
+        const apiKey = String((body && body.apiKey) || "").trim();
+        const model = String((body && body.model) || "gemini-2.5-flash").trim();
+        if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em) || !apiKey) {
+          return sendJson(res, 400, { error: "Email hoặc Gemini API Key không hợp lệ." });
+        }
+        const now = Date.now();
+        db.userApis[em] = {
+          email: em,
+          apiKey: apiKey,
+          model: model,
+          assignedBy: ADMIN_EMAIL,
+          updatedAt: new Date(now).toISOString(),
+          ts: now
+        };
+        delete db.revokedUserApis[em];
+        saveDb(db);
+        return sendJson(res, 200, { ok: true, entry: db.userApis[em], userApis: db.userApis });
+      }
+
+      const delApiMatch = p.match(/^\/api\/admin\/user-apis\/([^/]+)$/);
+      if (delApiMatch && method === "DELETE") {
+        const em = decodeURIComponent(delApiMatch[1]).trim().toLowerCase();
+        delete db.userApis[em];
+        db.revokedUserApis[em] = Date.now();
+        saveDb(db);
+        return sendJson(res, 200, { ok: true, userApis: db.userApis });
       }
 
       return sendJson(res, 404, { error: "API route not found" });

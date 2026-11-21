@@ -1,5 +1,5 @@
 /* ============================================================
-   UET Master – UET Converter, Split-Screen Review & API Settings (converter.js)
+   AI Tutor – AI Converter, Split-Screen Review & API Settings (converter.js)
    ============================================================ */
 (function () {
   "use strict";
@@ -46,12 +46,30 @@
   };
 
   function U() { return window.UET; }
-  function getApiKey() { try { return (localStorage.getItem(U().KEYS.apiKey) || "").trim(); } catch (e) { return ""; } }
+  function getAssignedApi() {
+    return (U() && typeof U().getAssignedApiForUser === "function") ? U().getAssignedApiForUser() : null;
+  }
+  function getPersonalApiKey() {
+    try { return (localStorage.getItem(U().KEYS.apiKey) || "").trim(); } catch (e) { return ""; }
+  }
+  function getApiKey() {
+    const personal = getPersonalApiKey();
+    if (personal) return personal;
+    const assigned = getAssignedApi();
+    return (assigned && assigned.apiKey) ? String(assigned.apiKey).trim() : "";
+  }
   function setApiKey(v) {
     try { if (v) localStorage.setItem(U().KEYS.apiKey, v.trim()); else localStorage.removeItem(U().KEYS.apiKey); } catch (e) { /* */ }
     U().updateChrome();
   }
-  function getApiModel() { try { return localStorage.getItem(U().KEYS.apiModel) || "gemini-2.5-flash"; } catch (e) { return "gemini-2.5-flash"; } }
+  function getApiModel() {
+    try {
+      const saved = localStorage.getItem(U().KEYS.apiModel);
+      if (saved) return saved;
+    } catch (e) { /* */ }
+    const assigned = getAssignedApi();
+    return (assigned && assigned.model) ? assigned.model : "gemini-2.5-flash";
+  }
   function setApiModel(m) { try { localStorage.setItem(U().KEYS.apiModel, m); } catch (e) { /* */ } }
 
   function dateStamp() {
@@ -69,25 +87,44 @@
     return null;
   }
 
-  /* ======================== API SETTINGS PAGE (PART 3) ======================== */
+  /* ======================== API & LANGUAGE SETTINGS PAGE ======================== */
   function renderApiPage() {
     const root = U().$("apiSettingsRoot");
     if (!root) return;
+    const personalKey = getPersonalApiKey();
+    const assigned = getAssignedApi();
     const key = getApiKey();
     const model = getApiModel();
-    if (key && cState.apiStatus === "none") { cState.apiStatus = "saved"; cState.apiStatusMsg = "Đã lưu Key"; }
+    const curLang = (U() && typeof U().getLang === "function") ? U().getLang() : "vi";
+    if (!personalKey && assigned && assigned.apiKey) {
+      cState.apiStatus = "ok";
+      cState.apiStatusMsg = "✅ Đã gán bởi Admin";
+    } else if (key && cState.apiStatus === "none") {
+      cState.apiStatus = "saved";
+      cState.apiStatusMsg = "Đã lưu Key";
+    } else if (!key) {
+      cState.apiStatus = "none";
+      cState.apiStatusMsg = "Chưa cấu hình";
+    }
     const badgeCls = cState.apiStatus === "ok" ? "badge-ok" : (cState.apiStatus === "error" ? "badge-bad" : (cState.apiStatus === "saved" ? "" : "badge-warn"));
     const isPro = model.indexOf("pro") !== -1;
+    const userEmail = (U().state && U().state.user && U().state.user.email) ? U().state.user.email : "";
 
     root.innerHTML =
       '<div class="api-wrap">' +
         '<section class="panel">' +
-          '<div class="panel-head"><div><h2>Cài đặt Google Gemini API</h2><p class="muted" style="margin:0;font-size:.84rem">Hỗ trợ cả API từ tài khoản Google AI Pro / Ultra / Paid và API Free.</p></div>' +
+          '<div class="panel-head"><div><h2>Cài đặt Google Gemini API</h2><p class="muted" style="margin:0;font-size:.84rem">Hỗ trợ cả API từ tài khoản Google AI Pro / Ultra / Paid, API Free và API được Quản trị viên gán theo Email.</p></div>' +
           '<span class="badge ' + badgeCls + '" id="apiPageBadge">' + U().esc(cState.apiStatusMsg) + '</span></div>' +
 
-          '<label class="field">Gemini API Key' +
+          (assigned && assigned.apiKey
+            ? '<div class="checkout-notice" style="margin-bottom:14px;border-color:var(--emerald);background:var(--emerald-soft)">' +
+                '🔑 <strong>Đã được Quản trị viên gán hộ Gemini API:</strong> Tài khoản <strong>' + U().esc(userEmail || assigned.email) + '</strong> đã được gán sẵn API Key (Model mặc định: <code>' + U().esc(assigned.model || "gemini-2.5-flash") + '</code>). Bạn có thể dùng ngay <strong>AI Converter</strong> mà không cần tự nhập Key cá nhân.' +
+              '</div>'
+            : '') +
+
+          '<label class="field">Gemini API Key cá nhân (tùy chọn ghi đè)' +
             '<div class="key-input-wrap">' +
-              '<input type="password" id="uetApiKeyInput" autocomplete="off" spellcheck="false" value="' + U().esc(key) + '" placeholder="Dán chuỗi khóa bắt đầu bằng AIza...">' +
+              '<input type="password" id="uetApiKeyInput" autocomplete="off" spellcheck="false" value="' + U().esc(personalKey) + '" placeholder="' + (assigned && assigned.apiKey ? "Đang dùng API Key do Quản trị viên gán cho " + U().esc(userEmail) + " (hoặc dán Key riêng để ghi đè)" : "Dán chuỗi khóa bắt đầu bằng AIza...") + '">' +
               '<button type="button" class="eye-btn" id="uetApiEyeBtn" title="Hiện / Ẩn API Key" aria-label="Hiện hoặc ẩn API Key">👁️</button>' +
             '</div>' +
           '</label>' +
@@ -96,7 +133,7 @@
           '<div class="deck-actions" style="margin-bottom:16px">' +
             '<button type="button" class="btn btn-primary" id="uetApiSaveBtn">Lưu Key</button>' +
             '<button type="button" class="btn btn-emerald" id="uetApiTestBtn">Kiểm tra kết nối (Test API)</button>' +
-            '<button type="button" class="btn btn-outline" id="uetApiDelBtn">Xóa Key</button>' +
+            '<button type="button" class="btn btn-outline" id="uetApiDelBtn">Xóa Key cá nhân</button>' +
           '</div>' +
 
           '<label class="field">Chọn Model Gemini AI' +
@@ -106,10 +143,19 @@
               '<option value="gemini-3-flash-preview"' + (model === "gemini-3-flash-preview" ? " selected" : "") + '>Gemini 3 Flash Preview – Tốc độ cao (API Free / Preview)</option>' +
             '</select>' +
           '</label>' +
-          '<div class="' + (isPro ? "checkout-notice" : "pending-banner") + '" style="margin:8px 0 0;font-weight:500;font-size:.82rem">' +
+          '<div class="' + (isPro ? "checkout-notice" : "pending-banner") + '" style="margin:8px 0 16px;font-weight:500;font-size:.82rem">' +
             (isPro
               ? "💎 <strong>Chế độ Chính xác cao (Gemini 2.5 Pro):</strong> Tối ưu tối đa cho công thức Toán/Lý/Hóa phức tạp và tự động giải đề chuẩn xác."
               : "⚠️ <strong>Lưu ý khi dùng API Free / Flash:</strong> Tốc độ nhanh & miễn phí, nhưng bạn nên mở <strong>Chế độ Kiểm duyệt song song (Split-Screen Review)</strong> hoặc chạy <strong>AI Double-Check</strong> sau khi đọc đề để đảm bảo đáp án chuẩn 100%.") +
+          '</div>' +
+
+          '<div style="padding-top:14px;border-top:1px solid var(--border)">' +
+            '<div class="panel-head" style="margin-bottom:8px"><div><h3 style="margin:0;font-size:1rem">🌐 Ngôn ngữ giao diện (Language / 表示言語)</h3><p class="muted" style="margin:2px 0 0;font-size:.8rem">Chuyển đổi tức thì giữa Tiếng Việt, Tiếng Anh và Tiếng Nhật (giữ nguyên phông chữ hệ thống).</p></div></div>' +
+            '<div class="seg" role="group" aria-label="Chọn ngôn ngữ">' +
+              '<button type="button" class="seg-btn' + (curLang === "vi" ? " active" : "") + '" data-lang-set="vi">🇻🇳 Tiếng Việt</button>' +
+              '<button type="button" class="seg-btn' + (curLang === "en" ? " active" : "") + '" data-lang-set="en">🇬🇧 English</button>' +
+              '<button type="button" class="seg-btn' + (curLang === "ja" ? " active" : "") + '" data-lang-set="ja">🇯🇵 日本語</button>' +
+            '</div>' +
           '</div>' +
         '</section>' +
 
@@ -123,7 +169,7 @@
             '<li><span class="step-num">3</span><span>Nhấn nút <strong>Create API Key (Tạo khóa API)</strong> và chọn hoặc tạo một dự án Google Cloud.</span></li>' +
             '<li><span class="step-num">4</span><span>Sao chép chuỗi khóa bắt đầu bằng <code>AIza...</code>, dán vào ô phía trên rồi bấm <strong>Lưu Key</strong> và <strong>Kiểm tra kết nối</strong>.</span></li>' +
           '</ol>' +
-          '<p class="muted" style="font-size:.8rem;margin:12px 0 0">🔒 <strong>Bảo mật:</strong> API Key chỉ lưu cục bộ trong <code>localStorage</code> trên trình duyệt cá nhân và chỉ gửi trực tiếp tới máy chủ chính thức của Google Gemini API.</p>' +
+          '<p class="muted" style="font-size:.8rem;margin:12px 0 0">🔒 <strong>Bảo mật:</strong> API Key chỉ lưu cục bộ hoặc được Quản trị viên gán theo Email đăng nhập và chỉ gửi trực tiếp tới máy chủ chính thức của Google Gemini API.</p>' +
         '</section>' +
       '</div>';
 
@@ -133,6 +179,7 @@
       root.addEventListener("change", onApiPageChange);
       root.addEventListener("paste", onApiPagePaste);
     }
+    if (typeof U().applyI18n === "function") U().applyI18n(root);
   }
 
   function maskKeyEl() {
@@ -143,9 +190,10 @@
 
   async function testGeminiConnection() {
     const inp = U().$("uetApiKeyInput");
-    const raw = (inp ? inp.value : "").trim() || getApiKey();
+    const typed = (inp ? inp.value : "").trim();
+    if (typed) setApiKey(typed);
+    const raw = typed || getApiKey();
     if (!raw) { U().showToast("Vui lòng nhập Gemini API Key trước.", "warning"); return; }
-    setApiKey(raw);
     maskKeyEl();
     const btn = U().$("uetApiTestBtn");
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Đang kiểm tra...'; }
@@ -167,6 +215,11 @@
   }
 
   function onApiPageClick(e) {
+    const langBtn = e.target.closest ? e.target.closest("[data-lang-set]") : null;
+    if (langBtn && typeof U().setLang === "function") {
+      U().setLang(langBtn.getAttribute("data-lang-set"));
+      return;
+    }
     const t = e.target.closest ? e.target.closest("button") : null;
     if (!t) return;
     if (t.id === "uetApiEyeBtn") {
@@ -188,11 +241,11 @@
     } else if (t.id === "uetApiTestBtn") {
       testGeminiConnection();
     } else if (t.id === "uetApiDelBtn") {
-      U().showConfirm("Xóa API Key", "Bạn có chắc muốn xóa Gemini API Key đã lưu?", function () {
+      U().showConfirm("Xóa API Key", "Bạn có chắc muốn xóa Gemini API Key cá nhân đã lưu?", function () {
         setApiKey("");
         cState.apiStatus = "none";
         cState.apiStatusMsg = "Chưa cấu hình";
-        U().showToast("Đã xóa API Key.", "info");
+        U().showToast("Đã xóa API Key cá nhân.", "info");
         renderApiPage();
       });
     }
@@ -1293,7 +1346,7 @@
           ]);
         });
         const ws = XLSX.utils.aoa_to_sheet(rows);
-        const fname = chunks.length > 1 ? ("UET_Master_" + stamp + "_phan_" + (idx + 1)) : ("UET_Master_" + stamp);
+        const fname = chunks.length > 1 ? ("AI_Tutor_" + stamp + "_phan_" + (idx + 1)) : ("AI_Tutor_" + stamp);
         if (ext === "xlsx") {
           const wb = XLSX.utils.book_new();
           XLSX.utils.book_append_sheet(wb, ws, "Questions");
@@ -1303,7 +1356,7 @@
           U().downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), fname + ".csv");
         }
       });
-      U().showToast("Đã xuất " + chunks.length + " file " + ext.toUpperCase() + " chuẩn UET_Master!", "success");
+      U().showToast("Đã xuất " + chunks.length + " file " + ext.toUpperCase() + " chuẩn AI Tutor!", "success");
     };
     if (skipWarn) run(); else warnIfUnverified(run);
   }
@@ -1314,7 +1367,7 @@
       U().showToast("Chưa có câu hỏi hợp lệ có đáp án để nhập. Hãy chạy AI giải đáp án hoặc chọn đáp án trước.", "warning");
       return;
     }
-    const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || ("Bộ đề UET Converter " + dateStamp());
+    const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || ("Bộ đề AI Converter " + dateStamp());
     const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || "Tổng hợp";
     const mergeId = U().$("convMergeTarget") ? U().$("convMergeTarget").value : "";
     warnIfUnverified(function () {
@@ -1346,7 +1399,7 @@
     host.innerHTML =
       '<div class="modal-overlay" id="convTplModal" role="dialog" aria-modal="true">' +
         '<div class="modal modal-lg">' +
-          '<h3>File mẫu chuẩn 11 cột – UET_Master.xlsx</h3>' +
+          '<h3>File mẫu chuẩn 11 cột – AI_Tutor.xlsx</h3>' +
           '<div class="table-scroll"><table class="ref-table"><thead><tr>' +
             U().XLSX_HEADERS.map(function (h) { return "<th>" + U().esc(h) + "</th>"; }).join("") +
           '</tr></thead><tbody>' +
@@ -1448,7 +1501,7 @@
 
     // Card 2: Template + Manual Answer Key + AI Tools
     h += '<section class="panel"><div class="panel-head"><h2>2. File mẫu &amp; Kiểm duyệt AI</h2></div>' +
-      '<div class="checkout-notice" style="margin-bottom:10px">Đã tích hợp sẵn cấu trúc chuẩn 11 cột <strong>UET_Master.xlsx</strong> (không cần tải file mẫu lên).</div>' +
+      '<div class="checkout-notice" style="margin-bottom:10px">Đã tích hợp sẵn cấu trúc chuẩn 11 cột <strong>AI_Tutor.xlsx</strong> (không cần tải file mẫu lên).</div>' +
       '<div class="deck-actions" style="margin-bottom:12px">' +
         '<button type="button" class="btn btn-outline btn-sm" data-cact="view-tpl">👁️ Xem file mẫu</button>' +
         '<button type="button" class="btn btn-emerald btn-sm" data-cact="down-tpl">⬇ Tải file mẫu (.xlsx)</button>' +
@@ -1478,13 +1531,13 @@
       '</div>' +
       '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cKeepLatex"' + (cState.keepLatex ? " checked" : "") + '> Giữ chuẩn LaTeX ($...$)</label>' +
       '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cKeepHtml"' + (cState.keepHtml ? " checked" : "") + '> Giữ thẻ HTML (&lt;u&gt;, &lt;b&gt;, &lt;i&gt;)</label>' +
-      '<p class="muted" style="font-size:.75rem;margin:4px 0 8px">Tên file: <code>UET_Master_' + dateStamp() + '.xlsx</code></p>' +
+      '<p class="muted" style="font-size:.75rem;margin:4px 0 8px">Tên file: <code>AI_Tutor_' + dateStamp() + '.xlsx</code></p>' +
       '<div class="deck-actions">' +
         '<button type="button" class="btn btn-emerald btn-sm" style="flex:1" data-cact="exp-xlsx"' + (cState.questions.length === 0 ? " disabled" : "") + '>Xuất .xlsx</button>' +
         '<button type="button" class="btn btn-outline btn-sm" style="flex:1" data-cact="exp-csv"' + (cState.questions.length === 0 ? " disabled" : "") + '>Xuất CSV</button>' +
       '</div></section></div>';
 
-    // 1-Click Import into Kho đề UET Master
+    // 1-Click Import into Kho đề AI Tutor
     if (cState.questions.length > 0) {
       const mergeOpts = '<option value="">Tạo thành bộ đề mới</option>' +
         (U().can("merge") ? userDecks.map(function (d) { return '<option value="' + U().esc(d.id) + '">Gộp vào: ' + U().esc(d.title) + ' (' + d.questions.length + ' câu)</option>'; }).join("") : "");
@@ -1630,6 +1683,7 @@
         if (imgs.length > 0) { e.preventDefault(); addUnifiedFiles(imgs); }
       });
     }
+    if (typeof U().applyI18n === "function") U().applyI18n(root);
   }
 
   function renderReviewCard(item) {
@@ -1741,7 +1795,7 @@
       if (v.valid === 0) { U().showToast("Chưa có câu hỏi hợp lệ để mở trong Creator Studio.", "warning"); return; }
       if (window.UETStudio && typeof window.UETStudio.openFromQuestions === "function") {
         const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || ("Quiz " + dateStamp());
-        window.UETStudio.openFromQuestions(title, "UET Converter", v.validItems);
+        window.UETStudio.openFromQuestions(title, "AI Converter", v.validItems);
       }
     }
     else if (act === "toggle-ans") {
@@ -1759,7 +1813,7 @@
     else if (act === "edit-inline") openQuickEditModal(Number(b.getAttribute("data-idx")));
     else if (act === "del-q") { cState.questions.splice(Number(b.getAttribute("data-idx")), 1); renderConverter(); }
     else if (act === "verify-all") { cState.questions.forEach(function (q) { q.verified = true; q.suspect = false; }); renderConverter(); U().showToast("Đã đánh dấu duyệt tất cả câu hỏi.", "success"); }
-    else if (act === "clear-all") { U().showConfirm("Xóa bảng", "Xóa toàn bộ câu hỏi trong UET Converter?", function () { cState.questions = []; renderConverter(); }); }
+    else if (act === "clear-all") { U().showConfirm("Xóa bảng", "Xóa toàn bộ câu hỏi trong AI Converter?", function () { cState.questions = []; renderConverter(); }); }
     else if (act === "zoom") { cState.imgZoom = U().clamp(cState.imgZoom + Number(b.getAttribute("data-val")), 50, 250); renderConverter(); }
     else if (act === "img-prev") { cState.activeImgIdx = Math.max(0, cState.activeImgIdx - 1); renderConverter(); }
     else if (act === "img-next") { cState.activeImgIdx = Math.min(cState.images.length - 1, cState.activeImgIdx + 1); renderConverter(); }

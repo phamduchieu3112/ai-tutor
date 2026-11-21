@@ -1,7 +1,7 @@
 const GOOGLE_CLIENT_ID = "480927164540-o3o4h9v5vmi8h93605ridg4eqvtf5rcf.apps.googleusercontent.com";
 
 /* ============================================================
-   UET Master – Core Application (app.js)
+   AI Tutor – Core Application (app.js)
    ============================================================ */
 const ADMIN_EMAIL = "phamduchieurobotics@gmail.com";
 const ADMIN_EMAILS = ["phamduchieurobotics@gmail.com", "phamduchieu.robotics@gmail.com"];
@@ -37,6 +37,8 @@ const KEYS = {
   profiles: "uet_master_profiles",
   apiKey: "uet_master_gemini_key",
   apiModel: "uet_master_gemini_model",
+  userApis: "uet_master_user_apis",
+  lang: "uet_master_lang",
   quizzes: "uet_master_studio_quizzes"
 };
 const XLSX_HEADERS = [
@@ -94,12 +96,12 @@ const PRICING_FEATURES = {
     "Lưu tối đa 3 bộ đề trong Kho đề, tối đa 50 câu/bộ đề",
     "Làm bài luyện tập cơ bản & xem thống kê điểm số",
     "Dùng Creator/Quiz Studio cơ bản (tạo & làm bài)",
-    "Dùng UET Converter (tối đa 5 ảnh/lần, dùng Gemini API Key cá nhân)"
+    "Dùng AI Converter (tối đa 5 ảnh/lần, dùng Gemini API Key cá nhân)"
   ],
   bronze: [
     "Toàn bộ quyền lợi gói Unranked",
     "Lưu tối đa 15 bộ đề, tối đa 200 câu/bộ đề",
-    "UET Converter tối đa 20 ảnh/lần + xuất file Excel chuẩn không giới hạn",
+    "AI Converter tối đa 20 ảnh/lần + xuất file Excel chuẩn không giới hạn",
     "Mở khóa Làm lại câu sai (Sổ tay sai), Thi thử & Lịch sử luyện đề"
   ],
   silver: [
@@ -385,6 +387,30 @@ function mergeRemoteBillingSnap(snap) {
     if (JSON.stringify(loadArr(KEYS.vouchers)) !== JSON.stringify(mergedVouchers)) changed = true;
     saveJSON(KEYS.vouchers, mergedVouchers);
   }
+
+  if (snap.userApis && typeof snap.userApis === "object") {
+    const revApis = (snap.revokedUserApis && typeof snap.revokedUserApis === "object") ? snap.revokedUserApis : {};
+    const localApis = loadObj(KEYS.userApis);
+    const mergedApis = Object.assign({}, localApis);
+    Object.keys(revApis).forEach(function (em) {
+      const k = String(em || "").toLowerCase();
+      if (mergedApis[k] && (Number(mergedApis[k].ts) || 0) <= Number(revApis[em])) {
+        delete mergedApis[k];
+        changed = true;
+      }
+    });
+    Object.keys(snap.userApis).forEach(function (em) {
+      const k = String(em || "").toLowerCase();
+      const item = snap.userApis[em];
+      if (item && typeof item === "object" && item.apiKey) {
+        if (!mergedApis[k] || JSON.stringify(mergedApis[k]) !== JSON.stringify(item)) {
+          mergedApis[k] = item;
+          changed = true;
+        }
+      }
+    });
+    saveJSON(KEYS.userApis, mergedApis);
+  }
   return changed;
 }
 
@@ -406,7 +432,8 @@ async function syncWithBackend() {
       subscriptions: loadObj(KEYS.subs),
       payment_requests: loadArr(KEYS.payReqs),
       vouchers: loadArr(KEYS.vouchers),
-      paymentConfig: isAdmin() ? loadObj(KEYS.payCfg) : undefined
+      paymentConfig: isAdmin() ? loadObj(KEYS.payCfg) : undefined,
+      userApis: isAdmin() ? loadObj(KEYS.userApis) : undefined
     };
     const snap = await apiCall("/api/billing/sync", "POST", payload) || await apiCall("/api/billing/state", "GET");
     return mergeRemoteBillingSnap(snap);
@@ -414,6 +441,17 @@ async function syncWithBackend() {
     state.backendOnline = false;
     return false;
   }
+}
+
+function getAssignedApiForEmail(email) {
+  const em = String(email || "").trim().toLowerCase();
+  if (!em) return null;
+  const all = loadObj(KEYS.userApis);
+  const item = all[em];
+  return (item && typeof item === "object" && item.apiKey) ? item : null;
+}
+function getActiveUserAssignedApi() {
+  return (state.user && state.user.email) ? getAssignedApiForEmail(state.user.email) : null;
 }
 
 /* ------------------------------ Tiers & Rank Enforcement ------------------------------ */
@@ -879,6 +917,7 @@ function renderTab() {
     case "admin": renderAdmin(); break;
     default: break;
   }
+  applyI18n(document.body);
 }
 
 function getPendingCount() {
@@ -910,9 +949,15 @@ function updateChrome() {
   });
   const dot = $("navApiDot");
   if (dot) {
-    const hasKey = !!(localStorage.getItem(KEYS.apiKey) || "").trim();
+    const assigned = getActiveUserAssignedApi();
+    const hasKey = !!((localStorage.getItem(KEYS.apiKey) || "").trim() || (assigned && assigned.apiKey));
     dot.classList.toggle("ok", hasKey);
     dot.title = hasKey ? "Đã cấu hình Gemini API Key" : "Chưa cấu hình Gemini API Key";
+  }
+  const curLang = getLang();
+  const langBtns = document.querySelectorAll("[data-lang]");
+  for (let i = 0; i < langBtns.length; i++) {
+    langBtns[i].classList.toggle("active", langBtns[i].getAttribute("data-lang") === curLang);
   }
 }
 
@@ -990,9 +1035,9 @@ function renderDeckPanel() {
   toggleEl("tagPills", state.decks.length > 0);
 
   if (state.decks.length === 0) {
-    setHTML("deckList", '<div class="empty-state"><div style="font-size:2.4rem">📚</div><p>Bạn chưa có bộ đề nào. Nhập từ Excel hoặc chuyển ảnh đề ngay bằng UET Converter!</p>' +
+    setHTML("deckList", '<div class="empty-state"><div style="font-size:2.4rem">📚</div><p>Bạn chưa có bộ đề nào. Nhập từ Excel hoặc chuyển đề thi ngay bằng AI Converter!</p>' +
       '<div class="deck-actions" style="justify-content:center"><button type="button" class="btn btn-primary" data-action="import">+ Nhập đề từ Excel</button>' +
-      '<button type="button" class="btn btn-outline" data-action="go-converter">✨ Mở UET Converter</button></div></div>');
+      '<button type="button" class="btn btn-outline" data-action="go-converter">✨ Mở AI Converter</button></div></div>');
     setHTML("deckPager", "");
     return;
   }
@@ -1892,7 +1937,7 @@ function downloadTemplate() {
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Questions");
-    XLSX.writeFile(wb, "UET_Master.xlsx");
+    XLSX.writeFile(wb, "AI_Tutor.xlsx");
   } catch (e) { showToast("Không thể tạo file mẫu.", "error"); }
 }
 function exportJSON(deck) {
@@ -2070,7 +2115,7 @@ function checkoutAmount() {
 function checkoutMemo() {
   const c = state.checkout;
   const prefix = state.user ? state.user.email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 20) : "";
-  return "UETMASTER " + prefix + " " + (c ? TIERS[c.tier].memo : "");
+  return "AITUTOR " + prefix + " " + (c ? TIERS[c.tier].memo : "");
 }
 function openCheckout(code) {
   if (!state.user || !TIERS[code] || code === "none" || code === "unranked") return;
@@ -2319,24 +2364,73 @@ function renderAdminRequestsTable() {
     }).join("") + "</tbody></table>";
 }
 
+function maskApiKeyDisplay(key) {
+  const s = String(key || "").trim();
+  if (!s) return "—";
+  if (s.length <= 10) return s.slice(0, 3) + "••••••";
+  return s.slice(0, 6) + "••••••••" + s.slice(-4);
+}
+
 function adminMembersHTML() {
   const subs = loadObj(KEYS.subs);
+  const apis = loadObj(KEYS.userApis);
   const members = Object.keys(subs).filter(function (e) { return getActiveSub(e); });
   const rows = members.length ? members.map(function (e) {
     const s = subs[e];
-    return "<tr><td>" + esc(e) + "</td><td><strong>" + esc(TIERS[s.tier] ? TIERS[s.tier].name : s.tier) + "</strong></td><td>" +
+    const hasApi = !!(apis[e] && apis[e].apiKey);
+    return "<tr><td>" + esc(e) + (hasApi ? ' <span class="badge badge-ok" title="Đã gán Gemini API">🔑 Đã gán API</span>' : "") + "</td><td><strong>" + esc(TIERS[s.tier] ? TIERS[s.tier].name : s.tier) + "</strong></td><td>" +
       (s.tier === "unranked" ? "Miễn phí" : esc(fmtDate(s.expires))) +
-      '</td><td><button type="button" class="btn btn-outline btn-sm" data-act="revoke" data-email="' + esc(e) + '">Thu hồi</button></td></tr>';
+      '</td><td><div class="deck-actions">' +
+        '<button type="button" class="btn btn-outline btn-sm" data-act="prefill-api" data-email="' + esc(e) + '">🔑 Gán API</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-act="revoke" data-email="' + esc(e) + '">Thu hồi gói</button>' +
+      '</div></td></tr>';
   }).join("") : '<tr><td colspan="4" class="muted">Chưa có thành viên nào kích hoạt gói.</td></tr>';
   const opts = ["unranked", "bronze", "silver", "gold", "diamond"].map(function (c) {
     return '<option value="' + c + '">' + esc(TIERS[c].name) + "</option>";
   }).join("");
-  return '<h3>Cấp / nâng cấp / thu hồi gói thủ công</h3><div class="admin-form">' +
+
+  const apiEmails = Object.keys(apis).filter(function (e) { return apis[e] && apis[e].apiKey; });
+  const apiRows = apiEmails.length ? apiEmails.map(function (e) {
+    const item = apis[e];
+    return "<tr><td><strong>" + esc(e) + "</strong></td>" +
+      "<td><code>" + esc(maskApiKeyDisplay(item.apiKey)) + "</code></td>" +
+      "<td>" + esc(item.model || "gemini-2.5-flash") + "</td>" +
+      "<td>" + esc(item.updatedAt ? fmtDateTime(item.updatedAt) : "—") + "</td>" +
+      '<td><div class="deck-actions">' +
+        '<button type="button" class="btn btn-outline btn-sm" data-act="prefill-api" data-email="' + esc(e) + '">Sửa</button>' +
+        '<button type="button" class="btn btn-danger btn-sm" data-act="revoke-user-api" data-email="' + esc(e) + '">Thu hồi API</button>' +
+      '</div></td></tr>';
+  }).join("") : '<tr><td colspan="5" class="muted">Chưa có tài khoản nào được Admin gán Gemini API Key.</td></tr>';
+
+  return '<h3>1. Cấp / nâng cấp / thu hồi gói thủ công</h3><div class="admin-form">' +
     '<label class="field">Email người dùng<input type="email" id="grantEmail" placeholder="email@example.com"></label>' +
     '<label class="field">Hạng gói<select id="grantTier">' + opts + "</select></label>" +
     '<button type="button" class="btn btn-primary" data-act="grant">Cấp / nâng cấp</button>' +
     '<button type="button" class="btn btn-danger" data-act="revoke-form">Thu hồi gói</button></div>' +
-    '<h3>Danh sách thành viên đang hoạt động</h3><div class="table-scroll"><table class="data-table"><thead><tr><th>Email</th><th>Gói</th><th>Hết hạn</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+    '<h3>Danh sách thành viên đang hoạt động</h3><div class="table-scroll" style="margin-bottom:20px"><table class="data-table"><thead><tr><th>Email</th><th>Gói</th><th>Hết hạn</th><th>Hành động</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+
+    '<div style="padding-top:16px;border-top:2px dashed var(--border)">' +
+      '<h3>2. 🔑 Gán hộ Google Gemini API Key theo Email người dùng</h3>' +
+      '<p class="muted" style="font-size:.82rem;margin:0 0 10px">Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt Gemini API Key đó cho tài khoản của họ trong AI Converter.</p>' +
+      '<div class="admin-form">' +
+        '<label class="field">Email người dùng<input type="email" id="assignApiEmail" placeholder="email@example.com"></label>' +
+        '<label class="field" style="min-width:240px">Google Gemini API Key' +
+          '<div class="key-input-wrap">' +
+            '<input type="password" id="assignApiKey" autocomplete="off" spellcheck="false" placeholder="AIza...">' +
+            '<button type="button" class="eye-btn" data-act="toggle-assign-eye" title="Hiện / Ẩn API Key">👁️</button>' +
+          '</div>' +
+        '</label>' +
+        '<label class="field">Model mặc định<select id="assignApiModel">' +
+          '<option value="gemini-2.5-flash">Gemini 2.5 Flash (Nhanh)</option>' +
+          '<option value="gemini-2.5-pro">Gemini 2.5 Pro (Chính xác cao)</option>' +
+          '<option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>' +
+        '</select></label>' +
+        '<button type="button" class="btn btn-primary" data-act="assign-user-api">🔑 Gán API cho Email</button>' +
+        '<button type="button" class="btn btn-danger" data-act="revoke-user-api-form">Thu hồi API</button>' +
+      '</div>' +
+      '<h3>Danh sách tài khoản đã được Admin gán Gemini API (' + apiEmails.length + ')</h3>' +
+      '<div class="table-scroll"><table class="data-table"><thead><tr><th>Email người dùng</th><th>Gemini API Key</th><th>Model</th><th>Cập nhật</th><th>Hành động</th></tr></thead><tbody>' + apiRows + "</tbody></table></div>" +
+    '</div>';
 }
 
 function adminCfgHTML() {
@@ -2355,7 +2449,7 @@ function adminVoucherHTML() {
     return "<tr><td><strong>" + esc(v.code) + "</strong></td><td>" + esc(v.discountPercent) + '%</td><td><button type="button" class="btn btn-outline btn-sm" data-act="del-voucher" data-code="' + esc(v.code) + '">Xóa</button></td></tr>';
   }).join("") : '<tr><td colspan="3" class="muted">Chưa có mã giảm giá nào.</td></tr>';
   return '<h3>Tạo mã giảm giá</h3><div class="admin-form">' +
-    '<label class="field">Mã giảm giá<input type="text" id="vCode" maxlength="30" placeholder="UETSV20"></label>' +
+    '<label class="field">Mã giảm giá<input type="text" id="vCode" maxlength="30" placeholder="AITUTOR20"></label>' +
     '<label class="field">Phần trăm giảm (1–100)<input type="number" id="vPercent" min="1" max="100" value="10"></label>' +
     '<button type="button" class="btn btn-primary" data-act="add-voucher">Thêm mã</button></div>' +
     '<div class="table-scroll"><table class="data-table"><thead><tr><th>Mã</th><th>Giảm giá</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div>";
@@ -2492,15 +2586,69 @@ async function onAdminClick(e) {
       saveJSON(KEYS.vouchers, list);
       showToast("Đã xóa mã giảm giá.", "success");
       renderAdmin();
+    } else if (act === "toggle-assign-eye") {
+      const inp = $("assignApiKey");
+      if (!inp) return;
+      const show = inp.type === "password";
+      inp.type = show ? "text" : "password";
+      b.textContent = show ? "🙈" : "👁️";
+    } else if (act === "prefill-api") {
+      const em = String(b.getAttribute("data-email") || "").trim().toLowerCase();
+      const emInp = $("assignApiEmail");
+      const keyInp = $("assignApiKey");
+      const modSel = $("assignApiModel");
+      const cur = getAssignedApiForEmail(em);
+      if (emInp) emInp.value = em;
+      if (keyInp) { keyInp.value = cur ? cur.apiKey : ""; keyInp.type = "password"; keyInp.focus(); }
+      if (modSel && cur && cur.model) modSel.value = cur.model;
+      showToast("Đã chọn email " + em + " để gán Gemini API Key.", "info");
+    } else if (act === "assign-user-api") {
+      const email = ($("assignApiEmail") ? $("assignApiEmail").value : "").trim().toLowerCase();
+      const apiKey = ($("assignApiKey") ? $("assignApiKey").value : "").trim();
+      const model = ($("assignApiModel") ? $("assignApiModel").value : "gemini-2.5-flash").trim();
+      if (!isValidEmail(email)) { showToast("Vui lòng nhập địa chỉ email người dùng hợp lệ.", "warning"); return; }
+      if (!apiKey) { showToast("Vui lòng dán Google Gemini API Key để gán cho người dùng.", "warning"); return; }
+      const r = await apiCall("/api/admin/user-apis", "POST", { email: email, apiKey: apiKey, model: model });
+      if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
+      const now = Date.now();
+      const all = loadObj(KEYS.userApis);
+      all[email] = {
+        email: email,
+        apiKey: apiKey,
+        model: model,
+        assignedBy: ADMIN_EMAIL,
+        updatedAt: new Date(now).toISOString(),
+        ts: now
+      };
+      saveJSON(KEYS.userApis, all);
+      showToast("Đã gán Google Gemini API Key cho tài khoản " + email + " thành công!", "success");
+      updateChrome();
+      renderAdmin();
+    } else if (act === "revoke-user-api" || act === "revoke-user-api-form") {
+      const email = act === "revoke-user-api"
+        ? String(b.getAttribute("data-email") || "").trim().toLowerCase()
+        : ($("assignApiEmail") ? $("assignApiEmail").value : "").trim().toLowerCase();
+      if (!isValidEmail(email)) { showToast("Vui lòng nhập hoặc chọn email cần thu hồi API Key.", "warning"); return; }
+      showConfirm("Thu hồi Gemini API Key", "Bạn có chắc muốn thu hồi Gemini API Key đã gán cho " + email + "?", async function () {
+        const r = await apiCall("/api/admin/user-apis/" + encodeURIComponent(email), "DELETE");
+        if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
+        const all = loadObj(KEYS.userApis);
+        delete all[email];
+        saveJSON(KEYS.userApis, all);
+        showToast("Đã thu hồi Gemini API Key của " + email + ".", "info");
+        updateChrome();
+        renderAdmin();
+      });
     } else if (act === "export-backup") {
       const data = {
         exportedAt: new Date().toISOString(),
         subscriptions: loadObj(KEYS.subs),
+        userApis: loadObj(KEYS.userApis),
         payment_requests: loadArr(KEYS.payReqs),
         vouchers: getVouchers(),
         paymentConfig: getPayCfg()
       };
-      downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), "uet_master_backup_" + new Date().toISOString().slice(0, 10) + ".json");
+      downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), "ai_tutor_backup_" + new Date().toISOString().slice(0, 10) + ".json");
     }
   } catch (err) { showToast("Đã xảy ra lỗi khi thực hiện thao tác quản trị.", "error"); }
 }
@@ -2632,6 +2780,8 @@ function renderProfilePage() {
   const tier = currentTier();
   const info = isAdmin() ? TIERS.diamond : (TIERS[tier] || TIERS.none);
   const sub = getActiveSub(state.user.email);
+  const assignedApi = getActiveUserAssignedApi();
+  const curLang = getLang();
   const badgeText = isAdmin() ? "👑 Admin (Diamond)" : (info.icon + " " + info.name);
   const expText = isAdmin() ? "Toàn quyền không giới hạn" : (sub && tier !== "unranked" ? ("Hết hạn: " + fmtDate(sub.expires)) : (tier === "unranked" ? "Miễn phí 0đ/năm" : "Chưa đăng ký gói"));
 
@@ -2655,16 +2805,26 @@ function renderProfilePage() {
         '<dl class="pay-info">' +
           '<dt>Tên hiển thị</dt><dd>' + esc(u.name) + '</dd>' +
           '<dt>Email Google</dt><dd>' + esc(state.user.email) + '</dd>' +
+          '<dt>Gemini API</dt><dd>' + (assignedApi ? ('<span class="badge badge-ok">🔑 Đã được Admin gán API (' + esc(assignedApi.model || "gemini-2.5-flash") + ')</span>') : ((localStorage.getItem(KEYS.apiKey) || "").trim() ? '<span class="badge badge-ok">Đã lưu Key cá nhân</span>' : '<span class="muted">Chưa cấu hình</span>')) + '</dd>' +
           '<dt>Mã sinh viên</dt><dd>' + esc(u.studentId || "Chưa cập nhật") + '</dd>' +
           '<dt>Lớp / Khoa</dt><dd>' + esc(u.className || "Chưa cập nhật") + '</dd>' +
           '<dt>Mục tiêu học tập</dt><dd>' + esc(u.targetGoal || "Chưa cập nhật") + '</dd>' +
         '</dl>' +
+        '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">' +
+          '<div class="panel-head" style="margin-bottom:8px"><div><h3 style="margin:0;font-size:1rem">🌐 Ngôn ngữ giao diện (Language / 表示言語)</h3><p class="muted" style="margin:2px 0 0;font-size:.8rem">Chuyển đổi qua lại giữa Tiếng Việt, Tiếng Anh và Tiếng Nhật (giữ nguyên phông chữ).</p></div></div>' +
+          '<div class="seg" role="group" aria-label="Chọn ngôn ngữ">' +
+            '<button type="button" class="seg-btn' + (curLang === "vi" ? " active" : "") + '" data-lang="vi">🇻🇳 Tiếng Việt</button>' +
+            '<button type="button" class="seg-btn' + (curLang === "en" ? " active" : "") + '" data-lang="en">🇬🇧 English</button>' +
+            '<button type="button" class="seg-btn' + (curLang === "ja" ? " active" : "") + '" data-lang="ja">🇯🇵 日本語</button>' +
+          '</div>' +
+        '</div>' +
       '</section>' +
     '</div>';
   setAvatar($("profPageAvatar"), u.picture, u.name);
   on("profPageOpenEdit", "click", openProfile);
   on("profPageGoPricing", "click", function () { navigateTo("/pricing"); });
   on("profPageGoBackup", "click", function () { navigateTo("/backup"); });
+  applyI18n(root);
 }
 
 function saveProfile() {
@@ -2753,6 +2913,318 @@ function onKeyDown(e) {
   }
 }
 
+/* ------------------------------ Multi-Language Engine (VI / EN / JA - Zero Font Change) ------------------------------ */
+const I18N_MAP = {
+  "Tổng quan": { en: "Dashboard", ja: "ダッシュボード" },
+  "🏠 Tổng quan": { en: "🏠 Dashboard", ja: "🏠 ダッシュボード" },
+  "Ôn tập & Thi": { en: "Practice & Exam", ja: "練習・試験" },
+  "📝 Ôn tập & Thi": { en: "📝 Practice & Exam", ja: "📝 練習・試験" },
+  "Creator Studio": { en: "Creator Studio", ja: "Creator Studio" },
+  "🎮 Creator Studio": { en: "🎮 Creator Studio", ja: "🎮 Creator Studio" },
+  "AI Converter": { en: "AI Converter", ja: "AI Converter" },
+  "✨ AI Converter": { en: "✨ AI Converter", ja: "✨ AI Converter" },
+  "✨ Mở AI Converter": { en: "✨ Open AI Converter", ja: "✨ AI Converter を開く" },
+  "Lật thẻ": { en: "Flashcards", ja: "フラッシュカード" },
+  "🃏 Lật thẻ": { en: "🃏 Flashcards", ja: "🃏 フラッシュカード" },
+  "Sổ tay sai": { en: "Mistakes", ja: "弱点ノート" },
+  "📕 Sổ tay sai": { en: "📕 Mistakes", ja: "📕 弱点ノート" },
+  "Sổ tay câu hay sai": { en: "Mistake Notebook", ja: "弱点ノート（間違い復習）" },
+  "👤 Hồ sơ cá nhân": { en: "👤 Profile", ja: "👤 プロフィール" },
+  "🏆 Gói nâng cấp": { en: "🏆 Upgrade Plans", ja: "🏆 プランアップグレード" },
+  "🔑 Cài đặt API & Ngôn ngữ": { en: "🔑 API & Language Settings", ja: "🔑 API・言語設定" },
+  "🔑 Cài đặt API (Gemini)": { en: "🔑 API Settings (Gemini)", ja: "🔑 API設定 (Gemini)" },
+  "☁️ Sao lưu & Khôi phục dữ liệu": { en: "☁️ Backup & Restore Data", ja: "☁️ バックアップと復元" },
+  "☁️ Sao lưu & Khôi phục": { en: "☁️ Backup & Restore", ja: "☁️ バックアップと復元" },
+  "☁️ Sao lưu dữ liệu": { en: "☁️ Data Backup", ja: "☁️ データバックアップ" },
+  "🛡️ Quản trị duyệt đơn (Admin Panel)": { en: "🛡️ Admin Panel", ja: "🛡️ 管理パネル (Admin)" },
+  "🛡️ Quản trị duyệt đơn": { en: "🛡️ Admin Panel", ja: "🛡️ 管理パネル" },
+  "🚪 Đăng xuất": { en: "🚪 Sign Out", ja: "🚪 ログアウト" },
+  "🌐 Ngôn ngữ": { en: "🌐 Language", ja: "🌐 言語" },
+  "☁️ Đã đồng bộ": { en: "☁️ Synced", ja: "☁️ 同期済み" },
+  "🔄 Đang đồng bộ...": { en: "🔄 Syncing...", ja: "🔄 同期中..." },
+  "Chưa xếp hạng": { en: "Unranked", ja: "未ランク" },
+  "Nền tảng ôn tập, thi thử trực tuyến được phát triển bởi Phạm Đức Hiếu.": {
+    en: "Online practice & exam platform developed by Pham Duc Hieu.",
+    ja: "Pham Duc Hieu によって開発されたオンライン学習・模擬試験プラットフォーム。"
+  },
+  "Vui lòng đăng nhập bằng tài khoản Google của bạn để tiếp tục.": {
+    en: "Please sign in with your Google account to continue.",
+    ja: "続行するには Google アカウントでログインしてください。"
+  },
+  "Vào làm bài": { en: "Join Quiz", ja: "参加する" },
+  "🔗 Tham gia bộ đề bằng Mã đề": { en: "🔗 Join Deck via Share Code", ja: "🔗 共有コードで問題集に参加" },
+  "Đề đã luyện": { en: "Decks Practiced", ja: "学習済みセット" },
+  "Câu hỏi đã làm": { en: "Questions Answered", ja: "回答済み問題数" },
+  "Trả lời đúng": { en: "Correct Answers", ja: "正解数" },
+  "Tỷ lệ chính xác (%)": { en: "Accuracy Rate (%)", ja: "正答率 (%)" },
+  "Kho đề của bạn": { en: "Your Question Decks", ja: "マイ問題集" },
+  "+ Nhập đề từ Excel": { en: "+ Import from Excel", ja: "+ Excel からインポート" },
+  "Gói kích hoạt & Lịch sử thi": { en: "Active Plan & Exam History", ja: "有効プランと試験履歴" },
+  "Biểu đồ & Phân tích kết quả": { en: "Performance Chart & Analytics", ja: "成績グラフと分析" },
+  "Tuần": { en: "Week", ja: "週間" },
+  "Tháng": { en: "Month", ja: "月間" },
+  "Tất cả": { en: "All", ja: "すべて" },
+  "Ôn tập": { en: "Practice", ja: "練習" },
+  "Tiếp tục ôn tập": { en: "Resume Practice", ja: "練習を再開" },
+  "Thi thử": { en: "Mock Exam", ja: "模擬試験" },
+  "🔒 Thi thử": { en: "🔒 Mock Exam", ja: "🔒 模擬試験" },
+  "Quiz Studio": { en: "Quiz Studio", ja: "Quiz Studio" },
+  "🔗 Chia sẻ": { en: "🔗 Share", ja: "🔗 共有" },
+  "🖨️ Xuất PDF": { en: "🖨️ Export PDF", ja: "🖨️ PDF出力" },
+  "Xuất .json": { en: "Export .json", ja: ".json 出力" },
+  "🔒 Xuất .json": { en: "🔒 Export .json", ja: "🔒 .json 出力" },
+  "Xuất .xlsx": { en: "Export .xlsx", ja: ".xlsx 出力" },
+  "🔒 Xuất .xlsx": { en: "🔒 Export .xlsx", ja: "🔒 .xlsx 出力" },
+  "Xuất CSV": { en: "Export CSV", ja: "CSV 出力" },
+  "Xóa": { en: "Delete", ja: "削除" },
+  "Sửa": { en: "Edit", ja: "編集" },
+  "Sửa hồ sơ": { en: "Edit Profile", ja: "プロフィール編集" },
+  "Lưu": { en: "Save", ja: "保存" },
+  "Lưu hồ sơ": { en: "Save Profile", ja: "プロフィールを保存" },
+  "Hủy": { en: "Cancel", ja: "キャンセル" },
+  "Đóng": { en: "Close", ja: "閉じる" },
+  "Áp dụng": { en: "Apply", ja: "適用" },
+  "Sao chép": { en: "Copy", ja: "コピー" },
+  "Tôi đã thanh toán": { en: "I Have Paid", ja: "支払い完了を通知" },
+  "Chọn một bộ đề để bắt đầu Ôn tập hoặc Thi thử.": {
+    en: "Select a question deck to start Practice or Mock Exam.",
+    ja: "問題集を選択して練習または模擬試験を開始してください。"
+  },
+  "Chế độ": { en: "Mode", ja: "モード" },
+  "Bộ đề": { en: "Deck", ja: "問題集" },
+  "Làm lại từ đầu": { en: "Restart", ja: "最初からやり直す" },
+  "Thoát": { en: "Exit", ja: "終了" },
+  "Nộp bài / Hoàn thành": { en: "Submit / Finish", ja: "提出・完了" },
+  "Kiểm tra đáp án": { en: "Check Answer", ja: "解答を確認" },
+  "Đầu": { en: "First", ja: "最初" },
+  "Trước": { en: "Prev", ja: "前へ" },
+  "Tiếp": { en: "Next", ja: "次へ" },
+  "Cuối": { en: "Last", ja: "最後" },
+  "1. Tải đề thi thông minh": { en: "1. Smart Exam Uploader", ja: "1. スマート試験ファイルアップロード" },
+  "Tự động nhận diện": { en: "Auto-Detect", ja: "自動判別" },
+  "📂 Chọn, kéo thả hoặc Ctrl+V tệp đề thi": {
+    en: "📂 Select, drag & drop, or Ctrl+V exam files",
+    ja: "📂 ファイルを選択・ドラッグ＆ドロップ・Ctrl+V貼付"
+  },
+  "✍️ Hoặc dán nhanh văn bản / Markdown trực tiếp": {
+    en: "✍️ Or paste raw text / Markdown directly",
+    ja: "✍️ またはテキスト / Markdown を直接貼り付け"
+  },
+  "✨ Bắt đầu chuyển đổi thông minh": { en: "✨ Start Smart Conversion", ja: "✨ スマート変換を開始" },
+  "Dừng": { en: "Stop", ja: "停止" },
+  "Xóa hết": { en: "Clear All", ja: "すべてクリア" },
+  "2. File mẫu & Kiểm duyệt AI": { en: "2. Template & AI Verification", ja: "2. テンプレートとAI検証" },
+  "👁️ Xem file mẫu": { en: "👁️ View Template", ja: "👁️ サンプルを表示" },
+  "⬇ Tải file mẫu (.xlsx)": { en: "⬇ Download Template (.xlsx)", ja: "⬇ テンプレート (.xlsx)" },
+  "Áp dụng đáp án": { en: "Apply Answer Key", ja: "解答キーを適用" },
+  "3. Chuẩn hóa & Xuất file": { en: "3. Normalize & Export", ja: "3. 正規化とエクスポート" },
+  "Kiểm duyệt & Chỉnh sửa câu hỏi": { en: "Review & Edit Questions", ja: "問題の確認と編集" },
+  "Bảng nhanh": { en: "Quick Table", ja: "クイック表" },
+  "Đối chiếu song song (Split-Screen)": { en: "Split-Screen Review", ja: "並列レビュー (Split-Screen)" },
+  "🔒 Đối chiếu song song (Split-Screen)": { en: "🔒 Split-Screen Review", ja: "🔒 並列レビュー (Split-Screen)" },
+  "✓ Duyệt tất cả": { en: "✓ Verify All", ja: "✓ すべて承認" },
+  "Xóa bảng": { en: "Clear Table", ja: "表をクリア" },
+  "🎮 Mở trong Creator Studio": { en: "🎮 Open in Creator Studio", ja: "🎮 Creator Studio で開く" },
+  "🎮 Creator Studio / Quiz Studio": { en: "🎮 Creator Studio / Quiz Studio", ja: "🎮 Creator Studio / Quiz Studio" },
+  "✍️ Tạo Quiz thủ công": { en: "✍️ Create Quiz Manually", ja: "✍️ 手動でクイズ作成" },
+  "Tạo Quiz mới": { en: "Create New Quiz", ja: "新規クイズ作成" },
+  "📚 Lấy từ Kho đề AI Tutor": { en: "📚 Load from AI Tutor Decks", ja: "📚 AI Tutor 問題集から読み込む" },
+  "✨ Nhập từ AI Converter": { en: "✨ Import from AI Converter", ja: "✨ AI Converter から取り込む" },
+  "Mở": { en: "Open", ja: "開く" },
+  "▶ Bắt đầu làm bài (Play)": { en: "▶ Start Quiz (Play)", ja: "▶ クイズ開始 (Play)" },
+  "Cài đặt Google Gemini API": { en: "Google Gemini API Settings", ja: "Google Gemini API 設定" },
+  "🌐 Ngôn ngữ giao diện (Language / 表示言語)": { en: "🌐 Interface Language (Ngôn ngữ / 表示言語)", ja: "🌐 表示言語 (Language / Ngôn ngữ)" },
+  "Chuyển đổi tức thì giữa Tiếng Việt, Tiếng Anh và Tiếng Nhật (giữ nguyên phông chữ hệ thống).": {
+    en: "Switch instantly between Vietnamese, English, and Japanese (keeping the system font intact).",
+    ja: "ベトナム語・英語・日本語を即座に切り替えます（システムフォントは維持されます）。"
+  },
+  "Chuyển đổi qua lại giữa Tiếng Việt, Tiếng Anh và Tiếng Nhật (giữ nguyên phông chữ).": {
+    en: "Switch between Vietnamese, English, and Japanese (preserving the current font).",
+    ja: "ベトナム語・英語・日本語を切り替えます（現在のフォントを維持）。"
+  },
+  "Lưu Key": { en: "Save Key", ja: "キーを保存" },
+  "Kiểm tra kết nối (Test API)": { en: "Test Connection (Test API)", ja: "接続テスト (Test API)" },
+  "Xóa Key cá nhân": { en: "Delete Personal Key", ja: "個人キーを削除" },
+  "Hướng dẫn lấy Gemini API Key": { en: "How to Get a Gemini API Key", ja: "Gemini API キーの取得方法" },
+  "Mở Google AI Studio ↗": { en: "Open Google AI Studio ↗", ja: "Google AI Studio を開く ↗" },
+  "✏️ Chỉnh sửa hồ sơ & Ảnh đại diện": { en: "✏️ Edit Profile & Avatar", ja: "✏️ プロフィールとアバターを編集" },
+  "Tên hiển thị": { en: "Display Name", ja: "表示名" },
+  "Email Google": { en: "Google Email", ja: "Google メール" },
+  "Mã sinh viên": { en: "Student ID", ja: "学籍番号" },
+  "Lớp / Khoa": { en: "Class / Faculty", ja: "クラス・学部" },
+  "Mục tiêu học tập": { en: "Learning Goal", ja: "学習目標" },
+  "Chưa cập nhật": { en: "Not set", ja: "未設定" },
+  "Chưa cấu hình": { en: "Not configured", ja: "未設定" },
+  "Đã lưu Key": { en: "Key Saved", ja: "キー保存済み" },
+  "Đã lưu Key cá nhân": { en: "Personal Key Saved", ja: "個人キー保存済み" },
+  "✅ Đã gán bởi Admin": { en: "✅ Assigned by Admin", ja: "✅ 管理者により割当済" },
+  "✅ Kết nối thành công": { en: "✅ Connected", ja: "✅ 接続成功" },
+  "❌ Key không hợp lệ": { en: "❌ Invalid Key", ja: "❌ 無効なキー" },
+  "Bảng điều khiển Quản trị (Admin Panel)": { en: "Admin Control Panel", ja: "管理者コントロールパネル (Admin Panel)" },
+  "Đơn đang chờ duyệt": { en: "Pending Requests", ja: "承認待ちリクエスト" },
+  "Đơn đã duyệt": { en: "Approved Requests", ja: "承認済みリクエスト" },
+  "Tổng doanh thu đã duyệt": { en: "Total Approved Revenue", ja: "承認済み総売上" },
+  "Thành viên & Cấp gói": { en: "Members & Plans", ja: "メンバー・プラン・API割当" },
+  "Cấu hình VietQR": { en: "VietQR Config", ja: "VietQR 設定" },
+  "Mã giảm giá": { en: "Discount Codes", ja: "割引クーポン" },
+  "Sao lưu hệ thống": { en: "System Backup", ja: "システムバックアップ" },
+  "1. Cấp / nâng cấp / thu hồi gói thủ công": { en: "1. Grant / Upgrade / Revoke User Plan", ja: "1. プランの手動付与・アップグレード・取消" },
+  "2. 🔑 Gán hộ Google Gemini API Key theo Email người dùng": {
+    en: "2. 🔑 Assign Google Gemini API Key by User Email",
+    ja: "2. 🔑 ユーザーメール宛に Google Gemini API キーを割り当て"
+  },
+  "Danh sách thành viên đang hoạt động": { en: "Active Members", ja: "有効メンバー一覧" },
+  "Cấp / nâng cấp": { en: "Grant / Upgrade", ja: "付与・アップグレード" },
+  "Thu hồi gói": { en: "Revoke Plan", ja: "プラン取消" },
+  "🔑 Gán API cho Email": { en: "🔑 Assign API to Email", ja: "🔑 メールにAPIを割当" },
+  "🔑 Gán API": { en: "🔑 Assign API", ja: "🔑 API割当" },
+  "🔑 Đã gán API": { en: "🔑 API Assigned", ja: "🔑 API割当済" },
+  "Thu hồi API": { en: "Revoke API", ja: "API取消" },
+  "Lưu cấu hình": { en: "Save Config", ja: "設定を保存" },
+  "Thêm mã": { en: "Add Code", ja: "コード追加" },
+  "Xuất dữ liệu hệ thống (.json)": { en: "Export System Data (.json)", ja: "システムデータを出力 (.json)" }
+};
+
+const I18N_PATTERNS = [
+  {
+    re: /^Xin chào,\s*(.+?)\s*👋$/,
+    en: function (m) { return "Hello, " + m[1] + " 👋"; },
+    ja: function (m) { return "こんにちは、" + m[1] + " 👋"; }
+  },
+  {
+    re: /^(\d+)\s+câu hỏi$/,
+    en: function (m) { return m[1] + " questions"; },
+    ja: function (m) { return m[1] + " 問"; }
+  },
+  {
+    re: /^Tiến độ\s+(\d+)%$/,
+    en: function (m) { return "Progress " + m[1] + "%"; },
+    ja: function (m) { return "進捗 " + m[1] + "%"; }
+  },
+  {
+    re: /^Tổng:\s*(\d+)$/,
+    en: function (m) { return "Total: " + m[1]; },
+    ja: function (m) { return "合計: " + m[1]; }
+  },
+  {
+    re: /^Hợp lệ:\s*(\d+)$/,
+    en: function (m) { return "Valid: " + m[1]; },
+    ja: function (m) { return "有効: " + m[1]; }
+  },
+  {
+    re: /^Trang\s+(\d+)\/(\d+)$/,
+    en: function (m) { return "Page " + m[1] + "/" + m[2]; },
+    ja: function (m) { return "ページ " + m[1] + "/" + m[2]; }
+  },
+  {
+    re: /^Duyệt thanh toán\s*\((\d+)\)$/,
+    en: function (m) { return "Payment Approvals (" + m[1] + ")"; },
+    ja: function (m) { return "支払い承認 (" + m[1] + ")"; }
+  },
+  {
+    re: /^Danh sách Quiz đã tạo\s*\((\d+)\)$/,
+    en: function (m) { return "Created Quizzes (" + m[1] + ")"; },
+    ja: function (m) { return "作成済みクイズ一覧 (" + m[1] + ")"; }
+  },
+  {
+    re: /^Danh sách tài khoản đã được Admin gán Gemini API\s*\((\d+)\)$/,
+    en: function (m) { return "Accounts with Admin-Assigned Gemini API (" + m[1] + ")"; },
+    ja: function (m) { return "管理者が Gemini API を割り当てたアカウント (" + m[1] + ")"; }
+  },
+  {
+    re: /^⚡ Nhập thẳng vào Kho đề\s*\((\d+)\s*câu hợp lệ\)$/,
+    en: function (m) { return "⚡ 1-Click Import to Decks (" + m[1] + " valid)"; },
+    ja: function (m) { return "⚡ 問題集へワンクリック登録 (" + m[1] + " 問)"; }
+  }
+];
+
+function getLang() {
+  try {
+    const v = localStorage.getItem(KEYS.lang) || "vi";
+    return (v === "en" || v === "ja" || v === "vi") ? v : "vi";
+  } catch (e) { return "vi"; }
+}
+
+function translateString(viStr, lang) {
+  if (!viStr || lang === "vi") return viStr;
+  const trimmed = viStr.trim();
+  if (!trimmed) return viStr;
+  const hit = I18N_MAP[trimmed];
+  if (hit && hit[lang]) {
+    const lead = viStr.match(/^\s*/)[0];
+    const trail = viStr.match(/\s*$/)[0];
+    return lead + hit[lang] + trail;
+  }
+  for (let i = 0; i < I18N_PATTERNS.length; i++) {
+    const p = I18N_PATTERNS[i];
+    const m = trimmed.match(p.re);
+    if (m && typeof p[lang] === "function") {
+      return p[lang](m);
+    }
+  }
+  return viStr;
+}
+
+function applyI18n(root) {
+  if (typeof document === "undefined") return;
+  const lang = getLang();
+  if (document.documentElement) document.documentElement.setAttribute("lang", lang);
+  const container = root || document.body;
+  if (!container || typeof document.createTreeWalker !== "function") return;
+
+  // 1. Walk text nodes without touching font-family or KaTeX math
+  const walker = document.createTreeWalker(container, 4 /* NodeFilter.SHOW_TEXT */, null, false);
+  let node;
+  while ((node = walker.nextNode())) {
+    const parent = node.parentElement;
+    if (!parent) continue;
+    const tag = parent.tagName;
+    if (tag === "SCRIPT" || tag === "STYLE" || tag === "CODE" || tag === "TEXTAREA") continue;
+    if (parent.closest && parent.closest(".katex")) continue;
+    const curVal = node.nodeValue || "";
+    if (!curVal.trim()) continue;
+    if (typeof node.__viText !== "string" || (lang === "vi" && node.__lastTranslated !== curVal)) {
+      if (node.__lastTranslated !== curVal) node.__viText = curVal;
+    }
+    const baseVi = typeof node.__viText === "string" ? node.__viText : curVal;
+    const nextVal = lang === "vi" ? baseVi : translateString(baseVi, lang);
+    if (nextVal !== curVal) {
+      node.__lastTranslated = nextVal;
+      node.nodeValue = nextVal;
+    }
+  }
+
+  // 2. Translate placeholders
+  if (typeof container.querySelectorAll === "function") {
+    const inputs = container.querySelectorAll("[placeholder]");
+    for (let i = 0; i < inputs.length; i++) {
+      const el = inputs[i];
+      const curP = el.getAttribute("placeholder") || "";
+      if (!el.__viPlaceholder || (lang === "vi" && el.__lastPlaceholder !== curP)) {
+        if (el.__lastPlaceholder !== curP) el.__viPlaceholder = curP;
+      }
+      const nextP = lang === "vi" ? el.__viPlaceholder : translateString(el.__viPlaceholder, lang);
+      if (nextP && nextP !== curP) {
+        el.__lastPlaceholder = nextP;
+        el.setAttribute("placeholder", nextP);
+      }
+    }
+  }
+}
+
+function setLang(lang) {
+  const next = (lang === "en" || lang === "ja" || lang === "vi") ? lang : "vi";
+  try { localStorage.setItem(KEYS.lang, next); } catch (e) { /* */ }
+  if (document.documentElement) document.documentElement.setAttribute("lang", next);
+  updateChrome();
+  renderTab();
+  applyI18n(document.body);
+  const msg = next === "en"
+    ? "Switched interface language to English."
+    : (next === "ja" ? "表示言語を日本語に切り替えました。" : "Đã chuyển ngôn ngữ giao diện sang Tiếng Việt.");
+  showToast(msg, "info");
+}
+
 /* ------------------------------ Shared Namespace ------------------------------ */
 window.UET = {
   state: state, KEYS: KEYS, XLSX_HEADERS: XLSX_HEADERS, LETTERS: LETTERS, TIERS: TIERS, TIER_ORDER: TIER_ORDER,
@@ -2763,6 +3235,8 @@ window.UET = {
   shuffleArray: shuffleArray, downloadBlob: downloadBlob, fileSafe: fileSafe, copyText: copyText,
   isAdmin: isAdmin, isAdminUser: isAdminUser, currentTier: currentTier, tierRank: tierRank, effectiveLimits: effectiveLimits,
   can: can, requireFeature: requireFeature, promptUpgrade: promptUpgrade,
+  getAssignedApiForUser: getActiveUserAssignedApi, getAssignedApiForEmail: getAssignedApiForEmail,
+  getLang: getLang, setLang: setLang, applyI18n: applyI18n,
   getDecks: function () { return state.decks; }, getUserDecks: getUserDecks, getDeck: getDeck,
   normalizeQuestion: normalizeQuestion, parseWorkbookRows: parseWorkbookRows, addOrMergeDeck: addOrMergeDeck,
   downloadTemplate: downloadTemplate, showTab: showTab, navigateTo: navigateTo, syncHistory: syncHistory, renderTab: renderTab, updateChrome: updateChrome,
@@ -2812,6 +3286,8 @@ function init() {
   });
   on("brandHomeBtn", "click", function () { if (state.user) navigateTo("/"); });
   on("userDropdown", "click", function (e) {
+    const lb = e.target.closest ? e.target.closest("[data-lang]") : null;
+    if (lb) { e.stopPropagation(); setLang(lb.getAttribute("data-lang")); return; }
     const b = e.target.closest ? e.target.closest("[data-dd]") : null;
     if (!b) return;
     const act = b.getAttribute("data-dd");
@@ -2820,6 +3296,8 @@ function init() {
     else showTab(act);
   });
   document.addEventListener("click", function (e) {
+    const lb = e.target.closest ? e.target.closest("[data-lang]") : null;
+    if (lb) { setLang(lb.getAttribute("data-lang")); }
     const wrap = $("userChip");
     if (wrap && !wrap.contains(e.target)) closeDropdown();
   });
@@ -2833,6 +3311,8 @@ function init() {
   on("drawerCloseBtn", "click", closeDrawer);
   on("drawerBackdrop", "click", closeDrawer);
   on("drawerNav", "click", function (e) {
+    const lb = e.target.closest ? e.target.closest("[data-lang]") : null;
+    if (lb) { e.stopPropagation(); setLang(lb.getAttribute("data-lang")); return; }
     const b = e.target.closest ? e.target.closest("[data-tab]") : null;
     if (b) showTab(b.getAttribute("data-tab"));
   });
@@ -2871,10 +3351,12 @@ function init() {
   on("deckSearch", "input", function (e) { state.deckQuery = e.target.value; state.deckPage = 1; renderDeckPanel(); });
   on("histSearch", "input", function (e) { state.histQuery = e.target.value; state.histPage = 1; renderHistPanel(); });
   on("importBtn", "click", openImport);
-  const segs = document.querySelectorAll(".seg-btn");
+  const segs = document.querySelectorAll(".seg-btn[data-range]");
   for (let i = 0; i < segs.length; i++) {
     segs[i].addEventListener("click", function (e) { state.chartRange = e.currentTarget.getAttribute("data-range") === "month" ? "month" : "week"; renderChart(); });
   }
+  updateChrome();
+  applyI18n(document.body);
 
   // Config
   on("cfgChunk", "change", function () { syncExamConfigVisibility(); updateChunkSelector(); });
