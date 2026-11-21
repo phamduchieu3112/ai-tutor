@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "node server.js",
+    "build": "node scripts/build-static.js",
+    "start": "node scripts/local-server.js",
     "serve": "npx serve -s -l 5000"
   }
 }

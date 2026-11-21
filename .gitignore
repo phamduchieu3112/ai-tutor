@@ -1,8 +1,10 @@
 node_modules/
+dist/
 .vercel/
 .env
 .env.local
 server-db.json
+data/db.json
 *.log
 .DS_Store
 Thumbs.db
