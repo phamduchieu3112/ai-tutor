@@ -11,11 +11,12 @@
   ];
 
   const cState = {
-    srcTab: "img",          // img | md | xlsx
     viewMode: "table",      // table | split
-    images: [],             // { id, file, name, size, width, height, url }
+    files: [],              // unified queue: { id, file, name, size, kind, ext, url, width, height }
+    images: [],             // image items synced from files (used by Split-Screen Review)
     activeImgIdx: 0,
     imgZoom: 100,
+    pasteText: "",          // optional quick-paste text/markdown
     questions: [],          // { id, text, type, options[5], correct[], time, image, explanation, verified, suspect, checkNote }
     filter: "all",          // all | unverified | suspect | missing
     search: "",
@@ -36,6 +37,8 @@
     abortCtrl: null,
     progressLabel: "",
     progressPct: 0,
+    steps: [],              // [{ id, label, status: 'pending'|'active'|'done'|'skip' }]
+    lastSummary: "",
     apiStatus: "none",      // none | saved | ok | error
     apiStatusMsg: "Chưa cấu hình",
     mounted: false,
@@ -220,25 +223,281 @@
     }
   }
 
-  /* ======================== IMAGE QUEUE & GEMINI VISION ======================== */
-  function addImages(fileList) {
-    const files = Array.from(fileList || []).filter(function (f) { return f && f.type && f.type.indexOf("image/") === 0; });
-    if (files.length === 0) { U().showToast("Không tìm thấy file ảnh hợp lệ.", "warning"); return; }
-    const maxImgs = U().effectiveLimits().maxImages || 5;
-    if (cState.images.length + files.length > maxImgs && !U().isAdmin()) {
-      U().promptUpgrade("Gói " + U().effectiveLimits().name + " cho phép tối đa " + maxImgs + " ảnh/lần trong UET Converter.");
+  /* ======================== UNIFIED SMART FILE QUEUE & PARSERS ======================== */
+  const _scriptCache = {};
+  function loadScriptOnce(src, checkFn) {
+    if (checkFn()) return Promise.resolve();
+    if (_scriptCache[src]) return _scriptCache[src];
+    _scriptCache[src] = new Promise(function (resolve, reject) {
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = true;
+      s.onload = function () {
+        if (checkFn()) resolve();
+        else reject(new Error("Không thể khởi tạo thư viện đọc tài liệu."));
+      };
+      s.onerror = function () {
+        delete _scriptCache[src];
+        reject(new Error("Không tải được thư viện phân tích từ CDN. Vui lòng kiểm tra kết nối mạng."));
+      };
+      document.head.appendChild(s);
+    });
+    return _scriptCache[src];
+  }
+
+  function ensureMammoth() {
+    return loadScriptOnce(
+      "https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js",
+      function () { return typeof window.mammoth !== "undefined"; }
+    );
+  }
+
+  function ensurePdfJs() {
+    return loadScriptOnce(
+      "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js",
+      function () { return typeof window.pdfjsLib !== "undefined"; }
+    ).then(function () {
+      if (window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+      }
+    });
+  }
+
+  function detectFileKind(file) {
+    const name = String((file && file.name) || "").toLowerCase();
+    const type = String((file && file.type) || "").toLowerCase();
+    const m = name.match(/\.([a-z0-9]+)$/);
+    const ext = m ? m[1] : "";
+    if (type.indexOf("image/") === 0 || ["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif"].indexOf(ext) !== -1) {
+      return { kind: "image", ext: ext || "png" };
+    }
+    if (type === "application/pdf" || ext === "pdf") return { kind: "pdf", ext: "pdf" };
+    if (ext === "docx" || type.indexOf("wordprocessingml") !== -1) return { kind: "docx", ext: "docx" };
+    if (ext === "doc" || type === "application/msword") return { kind: "doc", ext: "doc" };
+    if (ext === "md" || ext === "txt" || type === "text/plain" || type === "text/markdown") return { kind: "text", ext: ext || "txt" };
+    if (ext === "xlsx" || ext === "xls" || ext === "csv") return { kind: "excel", ext: ext };
+    return null;
+  }
+
+  function fileKindMeta(kind) {
+    if (kind === "image") return { icon: "🖼️", badge: "Ảnh → AI Vision" };
+    if (kind === "pdf") return { icon: "📕", badge: "PDF" };
+    if (kind === "docx") return { icon: "📘", badge: "Word (.docx)" };
+    if (kind === "doc") return { icon: "📘", badge: "Word (.doc)" };
+    if (kind === "text") return { icon: "📄", badge: "Markdown / Text" };
+    if (kind === "excel") return { icon: "📊", badge: "Excel" };
+    return { icon: "📎", badge: "Tài liệu" };
+  }
+
+  function syncImagesFromFiles() {
+    cState.images = cState.files.filter(function (f) { return f.kind === "image"; });
+    cState.activeImgIdx = U().clamp(cState.activeImgIdx, 0, Math.max(0, cState.images.length - 1));
+  }
+
+  function addUnifiedFiles(fileList) {
+    const raw = Array.from(fileList || []);
+    if (raw.length === 0) return;
+    const valid = [];
+    const rejected = [];
+    const emptyFiles = [];
+    raw.forEach(function (f) {
+      if (f && typeof f.size === "number" && f.size === 0) {
+        emptyFiles.push((f && f.name) || "file");
+        return;
+      }
+      const info = detectFileKind(f);
+      if (info) valid.push({ file: f, kind: info.kind, ext: info.ext });
+      else rejected.push((f && f.name) || "file");
+    });
+    if (emptyFiles.length > 0 && valid.length === 0) {
+      U().showToast("Tệp \"" + emptyFiles.join(", ") + "\" rỗng (0 KB), không có nội dung để xử lý.", "warning");
       return;
     }
-    files.forEach(function (file) {
-      const url = URL.createObjectURL(file);
-      const item = { id: "im_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6), file: file, name: file.name || ("anh_" + (cState.images.length + 1) + ".png"), size: file.size, width: 0, height: 0, url: url };
-      const im = new Image();
-      im.onload = function () { item.width = im.naturalWidth; item.height = im.naturalHeight; renderConverter(); };
-      im.src = url;
-      cState.images.push(item);
+    if (valid.length === 0) {
+      U().showToast("Định dạng không hỗ trợ. Hãy chọn Ảnh (.png/.jpg/.webp), Markdown/Text (.md/.txt), PDF (.pdf), Word (.doc/.docx) hoặc Excel (.xlsx).", "warning");
+      return;
+    }
+    const existingImgCount = cState.files.filter(function (x) { return x.kind === "image"; }).length;
+    const incomingImgCount = valid.filter(function (x) { return x.kind === "image"; }).length;
+    const maxImgs = U().effectiveLimits().maxImages || 5;
+    if (incomingImgCount > 0 && existingImgCount + incomingImgCount > maxImgs && !U().isAdmin()) {
+      U().promptUpgrade("Gói " + U().effectiveLimits().name + " cho phép tối đa " + maxImgs + " ảnh/lần trong AI Converter.");
+      return;
+    }
+    valid.forEach(function (entry) {
+      const file = entry.file;
+      const item = {
+        id: "uf_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+        file: file,
+        name: file.name || ("tai_lieu_" + (cState.files.length + 1) + "." + entry.ext),
+        size: file.size || 0,
+        kind: entry.kind,
+        ext: entry.ext,
+        url: "",
+        width: 0,
+        height: 0
+      };
+      if (entry.kind === "image") {
+        item.url = URL.createObjectURL(file);
+        const im = new Image();
+        im.onload = function () { item.width = im.naturalWidth; item.height = im.naturalHeight; renderConverter(); };
+        im.src = item.url;
+      }
+      cState.files.push(item);
     });
+    syncImagesFromFiles();
+    cState.lastSummary = "";
     renderConverter();
-    U().showToast("Đã thêm " + files.length + " ảnh vào hàng đợi.", "info");
+    if (rejected.length > 0) {
+      U().showToast("Đã thêm " + valid.length + " tệp (bỏ qua " + rejected.length + " tệp không hỗ trợ).", "warning");
+    } else {
+      U().showToast("Đã thêm " + valid.length + " tệp vào hàng đợi xử lý thông minh.", "info");
+    }
+  }
+
+  function clearUnifiedFiles() {
+    cState.files.forEach(function (f) { if (f.url) URL.revokeObjectURL(f.url); });
+    cState.files = [];
+    syncImagesFromFiles();
+    cState.lastSummary = "";
+    renderConverter();
+  }
+
+  function removeUnifiedFile(idx) {
+    const item = cState.files[idx];
+    if (!item) return;
+    if (item.url) URL.revokeObjectURL(item.url);
+    cState.files.splice(idx, 1);
+    syncImagesFromFiles();
+    renderConverter();
+  }
+
+  function setPipelineSteps(extractSt, validateSt, aiSt, aiLabel) {
+    cState.steps = [
+      { id: "extract", label: extractSt === "done" ? "Đã trích xuất nội dung" : "Đang trích xuất nội dung...", status: extractSt },
+      { id: "validate", label: validateSt === "done" ? "Đã kiểm tra cấu trúc & đáp án" : "Đang kiểm tra đáp án...", status: validateSt },
+      { id: "ai", label: aiLabel || (aiSt === "done" ? "AI đã giải & kiểm tra chéo xong" : (aiSt === "skip" ? "Đã đủ đáp án – chuyển đổi trực tiếp (không cần gọi AI)" : "AI đang giải & kiểm tra chéo...")), status: aiSt }
+    ];
+  }
+
+  function readFileAsText(file) {
+    return new Promise(function (resolve, reject) {
+      const r = new FileReader();
+      r.onerror = function () { reject(new Error("Không thể đọc tệp văn bản.")); };
+      r.onload = function (ev) { resolve(String(ev.target.result || "")); };
+      r.readAsText(file, "UTF-8");
+    });
+  }
+
+  function readFileAsArrayBuffer(file) {
+    return new Promise(function (resolve, reject) {
+      const r = new FileReader();
+      r.onerror = function () { reject(new Error("Không thể đọc dữ liệu nhị phân của tệp.")); };
+      r.onload = function (ev) { resolve(ev.target.result); };
+      r.readAsArrayBuffer(file);
+    });
+  }
+
+  function readFileAsBase64(file) {
+    return new Promise(function (resolve, reject) {
+      const r = new FileReader();
+      r.onerror = function () { reject(new Error("Không thể mã hóa tệp.")); };
+      r.onload = function (ev) { resolve(String(ev.target.result || "").split(",")[1] || ""); };
+      r.readAsDataURL(file);
+    });
+  }
+
+  function htmlFragmentToStructuredText(html) {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = String(html || "")
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<(strong|b)\b[^>]*>([\s\S]*?)<\/\1>/gi, "**$2**")
+      .replace(/<u\b[^>]*>([\s\S]*?)<\/u>/gi, "__U_OPEN__$1__U_CLOSE__")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|li|tr|h[1-6])>/gi, "\n");
+    const raw = (tmp.textContent || tmp.innerText || "")
+      .replace(/__U_OPEN__/g, "<u>")
+      .replace(/__U_CLOSE__/g, "</u>")
+      .replace(/\*\*\s*\*\*/g, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    return raw;
+  }
+
+  async function extractDocxText(file) {
+    await ensureMammoth();
+    const buf = await readFileAsArrayBuffer(file);
+    try {
+      const htmlRes = await window.mammoth.convertToHtml({ arrayBuffer: buf });
+      const structured = htmlFragmentToStructuredText(htmlRes && htmlRes.value);
+      if (structured && structured.length > 10) return structured;
+    } catch (e) { /* fallback below */ }
+    const rawRes = await window.mammoth.extractRawText({ arrayBuffer: buf });
+    return String((rawRes && rawRes.value) || "").trim();
+  }
+
+  async function extractLegacyDocText(file) {
+    const buf = await readFileAsArrayBuffer(file);
+    const bytes = new Uint8Array(buf);
+    const head = new TextDecoder("utf-8", { fatal: false }).decode(bytes.slice(0, 512)).trim();
+    if (/^<(!doctype|html|meta|head|body|div|p|table)/i.test(head)) {
+      const fullHtml = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+      return htmlFragmentToStructuredText(fullHtml);
+    }
+    if (head.indexOf("{\\rtf") === 0) {
+      const rtf = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+      return rtf
+        .replace(/\\par[d]?/g, "\n")
+        .replace(/\\line\b/g, "\n")
+        .replace(/\\tab\b/g, " ")
+        .replace(/\\'([0-9a-fA-F]{2})/g, function (_, h) { return String.fromCharCode(parseInt(h, 16)); })
+        .replace(/\\u(-?\d+)\??/g, function (_, n) { const c = parseInt(n, 10); return String.fromCharCode(c < 0 ? c + 65536 : c); })
+        .replace(/\\[a-z]+-?\d* ?/gi, "")
+        .replace(/[{}]/g, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    }
+    // Check if binary OLE Word 97-2003; extract printable Unicode/ASCII text runs as best effort
+    const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes).replace(/[^\x09\x0A\x0D\x20-\x7E\u00C0-\u1EF9]/g, " ").replace(/[ \t]{2,}/g, " ").trim();
+    if (decoded.length >= 80 && /(?:Câu|Question|A\.\s|B\.\s)/i.test(decoded)) return decoded;
+    throw new Error("Tệp .doc định dạng nhị phân cũ (Word 97-2003) không thể đọc trực tiếp trên trình duyệt. Hãy lưu lại thành .docx hoặc .pdf rồi tải lên.");
+  }
+
+  async function extractPdfText(file) {
+    await ensurePdfJs();
+    const buf = await readFileAsArrayBuffer(file);
+    const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+    const pages = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      const lines = [];
+      let curY = null;
+      let curLine = "";
+      (tc.items || []).forEach(function (it) {
+        const str = String(it.str || "");
+        if (!str && !it.hasEOL) return;
+        const y = it.transform && typeof it.transform[5] === "number" ? Math.round(it.transform[5] / 3) : curY;
+        if (curY !== null && y !== curY) {
+          if (curLine.trim()) lines.push(curLine.trim());
+          curLine = str;
+        } else {
+          curLine += (curLine && !curLine.endsWith(" ") && !str.startsWith(" ") ? " " : "") + str;
+        }
+        curY = y;
+        if (it.hasEOL) {
+          if (curLine.trim()) lines.push(curLine.trim());
+          curLine = "";
+          curY = null;
+        }
+      });
+      if (curLine.trim()) lines.push(curLine.trim());
+      if (lines.length) pages.push(lines.join("\n"));
+    }
+    const text = pages.join("\n\n").trim();
+    return { text: text, pageCount: pdf.numPages, isScanned: text.replace(/\s+/g, "").length < 40 };
   }
 
   function prepareImageBase64(file) {
@@ -273,9 +532,34 @@
   async function callGemini(apiKey, model, payload, signal) {
     const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(apiKey);
     let delay = 1500;
+    const TIMEOUT_MS = 90000;
     for (let attempt = 0; attempt < 4; attempt++) {
       if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
-      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: signal });
+      const reqCtrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      let timedOut = false;
+      const timer = reqCtrl ? setTimeout(function () { timedOut = true; reqCtrl.abort(); }, TIMEOUT_MS) : null;
+      const onParentAbort = function () { if (reqCtrl) reqCtrl.abort(); };
+      if (signal && typeof signal.addEventListener === "function") signal.addEventListener("abort", onParentAbort, { once: true });
+      let res;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: reqCtrl ? reqCtrl.signal : signal
+        });
+      } catch (fetchErr) {
+        if (timer) clearTimeout(timer);
+        if (signal && typeof signal.removeEventListener === "function") signal.removeEventListener("abort", onParentAbort);
+        if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+        if (timedOut) {
+          if (attempt < 2) continue;
+          throw new Error("Yêu cầu tới Gemini AI quá thời gian chờ (Timeout 90s). Vui lòng thử lại.");
+        }
+        throw fetchErr;
+      }
+      if (timer) clearTimeout(timer);
+      if (signal && typeof signal.removeEventListener === "function") signal.removeEventListener("abort", onParentAbort);
       if (res.ok) {
         const data = await res.json();
         const txt = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
@@ -303,9 +587,31 @@
     const pref = keepPrefix ? "Giữ số câu ở đầu question, bỏ nhãn A./B./C./D. ở đầu các phương án." : "Bỏ tiền tố Câu 1., Question 1:, A., B., C., D. ở đầu câu hỏi và phương án.";
     return "Bạn là chuyên gia số hóa đề thi chuẩn xác 100%. " + (guides[subject] || guides.auto) + "\n" +
       "1. " + pref + "\n" +
-      "2. Nếu ảnh có đánh dấu đáp án đúng (khoanh, tô màu, gạch chân cả đáp án, in đậm), trả về chỉ số 1-based trong correct (vd [1] cho A, [1,3] cho Checkbox). Nếu chưa có đáp án, trả về [].\n" +
-      "3. Tự kiểm tra lại (self-check) phân số, số mũ, chỉ số dưới, và thẻ <u>...</u> trước khi trả JSON.";
+      "2. Sửa lỗi định dạng lộn xộn / vỡ dòng nhưng giữ nguyên nội dung học thuật.\n" +
+      "3. Nếu tài liệu có đánh dấu đáp án đúng (khoanh, tô màu, gạch chân cả đáp án, in đậm), trả về chỉ số 1-based trong correct (vd [1] cho A, [1,3] cho Checkbox). Nếu chưa có đáp án, hãy tự giải chính xác và trả về đáp án 1-based kèm giải thích ngắn gọn tiếng Việt.\n" +
+      "4. Tự kiểm tra lại (self-check) phân số, số mũ, chỉ số dưới, thẻ <u>...</u> và đáp án trước khi trả JSON.";
   }
+
+  const QUESTION_LIST_SCHEMA = {
+    type: "OBJECT",
+    properties: {
+      questions: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            question: { type: "STRING" },
+            type: { type: "STRING", enum: ["Multiple Choice", "Checkbox"] },
+            options: { type: "ARRAY", items: { type: "STRING" } },
+            correct: { type: "ARRAY", items: { type: "INTEGER" } },
+            explanation: { type: "STRING" }
+          },
+          required: ["question", "type", "options", "correct"]
+        }
+      }
+    },
+    required: ["questions"]
+  };
 
   function toConvItem(raw) {
     const text = String((raw && (raw.question || raw.text)) || "").trim();
@@ -327,83 +633,29 @@
     };
   }
 
-  async function runOcr() {
-    const apiKey = requireApiKey();
-    if (!apiKey) return;
-    if (cState.images.length === 0) { U().showToast("Vui lòng chọn ít nhất 1 ảnh đề thi.", "warning"); return; }
-    cState.busy = true;
-    cState.abortCtrl = new AbortController();
-    const model = getApiModel();
-    const schema = {
-      type: "OBJECT",
-      properties: {
-        questions: {
-          type: "ARRAY",
-          items: {
-            type: "OBJECT",
-            properties: {
-              question: { type: "STRING" },
-              type: { type: "STRING", enum: ["Multiple Choice", "Checkbox"] },
-              options: { type: "ARRAY", items: { type: "STRING" } },
-              correct: { type: "ARRAY", items: { type: "INTEGER" } },
-              explanation: { type: "STRING" }
-            },
-            required: ["question", "type", "options", "correct"]
-          }
-        }
-      },
-      required: ["questions"]
-    };
-    const out = [];
-    let stopped = false;
-    try {
-      for (let i = 0; i < cState.images.length; i++) {
-        if (cState.abortCtrl.signal.aborted) { stopped = true; break; }
-        const im = cState.images[i];
-        cState.progressLabel = "AI đang đọc ảnh " + (i + 1) + "/" + cState.images.length + ": " + im.name;
-        cState.progressPct = Math.round((i / cState.images.length) * 100);
-        renderConverter();
-        const b64 = await prepareImageBase64(im.file);
-        const res = await callGemini(apiKey, model, {
-          systemInstruction: { parts: [{ text: ocrPrompt(cState.subject, cState.keepPrefix) }] },
-          contents: [{ role: "user", parts: [{ text: "Trích xuất toàn bộ câu hỏi trắc nghiệm từ ảnh này." }, { inlineData: { mimeType: b64.mimeType, data: b64.data } }] }],
-          generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: schema }
-        }, cState.abortCtrl.signal);
-        const qs = Array.isArray(res && res.questions) ? res.questions.map(toConvItem).filter(Boolean) : [];
-        out.push.apply(out, qs);
-        cState.progressPct = Math.round(((i + 1) / cState.images.length) * 100);
+  function chunkLongText(text, maxLen) {
+    const limit = maxLen || 11000;
+    if (text.length <= limit) return [text];
+    const parts = [];
+    const paras = text.split(/\n{2,}/);
+    let cur = "";
+    paras.forEach(function (p) {
+      if (cur && (cur.length + p.length + 2) > limit) {
+        parts.push(cur);
+        cur = p;
+      } else {
+        cur = cur ? (cur + "\n\n" + p) : p;
       }
-      if (out.length > 0) {
-        if (cState.appendMode) cState.questions = cState.questions.concat(out);
-        else cState.questions = out;
-        cState.page = 1;
-        U().showToast("Đã trích xuất " + out.length + " câu hỏi từ ảnh.", "success");
-      } else if (!stopped) {
-        U().showToast("AI không tìm thấy câu hỏi nào trong ảnh.", "warning");
-      }
-      if (!stopped && cState.autoSolve && cState.questions.some(function (q) { return q.correct.length === 0; })) {
-        await runBatchSolve(true);
-      } else if (!stopped && cState.autoExport && cState.questions.length > 0) {
-        doExport("xlsx", true);
-      }
-    } catch (e) {
-      if (e.name === "AbortError") U().showToast("Đã dừng AI OCR. Các câu đã đọc được giữ nguyên.", "warning");
-      else U().showToast("Lỗi AI OCR: " + (e.message || "Không xác định"), "error");
-    } finally {
-      cState.busy = false;
-      cState.progressLabel = "";
-      renderConverter();
-    }
+    });
+    if (cur) parts.push(cur);
+    return parts;
   }
 
-  async function runBatchSolve(fromOcr) {
-    const apiKey = requireApiKey();
-    if (!apiKey) return;
-    const missingIdx = cState.questions.map(function (q, i) { return q.correct.length === 0 ? i : -1; }).filter(function (i) { return i !== -1; });
-    if (missingIdx.length === 0) { U().showToast("Tất cả câu hỏi đều đã có đáp án.", "info"); return; }
-    if (!fromOcr) { cState.busy = true; cState.abortCtrl = new AbortController(); }
-    const model = getApiModel();
-    const wantExplain = U().can("aiExplain");
+  /* Reusable AI Solver over an arbitrary question array */
+  async function solveQuestionsArray(list, apiKey, model, signal, pctStart, pctEnd) {
+    const missingIdx = list.map(function (q, i) { return q.correct.length === 0 ? i : -1; }).filter(function (i) { return i !== -1; });
+    if (missingIdx.length === 0) return 0;
+    const wantExplain = U().can("aiExplain") || true;
     const BATCH = 15;
     const schema = {
       type: "OBJECT",
@@ -419,57 +671,44 @@
       },
       required: ["solutions"]
     };
-    let solved = 0, stopped = false;
-    try {
-      for (let st = 0; st < missingIdx.length; st += BATCH) {
-        if (cState.abortCtrl && cState.abortCtrl.signal.aborted) { stopped = true; break; }
-        const slice = missingIdx.slice(st, st + BATCH);
-        cState.progressLabel = "AI đang giải đáp án " + (st + 1) + "–" + Math.min(st + BATCH, missingIdx.length) + "/" + missingIdx.length + "...";
-        cState.progressPct = Math.round((st / missingIdx.length) * 100);
-        renderConverter();
-        const items = slice.map(function (idx) {
-          const q = cState.questions[idx];
-          return { index: idx, question: q.text, type: q.type, options: q.options.filter(Boolean).map(function (o, k) { return (k + 1) + ". " + o; }) };
-        });
-        const res = await callGemini(apiKey, model, {
-          systemInstruction: { parts: [{ text: "Bạn là giảng viên xuất sắc. Giải chính xác từng câu hỏi, trả về chỉ số 1-based trong correct và giải thích ngắn gọn tiếng Việt (dùng LaTeX $...$ cho Toán/Lý/Hóa)." }] },
-          contents: [{ role: "user", parts: [{ text: JSON.stringify(items) }] }],
-          generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: schema }
-        }, cState.abortCtrl ? cState.abortCtrl.signal : undefined);
-        (res && Array.isArray(res.solutions) ? res.solutions : []).forEach(function (s) {
-          const q = cState.questions[s.index];
-          if (!q) return;
-          const optLen = q.options.filter(Boolean).length;
-          const corr = Array.from(new Set((s.correct || []).map(function (n) { return Number(n) - 1; }))).filter(function (n) { return n >= 0 && n < optLen; }).sort(function (a, b) { return a - b; });
-          if (corr.length > 0) {
-            q.correct = corr;
-            if (corr.length > 1) q.type = "Checkbox";
-            if (wantExplain && s.explanation) q.explanation = String(s.explanation).trim();
-            solved++;
-          }
-        });
-        cState.progressPct = Math.round((Math.min(st + BATCH, missingIdx.length) / missingIdx.length) * 100);
-      }
-      if (solved > 0) U().showToast("AI đã giải xong " + solved + " câu hỏi.", "success");
-      if (!stopped && fromOcr && cState.autoExport && cState.questions.length > 0) doExport("xlsx", true);
-    } catch (e) {
-      if (e.name === "AbortError") U().showToast("Đã dừng giải đáp án. Giữ lại " + solved + " câu đã giải.", "warning");
-      else U().showToast("Lỗi khi giải đáp án: " + (e.message || "Không xác định"), "error");
-    } finally {
-      if (!fromOcr) { cState.busy = false; cState.progressLabel = ""; }
+    let solved = 0;
+    const p0 = typeof pctStart === "number" ? pctStart : 0;
+    const p1 = typeof pctEnd === "number" ? pctEnd : 100;
+    for (let st = 0; st < missingIdx.length; st += BATCH) {
+      if (signal && signal.aborted) break;
+      const slice = missingIdx.slice(st, st + BATCH);
+      cState.progressLabel = "AI đang giải đáp án " + (st + 1) + "–" + Math.min(st + BATCH, missingIdx.length) + "/" + missingIdx.length + "...";
+      cState.progressPct = Math.round(p0 + ((st / missingIdx.length) * (p1 - p0)));
       renderConverter();
+      const items = slice.map(function (idx) {
+        const q = list[idx];
+        return { index: idx, question: q.text, type: q.type, options: q.options.filter(Boolean).map(function (o, k) { return (k + 1) + ". " + o; }) };
+      });
+      const res = await callGemini(apiKey, model, {
+        systemInstruction: { parts: [{ text: "Bạn là giảng viên xuất sắc. Giải chính xác từng câu hỏi, trả về chỉ số 1-based trong correct và giải thích ngắn gọn tiếng Việt (dùng LaTeX $...$ cho Toán/Lý/Hóa)." }] },
+        contents: [{ role: "user", parts: [{ text: JSON.stringify(items) }] }],
+        generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: schema }
+      }, signal);
+      (res && Array.isArray(res.solutions) ? res.solutions : []).forEach(function (s) {
+        const q = list[s.index];
+        if (!q) return;
+        const optLen = q.options.filter(Boolean).length;
+        const corr = Array.from(new Set((s.correct || []).map(function (n) { return Number(n) - 1; }))).filter(function (n) { return n >= 0 && n < optLen; }).sort(function (a, b) { return a - b; });
+        if (corr.length > 0) {
+          q.correct = corr;
+          if (corr.length > 1) q.type = "Checkbox";
+          if (wantExplain && s.explanation && !q.explanation) q.explanation = String(s.explanation).trim();
+          solved++;
+        }
+      });
+      cState.progressPct = Math.round(p0 + ((Math.min(st + BATCH, missingIdx.length) / missingIdx.length) * (p1 - p0)));
     }
+    return solved;
   }
 
-  /* 2nd-Pass AI Cross-Check (Gold+) */
-  async function runDoubleCheck() {
-    if (!U().requireFeature("doubleCheck")) return;
-    const apiKey = requireApiKey();
-    if (!apiKey) return;
-    if (cState.questions.length === 0) { U().showToast("Chưa có câu hỏi nào để kiểm tra chéo.", "warning"); return; }
-    cState.busy = true;
-    cState.abortCtrl = new AbortController();
-    const model = getApiModel();
+  /* Reusable AI Double-Check over an arbitrary question array */
+  async function doubleCheckQuestionsArray(list, apiKey, model, signal, pctStart, pctEnd) {
+    if (!list || list.length === 0) return 0;
     const BATCH = 12;
     const schema = {
       type: "OBJECT",
@@ -491,39 +730,349 @@
       required: ["checks"]
     };
     let flagged = 0;
+    const p0 = typeof pctStart === "number" ? pctStart : 0;
+    const p1 = typeof pctEnd === "number" ? pctEnd : 100;
+    for (let st = 0; st < list.length; st += BATCH) {
+      if (signal && signal.aborted) break;
+      const slice = list.slice(st, st + BATCH);
+      cState.progressLabel = "AI đang kiểm tra chéo đáp án " + (st + 1) + "–" + Math.min(st + BATCH, list.length) + "/" + list.length + "...";
+      cState.progressPct = Math.round(p0 + ((st / list.length) * (p1 - p0)));
+      renderConverter();
+      const items = slice.map(function (q, offset) {
+        return { index: st + offset, question: q.text, options: q.options.filter(Boolean).map(function (o, k) { return (k + 1) + ". " + o; }) };
+      });
+      const res = await callGemini(apiKey, model, {
+        systemInstruction: { parts: [{ text: "Giải độc lập từng câu hỏi từ đầu (không phỏng đoán). Trả về đáp án 1-based trong independentCorrect, mức độ tự tin (high/medium/low), và nhận xét ngắn gọn tiếng Việt." }] },
+        contents: [{ role: "user", parts: [{ text: JSON.stringify(items) }] }],
+        generationConfig: { temperature: 0.0, responseMimeType: "application/json", responseSchema: schema }
+      }, signal);
+      (res && Array.isArray(res.checks) ? res.checks : []).forEach(function (chk) {
+        const q = list[chk.index];
+        if (!q) return;
+        const optLen = q.options.filter(Boolean).length;
+        const ind = Array.from(new Set((chk.independentCorrect || []).map(function (n) { return Number(n) - 1; }))).filter(function (n) { return n >= 0 && n < optLen; }).sort(function (a, b) { return a - b; });
+        const same = ind.length === q.correct.length && ind.every(function (v, idx) { return v === q.correct[idx]; });
+        if (q.correct.length === 0 && ind.length > 0) {
+          q.correct = ind;
+          if (ind.length > 1) q.type = "Checkbox";
+        }
+        if (!same || chk.confidence !== "high") {
+          q.suspect = true;
+          q.verified = false;
+          const sug = ind.map(function (i) { return U().LETTERS.charAt(i); }).join(",") || "chưa rõ";
+          q.checkNote = (!same ? ("AI kiểm tra chéo đề xuất: " + sug + ". ") : ("Độ tự tin " + chk.confidence + ". ")) + (chk.note || "");
+          flagged++;
+        } else {
+          q.suspect = false;
+          q.checkNote = "AI kiểm tra chéo khớp đáp án (Độ tự tin cao).";
+        }
+      });
+      cState.progressPct = Math.round(p0 + ((Math.min(st + BATCH, list.length) / list.length) * (p1 - p0)));
+    }
+    return flagged;
+  }
+
+  /* Extract + Solve unstructured text via Gemini */
+  async function extractAndSolveTextWithAI(rawText, apiKey, model, signal, pctStart, pctEnd) {
+    const chunks = chunkLongText(rawText, 11000);
+    const out = [];
+    const p0 = typeof pctStart === "number" ? pctStart : 25;
+    const p1 = typeof pctEnd === "number" ? pctEnd : 75;
+    for (let i = 0; i < chunks.length; i++) {
+      if (signal && signal.aborted) break;
+      cState.progressLabel = "AI đang cấu trúc & giải đề (phần " + (i + 1) + "/" + chunks.length + ")...";
+      cState.progressPct = Math.round(p0 + ((i / chunks.length) * (p1 - p0)));
+      renderConverter();
+      const res = await callGemini(apiKey, model, {
+        systemInstruction: { parts: [{ text: ocrPrompt(cState.subject, cState.keepPrefix) }] },
+        contents: [{ role: "user", parts: [{ text: "Đọc đoạn đề thi sau, chuẩn hóa toàn bộ câu hỏi trắc nghiệm và giải chính xác mọi câu hỏi (kèm giải thích ngắn gọn):\n\n" + chunks[i] }] }],
+        generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: QUESTION_LIST_SCHEMA }
+      }, signal);
+      const qs = Array.isArray(res && res.questions) ? res.questions.map(toConvItem).filter(Boolean) : [];
+      out.push.apply(out, qs);
+      cState.progressPct = Math.round(p0 + (((i + 1) / chunks.length) * (p1 - p0)));
+    }
+    return out;
+  }
+
+  /* ======================== UNIFIED SMART PROCESSING PIPELINE ======================== */
+  async function runSmartUploadPipeline() {
+    const pasted = (cState.pasteText || "").trim();
+    if (cState.files.length === 0 && !pasted) {
+      U().showToast("Vui lòng chọn / kéo thả tệp tài liệu (Ảnh, PDF, Word, Markdown/Text) hoặc dán nội dung trước.", "warning");
+      return;
+    }
+
+    const imageItems = cState.files.filter(function (f) { return f.kind === "image"; });
+    const docItems = cState.files.filter(function (f) { return f.kind === "pdf" || f.kind === "docx" || f.kind === "doc" || f.kind === "text"; });
+    const excelItems = cState.files.filter(function (f) { return f.kind === "excel"; });
+
+    cState.busy = true;
+    cState.abortCtrl = new AbortController();
+    const signal = cState.abortCtrl.signal;
+    const model = getApiModel();
+    const collected = [];
+    const summaries = [];
+    let aiSolvedList = [];
+    let stopped = false;
+
     try {
-      for (let st = 0; st < cState.questions.length; st += BATCH) {
-        if (cState.abortCtrl.signal.aborted) break;
-        const slice = cState.questions.slice(st, st + BATCH);
-        cState.progressLabel = "AI Double-Check " + (st + 1) + "–" + Math.min(st + BATCH, cState.questions.length) + "/" + cState.questions.length + "...";
-        cState.progressPct = Math.round((st / cState.questions.length) * 100);
-        renderConverter();
-        const items = slice.map(function (q, offset) {
-          return { index: st + offset, question: q.text, options: q.options.filter(Boolean).map(function (o, k) { return (k + 1) + ". " + o; }) };
-        });
-        const res = await callGemini(apiKey, model, {
-          systemInstruction: { parts: [{ text: "Giải độc lập từng câu hỏi từ đầu (không phỏng đoán). Trả về đáp án 1-based trong independentCorrect, mức độ tự tin (high/medium/low), và nhận xét ngắn gọn tiếng Việt." }] },
-          contents: [{ role: "user", parts: [{ text: JSON.stringify(items) }] }],
-          generationConfig: { temperature: 0.0, responseMimeType: "application/json", responseSchema: schema }
-        }, cState.abortCtrl.signal);
-        (res && Array.isArray(res.checks) ? res.checks : []).forEach(function (chk) {
-          const q = cState.questions[chk.index];
-          if (!q) return;
-          const optLen = q.options.filter(Boolean).length;
-          const ind = Array.from(new Set((chk.independentCorrect || []).map(function (n) { return Number(n) - 1; }))).filter(function (n) { return n >= 0 && n < optLen; }).sort(function (a, b) { return a - b; });
-          const same = ind.length === q.correct.length && ind.every(function (v, idx) { return v === q.correct[idx]; });
-          if (!same || chk.confidence !== "high") {
-            q.suspect = true;
-            q.verified = false;
-            const sug = ind.map(function (i) { return U().LETTERS.charAt(i); }).join(",") || "chưa rõ";
-            q.checkNote = (!same ? ("AI kiểm tra chéo đề xuất: " + sug + ". ") : "Độ tự tin " + chk.confidence + ". ") + (chk.note || "");
-            flagged++;
+      setPipelineSteps("active", "pending", "pending");
+      cState.progressLabel = "Đang trích xuất nội dung...";
+      cState.progressPct = 5;
+      renderConverter();
+
+      // ---------- CASE C: EXCEL (.xlsx/.xls/.csv) ----------
+      for (let ei = 0; ei < excelItems.length; ei++) {
+        if (signal.aborted) { stopped = true; break; }
+        try {
+          const exQs = await parseExcelFileAsync(excelItems[ei].file);
+          if (exQs.length > 0) {
+            collected.push.apply(collected, exQs);
+            summaries.push("Excel (" + excelItems[ei].name + "): " + exQs.length + " câu");
           } else {
-            q.suspect = false;
-            q.checkNote = "AI kiểm tra chéo khớp đáp án (Độ tự tin cao).";
+            U().showToast("Tệp Excel \"" + excelItems[ei].name + "\" không có câu hỏi hợp lệ.", "warning");
           }
-        });
+        } catch (exErr) {
+          U().showToast("Không thể đọc tệp Excel \"" + excelItems[ei].name + "\": " + (exErr.message || "Tệp lỗi"), "error");
+        }
       }
+
+      // ---------- CASE A: IMAGES (.png/.jpg/.jpeg/.webp/...) -> AI VISION / OCR ----------
+      if (!stopped && imageItems.length > 0) {
+        const apiKey = requireApiKey();
+        if (!apiKey) {
+          cState.busy = false; cState.progressLabel = ""; cState.steps = []; renderConverter();
+          return;
+        }
+        setPipelineSteps("active", "pending", "pending", "AI Vision & kiểm tra chéo...");
+        const imgExtracted = [];
+        for (let i = 0; i < imageItems.length; i++) {
+          if (signal.aborted) { stopped = true; break; }
+          const im = imageItems[i];
+          cState.progressLabel = "AI Vision đang đọc ảnh " + (i + 1) + "/" + imageItems.length + ": " + im.name;
+          cState.progressPct = Math.round(10 + (i / imageItems.length) * 45);
+          renderConverter();
+          try {
+            const b64 = await prepareImageBase64(im.file);
+            const res = await callGemini(apiKey, model, {
+              systemInstruction: { parts: [{ text: ocrPrompt(cState.subject, cState.keepPrefix) }] },
+              contents: [{ role: "user", parts: [{ text: "Trích xuất toàn bộ câu hỏi trắc nghiệm từ ảnh này, sửa lỗi định dạng và giải những câu chưa có đáp án." }, { inlineData: { mimeType: b64.mimeType, data: b64.data } }] }],
+              generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: QUESTION_LIST_SCHEMA }
+            }, signal);
+            const qs = Array.isArray(res && res.questions) ? res.questions.map(toConvItem).filter(Boolean) : [];
+            imgExtracted.push.apply(imgExtracted, qs);
+          } catch (imErr) {
+            if (imErr && imErr.name === "AbortError") throw imErr;
+            U().showToast("Lỗi đọc ảnh \"" + im.name + "\": " + (imErr.message || "Tệp ảnh hỏng"), "error");
+          }
+        }
+        if (imgExtracted.length > 0) {
+          collected.push.apply(collected, imgExtracted);
+          aiSolvedList.push.apply(aiSolvedList, imgExtracted);
+          summaries.push("Ảnh AI Vision: " + imgExtracted.length + " câu");
+        }
+      }
+
+      // ---------- CASE B: DOCUMENTS (.md, .txt, .pdf, .doc, .docx) + OPTIONAL PASTED TEXT ----------
+      const docSources = [];
+      for (let di = 0; di < docItems.length; di++) {
+        if (signal.aborted) { stopped = true; break; }
+        const item = docItems[di];
+        cState.progressLabel = "Đang trích xuất nội dung từ " + item.name + "...";
+        cState.progressPct = Math.round(15 + (di / Math.max(1, docItems.length)) * 20);
+        renderConverter();
+
+        try {
+          if (item.kind === "text") {
+            docSources.push({ name: item.name, text: await readFileAsText(item.file), scannedPdfFile: null });
+          } else if (item.kind === "docx") {
+            docSources.push({ name: item.name, text: await extractDocxText(item.file), scannedPdfFile: null });
+          } else if (item.kind === "doc") {
+            docSources.push({ name: item.name, text: await extractLegacyDocText(item.file), scannedPdfFile: null });
+          } else if (item.kind === "pdf") {
+            const pdfRes = await extractPdfText(item.file);
+            if (pdfRes.isScanned) {
+              docSources.push({ name: item.name, text: "", scannedPdfFile: item.file });
+            } else {
+              docSources.push({ name: item.name, text: pdfRes.text, scannedPdfFile: null });
+            }
+          }
+        } catch (docErr) {
+          U().showToast("Không thể đọc tệp \"" + item.name + "\": " + (docErr.message || "Tệp bị hỏng hoặc không hợp lệ"), "error");
+        }
+      }
+      if (!stopped && pasted) {
+        docSources.push({ name: "Văn bản đã dán", text: pasted, scannedPdfFile: null });
+      }
+
+      // Step 2: Check Answer Keys & Route Step 2A vs Step 2B
+      if (!stopped && docSources.length > 0) {
+        setPipelineSteps("done", "active", "pending");
+        cState.progressLabel = "Đang kiểm tra cấu trúc câu hỏi & đáp án...";
+        cState.progressPct = 45;
+        renderConverter();
+
+        for (let si = 0; si < docSources.length; si++) {
+          if (signal.aborted) { stopped = true; break; }
+          const src = docSources[si];
+
+          // Scanned PDF -> route to Gemini PDF Vision directly
+          if (src.scannedPdfFile) {
+            const apiKey = requireApiKey();
+            if (!apiKey) {
+              U().showToast("Tệp PDF \"" + src.name + "\" là bản scan hình ảnh nên cần Gemini API Key để đọc.", "warning");
+              continue;
+            }
+            setPipelineSteps("done", "done", "active", "PDF scan → AI Vision đang đọc & giải...");
+            cState.progressLabel = "PDF dạng ảnh scan — AI đang đọc " + src.name + "...";
+            cState.progressPct = 55;
+            renderConverter();
+            const pdfB64 = await readFileAsBase64(src.scannedPdfFile);
+            const res = await callGemini(apiKey, model, {
+              systemInstruction: { parts: [{ text: ocrPrompt(cState.subject, cState.keepPrefix) }] },
+              contents: [{ role: "user", parts: [{ text: "Trích xuất toàn bộ câu hỏi trắc nghiệm từ tệp PDF này, giải các câu thiếu đáp án và trả về JSON chuẩn." }, { inlineData: { mimeType: "application/pdf", data: pdfB64 } }] }],
+              generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: QUESTION_LIST_SCHEMA }
+            }, signal);
+            const qs = Array.isArray(res && res.questions) ? res.questions.map(toConvItem).filter(Boolean) : [];
+            if (qs.length > 0) {
+              collected.push.apply(collected, qs);
+              aiSolvedList.push.apply(aiSolvedList, qs);
+              summaries.push(src.name + " (PDF scan → AI): " + qs.length + " câu");
+            }
+            continue;
+          }
+
+          const cleanText = String(src.text || "").trim();
+          if (!cleanText) {
+            U().showToast("Tệp \"" + src.name + "\" trống hoặc không có nội dung văn bản.", "warning");
+            continue;
+          }
+
+          const parsed = parseMarkdown(cleanText);
+          const headerMatches = (cleanText.match(/(?:^|\n)\s*(?:\*\*|__)?(?:Câu|Question|Bài)\s*\d+\b/gi) || []).length;
+          const isPartiallyBroken = headerMatches >= 4 && parsed.length < Math.ceil(headerMatches * 0.5);
+          const missingCount = parsed.filter(function (q) { return q.correct.length === 0; }).length;
+
+          if (!isPartiallyBroken && parsed.length > 0 && missingCount === 0) {
+            // STEP 2A: Valid Answer Keys Present -> Direct conversion, ZERO redundant AI calls!
+            collected.push.apply(collected, parsed);
+            summaries.push(src.name + ": " + parsed.length + " câu (đủ đáp án – chuyển đổi trực tiếp)");
+          } else if (!isPartiallyBroken && parsed.length > 0 && missingCount > 0) {
+            // STEP 2B-1: Structured questions parsed, but missing some/all answers -> AI Solver + Double-Check
+            collected.push.apply(collected, parsed);
+            const missingQs = parsed.filter(function (q) { return q.correct.length === 0; });
+            const apiKey = getApiKey();
+            if (apiKey) {
+              setPipelineSteps("done", "done", "active", "AI đang giải " + missingCount + " câu thiếu đáp án & kiểm tra chéo...");
+              await solveQuestionsArray(missingQs, apiKey, model, signal, 50, 78);
+              aiSolvedList.push.apply(aiSolvedList, missingQs);
+              summaries.push(src.name + ": " + parsed.length + " câu (AI giải " + missingCount + " câu)");
+            } else {
+              summaries.push(src.name + ": " + parsed.length + " câu (thiếu " + missingCount + " Đ/A – cần API Key để AI tự giải)");
+              U().showToast("Đã trích xuất " + parsed.length + " câu từ \"" + src.name + "\" nhưng còn " + missingCount + " câu thiếu đáp án. Hãy cài Gemini API Key để AI tự giải & kiểm tra chéo.", "warning", {
+                label: "Cài đặt API",
+                onClick: function () { U().showTab("api"); }
+              });
+            }
+          } else {
+            // STEP 2B-2: Unstructured or broken formatting -> AI extracts, solves & double-checks
+            const apiKey = requireApiKey();
+            if (!apiKey) {
+              if (parsed.length > 0) {
+                collected.push.apply(collected, parsed);
+                summaries.push(src.name + ": " + parsed.length + " câu (định dạng lộn xộn – cần API Key để AI chuẩn hóa đủ)");
+              } else {
+                U().showToast("Tệp \"" + src.name + "\" chưa đúng định dạng trắc nghiệm chuẩn nên cần Gemini API Key để AI phân tích & giải.", "warning");
+              }
+              continue;
+            }
+            setPipelineSteps("done", "done", "active", "Định dạng tự do → AI đang đọc, giải & kiểm tra chéo...");
+            const aiQs = await extractAndSolveTextWithAI(cleanText, apiKey, model, signal, 50, 78);
+            if (aiQs.length > 0) {
+              collected.push.apply(collected, aiQs);
+              aiSolvedList.push.apply(aiSolvedList, aiQs);
+              summaries.push(src.name + " (AI cấu trúc & giải): " + aiQs.length + " câu");
+            }
+          }
+        }
+      }
+
+      // ---------- STEP 3: ENSURE MISSING ANSWERS SOLVED + AI DOUBLE-CHECK ----------
+      if (!stopped && collected.length > 0) {
+        const apiKey = getApiKey();
+        const stillMissing = collected.filter(function (q) { return q.correct.length === 0; });
+        if (stillMissing.length > 0 && cState.autoSolve && apiKey) {
+          setPipelineSteps("done", "done", "active", "AI đang giải đáp án còn thiếu...");
+          await solveQuestionsArray(stillMissing, apiKey, model, signal, 75, 86);
+          stillMissing.forEach(function (q) { if (aiSolvedList.indexOf(q) === -1) aiSolvedList.push(q); });
+        }
+
+        if (aiSolvedList.length > 0 && apiKey && !signal.aborted) {
+          setPipelineSteps("done", "done", "active", "AI đang kiểm tra chéo độ chính xác đáp án...");
+          const flagged = await doubleCheckQuestionsArray(aiSolvedList, apiKey, model, signal, 86, 99);
+          setPipelineSteps("done", "done", "done", flagged > 0 ? ("AI đã giải & kiểm tra chéo (" + flagged + " câu cần xem kỹ)") : "AI đã giải & kiểm tra chéo 100% khớp!");
+        } else if (aiSolvedList.length === 0) {
+          setPipelineSteps("done", "done", "skip", "Đã đủ đáp án hợp lệ – bỏ qua bước AI giải");
+        } else {
+          setPipelineSteps("done", "done", "done");
+        }
+
+        if (cState.appendMode) cState.questions = cState.questions.concat(collected);
+        else cState.questions = collected;
+        cState.page = 1;
+        cState.progressPct = 100;
+        cState.lastSummary = summaries.join(" • ");
+        const suspectTotal = cState.questions.filter(function (q) { return q.suspect; }).length;
+        U().showToast(
+          "Hoàn tất! Đã xử lý " + collected.length + " câu hỏi" + (suspectTotal > 0 ? (" (" + suspectTotal + " câu AI đánh dấu cần xem lại)") : "") + ".",
+          suspectTotal > 0 ? "warning" : "success"
+        );
+        if (cState.autoExport && cState.questions.length > 0) doExport("xlsx", true);
+      } else if (!stopped) {
+        U().showToast("Không tìm thấy câu hỏi hợp lệ nào trong tệp đã tải lên.", "warning");
+      }
+    } catch (e) {
+      if (e && e.name === "AbortError") U().showToast("Đã dừng quá trình xử lý. Các câu đã trích xuất được giữ lại.", "warning");
+      else U().showToast("Lỗi xử lý tệp: " + ((e && e.message) || "Không xác định"), "error");
+    } finally {
+      cState.busy = false;
+      cState.progressLabel = "";
+      renderConverter();
+    }
+  }
+
+  async function runBatchSolve(fromOcr) {
+    const apiKey = requireApiKey();
+    if (!apiKey) return;
+    const missing = cState.questions.filter(function (q) { return q.correct.length === 0; });
+    if (missing.length === 0) { U().showToast("Tất cả câu hỏi đều đã có đáp án.", "info"); return; }
+    if (!fromOcr) { cState.busy = true; cState.abortCtrl = new AbortController(); }
+    const model = getApiModel();
+    let solved = 0;
+    try {
+      solved = await solveQuestionsArray(cState.questions, apiKey, model, cState.abortCtrl ? cState.abortCtrl.signal : undefined, 0, 100);
+      if (solved > 0) U().showToast("AI đã giải xong " + solved + " câu hỏi.", "success");
+    } catch (e) {
+      if (e.name === "AbortError") U().showToast("Đã dừng giải đáp án. Giữ lại " + solved + " câu đã giải.", "warning");
+      else U().showToast("Lỗi khi giải đáp án: " + (e.message || "Không xác định"), "error");
+    } finally {
+      if (!fromOcr) { cState.busy = false; cState.progressLabel = ""; }
+      renderConverter();
+    }
+  }
+
+  /* 2nd-Pass AI Cross-Check (Gold+) */
+  async function runDoubleCheck() {
+    if (!U().requireFeature("doubleCheck")) return;
+    const apiKey = requireApiKey();
+    if (!apiKey) return;
+    if (cState.questions.length === 0) { U().showToast("Chưa có câu hỏi nào để kiểm tra chéo.", "warning"); return; }
+    cState.busy = true;
+    cState.abortCtrl = new AbortController();
+    const model = getApiModel();
+    try {
+      const flagged = await doubleCheckQuestionsArray(cState.questions, apiKey, model, cState.abortCtrl.signal, 0, 100);
       cState.filter = flagged > 0 ? "suspect" : "all";
       cState.page = 1;
       U().showToast(flagged > 0 ? ("AI Double-Check phát hiện " + flagged + " câu cần kiểm tra kỹ!") : "AI Double-Check hoàn tất: toàn bộ đáp án đều khớp & tự tin cao!", flagged > 0 ? "warning" : "success");
@@ -537,31 +1086,87 @@
     }
   }
 
-  /* ======================== MARKDOWN & REVERSE EXCEL ======================== */
+  /* ======================== MARKDOWN / DOCUMENT PARSER & REVERSE EXCEL ======================== */
+  function expandInlineOptions(line) {
+    // Split lines like "A. 1   B. 2   C. 3   D. 4" into separate lines when >= 2 option labels appear
+    const trimmed = line.trim();
+    if (!/^(?:\*\*|__)?\*?\s*A\s*[.):]\s+/i.test(trimmed)) return [trimmed];
+    if (!/\s+(?:\*\*|__)?\*?\s*B\s*[.):]\s+/i.test(trimmed)) return [trimmed];
+    return trimmed
+      .replace(/\s+(?=(?:\*\*|__)?\*?\s*[B-E]\s*[.):]\s+)/g, "\n")
+      .split("\n")
+      .map(function (s) { return s.trim(); })
+      .filter(Boolean);
+  }
+
+  function applyAnswerKeyBlock(results, rawBlock) {
+    if (!rawBlock || results.length === 0) return 0;
+    let applied = 0;
+    let m;
+    const re = /(\d{1,4})\s*[.:\-)\s]?\s*([A-Ea-e](?:\s*[,;/]\s*[A-Ea-e])*)\b/g;
+    while ((m = re.exec(rawBlock)) !== null) {
+      const idx = parseInt(m[1], 10) - 1;
+      const q = results[idx];
+      if (!q || q.correct.length > 0) continue;
+      const maxO = q.options.filter(Boolean).length;
+      const corr = Array.from(new Set(m[2].toUpperCase().split(/[,;\/\s]+/).filter(Boolean).map(function (t) {
+        return U().LETTERS.indexOf(t);
+      }))).filter(function (x) { return x >= 0 && x < maxO; }).sort(function (a, b) { return a - b; });
+      if (corr.length > 0) {
+        q.correct = corr;
+        if (corr.length > 1) q.type = "Checkbox";
+        applied++;
+      }
+    }
+    return applied;
+  }
+
   function parseMarkdown(raw) {
-    const lines = String(raw || "").replace(/\r\n/g, "\n").split("\n");
+    const rawLines = String(raw || "").replace(/\r\n/g, "\n").split("\n");
+    const lines = [];
+    rawLines.forEach(function (rl) {
+      expandInlineOptions(rl).forEach(function (x) { lines.push(x); });
+    });
     const results = [];
     let cur = null;
-    const qStart = /^\s*(?:\*\*|__)?(?:Câu|Question|Bài)\s*\d+\s*[:.)\-]?\s*(?:\*\*|__)?\s*(.*)$/i;
+    let inAnswerSection = false;
+    let answerSectionBuf = "";
+
+    const ansSectionHeader = /^\s*(?:#+\s*)?(?:\*\*|__)?(?:BẢNG\s+ĐÁP\s+ÁN|ĐÁP\s+ÁN\s*(?:CHI\s+TIẾT)?|ANSWER\s+KEY)\s*:?(?:\*\*|__)?\s*(.*)$/i;
+    const qStart = /^\s*(?:#+\s*)?(?:\*\*|__)?(?:Câu|Question|Bài)\s*\d+\s*[:.)\-]?\s*(?:\*\*|__)?\s*(.*)$/i;
     const numStart = /^\s*(?:\*\*|__)?(\d{1,4})\s*[:.)]\s+(?:\*\*|__)?(.*)$/;
-    const optRe = /^\s*(?:[-*+]\s+)?(\*\*|__)?\s*([A-Ea-e])\s*([.):])\s*(.+?)\s*(\*\*|__)?\s*$/;
+    const optRe = /^\s*(?:[-*+]\s+)?(\*\*|__|\*|\[x\]\s*)?\s*([A-Ea-e])\s*([.):])\s*(.+?)\s*(\*\*|__)?\s*$/;
     const ansRe = /^\s*(?:\*\*|__)?(?:Đáp án|Answer|Key)\s*[:\-]\s*(.+?)(?:\*\*|__)?\s*$/i;
     const expRe = /^\s*(?:\*\*|__)?(?:Giải thích|Explanation|Lời giải)\s*[:\-]\s*(.+?)(?:\*\*|__)?\s*$/i;
+
     function flush() {
       if (!cur) return;
       const item = toConvItem({ question: cur.text, options: cur.options, correct: cur.correct, _zeroBased: true, explanation: cur.explanation });
       if (item) results.push(item);
       cur = null;
     }
+
     lines.forEach(function (rl) {
       const line = rl.trim();
       if (!line) return;
+      if (inAnswerSection) {
+        answerSectionBuf += " " + line;
+        return;
+      }
+      const mSec = line.match(ansSectionHeader);
+      if (mSec && results.length > 0 && (!cur || cur.options.length >= 2)) {
+        flush();
+        inAnswerSection = true;
+        if (mSec[1]) answerSectionBuf += " " + mSec[1];
+        return;
+      }
       const mOpt = line.match(optRe);
       if (mOpt && cur) {
         const idx = U().LETTERS.indexOf(mOpt[2].toUpperCase());
-        const bold = !!(mOpt[1] && mOpt[5]) || /^\*\*.+\*\*$/.test(line);
+        const marker = String(mOpt[1] || "").trim().toLowerCase();
+        const isCorrectMarker = !!(mOpt[1] && mOpt[5]) || /^\*\*.+\*\*$/.test(line) || marker === "*" || marker === "[x]";
         cur.options[idx] = mOpt[4].replace(/(\*\*|__)\s*$/, "").trim();
-        if (bold) cur.correct.push(idx);
+        if (isCorrectMarker) cur.correct.push(idx);
         return;
       }
       const mAns = line.match(ansRe);
@@ -587,41 +1192,44 @@
       }
     });
     flush();
+    if (answerSectionBuf) applyAnswerKeyBlock(results, answerSectionBuf);
     return results;
   }
 
-  function loadReverseExcel(file) {
-    if (!file || typeof XLSX === "undefined") return;
-    const r = new FileReader();
-    r.onload = function (ev) {
-      try {
-        const wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-        const items = [];
-        rows.forEach(function (row) {
-          const text = String(row["Question Text"] || "").trim();
-          if (!text) return;
-          const opts = [];
-          for (let n = 1; n <= 5; n++) { const v = String(row["Option " + n] == null ? "" : row["Option " + n]).trim(); if (v) opts.push(v); }
-          if (opts.length < 2) return;
-          const rawAns = String(row["Correct Answer"] == null ? "" : row["Correct Answer"]).trim();
-          const corr = Array.from(new Set(rawAns.split(/[,;\/\s]+/).filter(Boolean).map(function (t) {
-            if (/^[1-5]$/.test(t)) return Number(t) - 1;
-            if (/^[A-Ea-e]$/.test(t)) return U().LETTERS.indexOf(t.toUpperCase());
-            return -1;
-          }))).filter(function (n) { return n >= 0 && n < opts.length; }).sort(function (a, b) { return a - b; });
-          const item = toConvItem({ question: text, type: row["Question Type"], options: opts, correct: corr, _zeroBased: true, time: row["Time in seconds"], image: row["Image Link"], explanation: row["Answer explanation"] });
-          if (item) items.push(item);
-        });
-        if (items.length === 0) { U().showToast("Không đọc được câu hỏi nào từ file Excel.", "warning"); return; }
-        cState.questions = items;
-        cState.page = 1;
-        renderConverter();
-        U().showToast("Đã nạp " + items.length + " câu từ Excel để kiểm duyệt lại.", "success");
-      } catch (err) { U().showToast("Không thể đọc file Excel.", "error"); }
-    };
-    r.readAsArrayBuffer(file);
+  function parseExcelFileAsync(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file || typeof XLSX === "undefined") {
+        reject(new Error("Thư viện SheetJS chưa tải xong."));
+        return;
+      }
+      const r = new FileReader();
+      r.onerror = function () { reject(new Error("Không thể đọc file Excel.")); };
+      r.onload = function (ev) {
+        try {
+          const wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+          const items = [];
+          rows.forEach(function (row) {
+            const text = String(row["Question Text"] || "").trim();
+            if (!text) return;
+            const opts = [];
+            for (let n = 1; n <= 5; n++) { const v = String(row["Option " + n] == null ? "" : row["Option " + n]).trim(); if (v) opts.push(v); }
+            if (opts.length < 2) return;
+            const rawAns = String(row["Correct Answer"] == null ? "" : row["Correct Answer"]).trim();
+            const corr = Array.from(new Set(rawAns.split(/[,;\/\s]+/).filter(Boolean).map(function (t) {
+              if (/^[1-5]$/.test(t)) return Number(t) - 1;
+              if (/^[A-Ea-e]$/.test(t)) return U().LETTERS.indexOf(t.toUpperCase());
+              return -1;
+            }))).filter(function (n) { return n >= 0 && n < opts.length; }).sort(function (a, b) { return a - b; });
+            const item = toConvItem({ question: text, type: row["Question Type"], options: opts, correct: corr, _zeroBased: true, time: row["Time in seconds"], image: row["Image Link"], explanation: row["Answer explanation"] });
+            if (item) items.push(item);
+          });
+          resolve(items);
+        } catch (err) { reject(new Error("Không thể đọc file Excel.")); }
+      };
+      r.readAsArrayBuffer(file);
+    });
   }
 
   /* ======================== VALIDATION, EXPORT & 1-CLICK IMPORT ======================== */
@@ -777,47 +1385,64 @@
     // 3 Top Cards
     h += '<div class="conv-grid">';
 
-    // Card 1: Sources
-    h += '<section class="panel"><div class="panel-head"><h2>1. Nguồn đề thi</h2>' +
-      '<div class="seg"><button type="button" class="seg-btn' + (cState.srcTab === "img" ? " active" : "") + '" data-cact="src" data-val="img">Ảnh AI</button>' +
-      '<button type="button" class="seg-btn' + (cState.srcTab === "md" ? " active" : "") + '" data-cact="src" data-val="md">Markdown</button>' +
-      '<button type="button" class="seg-btn' + (cState.srcTab === "xlsx" ? " active" : "") + '" data-cact="src" data-val="xlsx">Duyệt .xlsx</button></div></div>';
+    // Card 1: Unified Smart File Uploader
+    const canRunSmart = !cState.busy && (cState.files.length > 0 || (cState.pasteText || "").trim().length > 0);
+    h += '<section class="panel"><div class="panel-head"><h2>1. Tải đề thi thông minh</h2>' +
+      '<span class="badge">Tự động nhận diện</span></div>' +
+      '<label class="conv-drop" id="convDropUnified">' +
+        '<strong>📂 Chọn, kéo thả hoặc Ctrl+V tệp đề thi</strong>' +
+        '<span class="muted" style="font-size:.76rem">Ảnh → AI Vision • Tài liệu đủ Đ/A → Chuyển ngay • Thiếu Đ/A → AI giải &amp; kiểm tra chéo</span>' +
+        '<div class="conv-drop-formats">' +
+          '<span class="conv-fmt-pill">PNG / JPG / WEBP</span>' +
+          '<span class="conv-fmt-pill">PDF</span>' +
+          '<span class="conv-fmt-pill">DOC / DOCX</span>' +
+          '<span class="conv-fmt-pill">MD / TXT</span>' +
+          '<span class="conv-fmt-pill">XLSX</span>' +
+        '</div>' +
+        '<input type="file" id="convUnifiedInput" accept=".png,.jpg,.jpeg,.webp,.gif,.md,.txt,.pdf,.doc,.docx,.xlsx,.xls,.csv,image/*" multiple hidden>' +
+      '</label>';
 
-    if (cState.srcTab === "img") {
-      h += '<label class="conv-drop" id="convDropImg">' +
-        '<strong>📷 Chọn, kéo thả hoặc Ctrl+V ảnh đề</strong>' +
-        '<span class="muted" style="font-size:.78rem">PNG, JPG, WEBP, GIF, AVIF… • Giới hạn gói hiện tại: ' + U().effectiveLimits().maxImages + ' ảnh/lần</span>' +
-        '<input type="file" id="convImgInput" accept="image/*" multiple hidden></label>';
-      if (cState.images.length > 0) {
-        h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:.8rem"><strong>' + cState.images.length + ' ảnh đang chờ</strong>' +
-          '<button type="button" class="btn btn-outline btn-sm" data-cact="clear-imgs">Xóa hết</button></div>' +
-          '<div class="conv-queue">' + cState.images.map(function (im, idx) {
-            return '<div class="conv-q-item"><img src="' + im.url + '" alt=""><div style="flex:1;min-width:0"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + U().esc(im.name) + '</div>' +
-              '<span class="muted">' + Math.round(im.size / 1024) + ' KB' + (im.width ? (" • " + im.width + "×" + im.height) : "") + '</span></div>' +
-              '<button type="button" class="btn btn-outline btn-sm" data-cact="del-img" data-idx="' + idx + '">✕</button></div>';
-          }).join("") + '</div>';
-      }
-      h += '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAutoSolve"' + (cState.autoSolve ? " checked" : "") + '> Tự động giải nếu câu thiếu đáp án</label>' +
-        '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAutoExport"' + (cState.autoExport ? " checked" : "") + '> Tự động tải Excel sau khi xong</label>' +
-        '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAppend"' + (cState.appendMode ? " checked" : "") + '> Nối thêm vào danh sách hiện có</label>' +
-        '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cKeepPref"' + (cState.keepPrefix ? " checked" : "") + '> Giữ tiền tố số câu (Câu 1.)</label>' +
-        '<div class="deck-actions" style="margin-top:8px">' +
-          '<button type="button" class="btn btn-primary" style="flex:1" data-cact="run-ocr"' + (cState.busy || cState.images.length === 0 ? " disabled" : "") + '>' + (cState.busy ? '<span class="spinner"></span>Đang chạy AI...' : '✨ AI đọc ảnh &amp; trích xuất') + '</button>' +
-          (cState.busy ? '<button type="button" class="btn btn-danger btn-sm" data-cact="stop-ai">Dừng</button>' : "") +
-        '</div>';
-    } else if (cState.srcTab === "md") {
-      h += '<label class="conv-drop" style="padding:12px"><strong>📄 Chọn file .md / .txt</strong><input type="file" id="convMdFile" accept=".md,.txt" hidden></label>' +
-        '<label class="field">Hoặc dán nội dung Markdown<textarea id="convMdText" rows="5" placeholder="Câu 1: ...&#10;**A. Đáp án đúng**&#10;B. ..."></textarea></label>' +
-        '<button type="button" class="btn btn-primary" style="width:100%" data-cact="parse-md">Phân tích Markdown</button>';
-    } else {
-      h += '<label class="conv-drop"><strong>📥 Tải ngược file Excel (.xlsx) đã xuất lên</strong>' +
-        '<span class="muted" style="font-size:.78rem">Kiểm tra lại công thức KaTeX, gạch chân, chạy AI Double-Check &amp; duyệt từng câu</span>' +
-        '<input type="file" id="convXlsxInput" accept=".xlsx,.xls,.csv" hidden></label>';
+    if (cState.files.length > 0) {
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:.8rem"><strong>' + cState.files.length + ' tệp đang chờ xử lý</strong>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-cact="clear-files"' + (cState.busy ? " disabled" : "") + '>Xóa hết</button></div>' +
+        '<div class="conv-queue">' + cState.files.map(function (item, idx) {
+          const meta = fileKindMeta(item.kind);
+          const thumb = item.kind === "image" && item.url
+            ? '<img src="' + item.url + '" alt="">'
+            : '<div class="conv-file-icon" aria-hidden="true">' + meta.icon + '</div>';
+          return '<div class="conv-q-item">' + thumb +
+            '<div style="flex:1;min-width:0"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + U().esc(item.name) + '</div>' +
+              '<span class="muted">' + Math.max(1, Math.round(item.size / 1024)) + ' KB' + (item.width ? (" • " + item.width + "×" + item.height) : "") + '</span>' +
+              '<span class="conv-file-badge">' + meta.badge + '</span>' +
+            '</div>' +
+            '<button type="button" class="btn btn-outline btn-sm" data-cact="del-file" data-idx="' + idx + '"' + (cState.busy ? " disabled" : "") + '>✕</button></div>';
+        }).join("") + '</div>';
     }
 
-    if (cState.progressLabel) {
-      h += '<div class="conv-progress"><div class="conv-progress-row"><span>' + U().esc(cState.progressLabel) + '</span><span>' + cState.progressPct + '%</span></div>' +
-        '<div class="progress-bar"><div class="progress-fill" style="width:' + cState.progressPct + '%"></div></div></div>';
+    h += '<details class="conv-paste-details"' + ((cState.pasteText || "").trim() ? " open" : "") + '>' +
+      '<summary>✍️ Hoặc dán nhanh văn bản / Markdown trực tiếp</summary>' +
+      '<textarea id="convPasteText" rows="3" style="width:100%" placeholder="Dán câu hỏi trắc nghiệm hoặc Markdown tại đây (nếu thiếu đáp án AI sẽ tự giải)...">' + U().esc(cState.pasteText) + '</textarea>' +
+    '</details>';
+
+    h += '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAutoSolve"' + (cState.autoSolve ? " checked" : "") + '> Tự động giải &amp; kiểm tra chéo nếu thiếu đáp án</label>' +
+      '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAutoExport"' + (cState.autoExport ? " checked" : "") + '> Tự động tải Excel sau khi xong</label>' +
+      '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAppend"' + (cState.appendMode ? " checked" : "") + '> Nối thêm vào danh sách hiện có</label>' +
+      '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cKeepPref"' + (cState.keepPrefix ? " checked" : "") + '> Giữ tiền tố số câu (Câu 1.)</label>' +
+      '<div class="deck-actions" style="margin-top:8px">' +
+        '<button type="button" class="btn btn-primary" id="convSmartRunBtn" style="flex:1" data-cact="run-smart"' + (canRunSmart ? "" : " disabled") + '>' + (cState.busy ? '<span class="spinner"></span>Đang xử lý thông minh...' : '✨ Bắt đầu chuyển đổi thông minh') + '</button>' +
+        (cState.busy ? '<button type="button" class="btn btn-danger btn-sm" data-cact="stop-ai">Dừng</button>' : "") +
+      '</div>';
+
+    if (cState.progressLabel || cState.steps.length > 0) {
+      h += '<div class="conv-progress">' +
+        (cState.progressLabel ? ('<div class="conv-progress-row"><span>' + U().esc(cState.progressLabel) + '</span><span>' + cState.progressPct + '%</span></div><div class="progress-bar"><div class="progress-fill" style="width:' + cState.progressPct + '%"></div></div>') : "") +
+        (cState.steps.length > 0 ? ('<div class="conv-steps">' + cState.steps.map(function (st) {
+          const icon = st.status === "done" ? "✅" : (st.status === "active" ? "⏳" : (st.status === "skip" ? "⏭️" : "○"));
+          const cls = st.status === "done" ? "is-done" : (st.status === "active" ? "is-active" : (st.status === "skip" ? "is-skip" : ""));
+          return '<div class="conv-step ' + cls + '"><span>' + icon + '</span><span>' + U().esc(st.label) + '</span></div>';
+        }).join("") + '</div>') : "") +
+        (cState.lastSummary && !cState.busy ? ('<div class="muted" style="font-size:.74rem;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">📌 ' + U().esc(cState.lastSummary) + '</div>') : "") +
+      '</div>';
     }
     h += '</section>';
 
@@ -915,7 +1540,7 @@
     });
 
     if (filtered.length === 0) {
-      h += '<div class="empty-state">Chưa có câu hỏi nào. Hãy tải ảnh đề thi, dán Markdown hoặc nạp file Excel ở Khối 1.</div>';
+      h += '<div class="empty-state">Chưa có câu hỏi nào. Hãy tải tệp Ảnh, PDF, Word, Markdown/Text hoặc Excel ở Khối 1 để bắt đầu.</div>';
     } else if (cState.viewMode === "split") {
       // Split-Screen Review Mode
       const curIm = cState.images[cState.activeImgIdx];
@@ -975,15 +1600,34 @@
       root.addEventListener("click", onConverterClick);
       root.addEventListener("change", onConverterChange);
       root.addEventListener("input", onConverterInput);
+      root.addEventListener("dragover", function (e) {
+        const dz = e.target.closest ? e.target.closest("#convDropUnified") : null;
+        if (!dz) return;
+        e.preventDefault();
+        dz.classList.add("drag-over");
+      });
+      root.addEventListener("dragleave", function (e) {
+        const dz = e.target.closest ? e.target.closest("#convDropUnified") : null;
+        if (dz && !dz.contains(e.relatedTarget)) dz.classList.remove("drag-over");
+      });
+      root.addEventListener("drop", function (e) {
+        const dz = e.target.closest ? e.target.closest("#convDropUnified") : null;
+        if (!dz) return;
+        e.preventDefault();
+        dz.classList.remove("drag-over");
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          addUnifiedFiles(e.dataTransfer.files);
+        }
+      });
       document.addEventListener("paste", function (e) {
-        if (U().state.tab !== "converter" || cState.srcTab !== "img") return;
+        if (U().state.tab !== "converter") return;
         const items = e.clipboardData && e.clipboardData.items;
         if (!items) return;
         const imgs = [];
         for (let i = 0; i < items.length; i++) {
           if (items[i].type && items[i].type.indexOf("image/") === 0) { const f = items[i].getAsFile(); if (f) imgs.push(f); }
         }
-        if (imgs.length > 0) { e.preventDefault(); addImages(imgs); }
+        if (imgs.length > 0) { e.preventDefault(); addUnifiedFiles(imgs); }
       });
     }
   }
@@ -1058,34 +1702,16 @@
     if (!b || b.disabled) return;
     const act = b.getAttribute("data-cact");
     if (act === "go-api") U().showTab("api");
-    else if (act === "src") {
-      cState.srcTab = b.getAttribute("data-val");
-      cState.viewMode = "table";
-      const map = { img: "/converter/image", md: "/converter/markdown", xlsx: "/converter/excel" };
-      U().navigateTo(map[cState.srcTab] || "/converter");
-    }
     else if (act === "vmode") {
       const m = b.getAttribute("data-val");
       if (m === "split" && !U().requireFeature("splitReview")) return;
       cState.viewMode = m;
-      const map = { img: "/converter/image", md: "/converter/markdown", xlsx: "/converter/excel" };
-      U().navigateTo(m === "split" ? "/converter/review" : (map[cState.srcTab] || "/converter"));
+      U().navigateTo(m === "split" ? "/converter/review" : "/converter");
     }
-    else if (act === "clear-imgs") { cState.images.forEach(function (i) { URL.revokeObjectURL(i.url); }); cState.images = []; cState.activeImgIdx = 0; renderConverter(); }
-    else if (act === "del-img") {
-      const idx = Number(b.getAttribute("data-idx"));
-      if (cState.images[idx]) { URL.revokeObjectURL(cState.images[idx].url); cState.images.splice(idx, 1); cState.activeImgIdx = U().clamp(cState.activeImgIdx, 0, Math.max(0, cState.images.length - 1)); renderConverter(); }
-    }
-    else if (act === "run-ocr") runOcr();
+    else if (act === "clear-files") clearUnifiedFiles();
+    else if (act === "del-file") removeUnifiedFile(Number(b.getAttribute("data-idx")));
+    else if (act === "run-smart") runSmartUploadPipeline();
     else if (act === "stop-ai") { if (cState.abortCtrl) cState.abortCtrl.abort(); }
-    else if (act === "parse-md") {
-      const raw = U().$("convMdText") ? U().$("convMdText").value : "";
-      const parsed = parseMarkdown(raw);
-      if (parsed.length === 0) { U().showToast("Không nhận diện được câu hỏi Markdown nào.", "warning"); return; }
-      cState.questions = cState.appendMode ? cState.questions.concat(parsed) : parsed;
-      cState.page = 1; renderConverter();
-      U().showToast("Đã phân tích " + parsed.length + " câu từ Markdown.", "success");
-    }
     else if (act === "view-tpl") showTemplateModal();
     else if (act === "down-tpl") U().downloadTemplate();
     else if (act === "apply-manual-ans") {
@@ -1143,14 +1769,7 @@
   function onConverterChange(e) {
     const t = e.target;
     if (!t) return;
-    if (t.id === "convImgInput") { addImages(t.files); t.value = ""; }
-    else if (t.id === "convMdFile") {
-      const f = t.files && t.files[0]; if (!f) return;
-      const r = new FileReader();
-      r.onload = function (ev) { const ta = U().$("convMdText"); if (ta) ta.value = String(ev.target.result || ""); };
-      r.readAsText(f, "UTF-8");
-    }
-    else if (t.id === "convXlsxInput") { loadReverseExcel(t.files && t.files[0]); t.value = ""; }
+    if (t.id === "convUnifiedInput") { addUnifiedFiles(t.files); t.value = ""; }
     else if (t.id === "cSubject") cState.subject = t.value;
     else if (t.id === "cAnsFmt") cState.ansFormat = t.value;
     else if (t.id === "cDefTime") cState.defaultTime = Math.max(5, parseInt(t.value, 10) || 30);
@@ -1173,6 +1792,11 @@
     const t = e.target;
     if (!t) return;
     if (t.id === "convSearch") { cState.search = t.value; cState.page = 1; renderConverter(); }
+    else if (t.id === "convPasteText") {
+      cState.pasteText = t.value;
+      const runBtn = U().$("convSmartRunBtn");
+      if (runBtn) runBtn.disabled = cState.busy || (cState.files.length === 0 && !cState.pasteText.trim());
+    }
     else if (t.hasAttribute("data-cedit")) {
       const q = cState.questions[Number(t.getAttribute("data-idx"))];
       if (!q) return;
@@ -1186,8 +1810,7 @@
   function applySubRoute(sub) {
     if (sub === "split") {
       if (U().can("splitReview")) cState.viewMode = "split";
-    } else if (sub === "img" || sub === "md" || sub === "xlsx") {
-      cState.srcTab = sub;
+    } else if (sub === "upload" || sub === "img" || sub === "md" || sub === "xlsx") {
       if (cState.viewMode === "split") cState.viewMode = "table";
     }
   }
