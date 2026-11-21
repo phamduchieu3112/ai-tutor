@@ -6,8 +6,8 @@
   "use strict";
 
   const TIME_OPTIONS = [
-    [5, "5 giây"], [10, "10 giây"], [15, "15 giây"], [20, "20 giây"], [30, "30 giây"],
-    [45, "45 giây"], [60, "60 giây"], [120, "2 phút"], [180, "3 phút"], [300, "5 phút"], [0, "Không giới hạn"]
+    [5, "5 gi\u00e2y"], [10, "10 gi\u00e2y"], [15, "15 gi\u00e2y"], [20, "20 gi\u00e2y"], [30, "30 gi\u00e2y"],
+    [45, "45 gi\u00e2y"], [60, "60 gi\u00e2y"], [120, "2 ph\u00fat"], [180, "3 ph\u00fat"], [300, "5 ph\u00fat"], [0, "Kh\u00f4ng gi\u1edbi h\u1ea1n"]
   ];
 
   const STUDIO_SESS_KEY = "ai_tutor_studio_sessions";
@@ -93,8 +93,8 @@
   function newEmptyQuiz() {
     return {
       id: "qz_" + Date.now(),
-      title: "Quiz mới",
-      tag: "Tổng hợp",
+      title: "Quiz m\u1edbi",
+      tag: "T\u1ed5ng h\u1ee3p",
       questions: []
     };
   }
@@ -106,7 +106,7 @@
       id: "qz_deck_" + deck.id,
       deckId: deck.id,
       title: deck.title,
-      tag: deck.tag || "Tổng hợp",
+      tag: deck.tag || "T\u1ed5ng h\u1ee3p",
       questions: deck.questions.map(function (q, i) {
         return {
           id: q.id || ("sq_" + i),
@@ -128,8 +128,8 @@
     stopStudioTimer();
     sState.quiz = {
       id: "qz_" + Date.now(),
-      title: title || "Quiz từ AI Converter",
-      tag: tag || "Tổng hợp",
+      title: title || "Quiz t\u1eeb AI Converter",
+      tag: tag || "T\u1ed5ng h\u1ee3p",
       questions: items.map(function (q, i) {
         return {
           id: "sq_" + Date.now() + "_" + i,
@@ -151,18 +151,18 @@
     const qz = sState.quiz;
     if (!qz) return;
     const tEl = U().$("stQuizTitle"), tagEl = U().$("stQuizTag");
-    if (tEl) qz.title = tEl.value.trim() || "Quiz không tên";
-    if (tagEl) qz.tag = tagEl.value.trim() || "Tổng hợp";
-    if (qz.questions.length === 0) { U().showToast("Hãy thêm ít nhất 1 câu hỏi trước khi lưu Quiz.", "warning"); return; }
+    if (tEl) qz.title = tEl.value.trim() || "Quiz kh\u00f4ng t\u00ean";
+    if (tagEl) qz.tag = tagEl.value.trim() || "T\u1ed5ng h\u1ee3p";
+    if (qz.questions.length === 0) { U().showToast("H\u00e3y th\u00eam \u00edt nh\u1ea5t 1 c\u00e2u h\u1ecfi tr\u01b0\u1edbc khi l\u01b0u Quiz.", "warning"); return; }
     const list = loadQuizzes().filter(function (x) { return x && x.id !== qz.id; });
     list.unshift(Object.assign({}, qz, { updatedAt: new Date().toISOString() }));
     saveQuizzes(list);
-    U().showToast("Đã lưu Quiz \"" + qz.title + "\" vào Creator Studio!", "success");
+    U().showToast("\u0110\u00e3 l\u01b0u Quiz \"" + qz.title + "\" v\u00e0o Creator Studio!", "success");
   }
 
   function saveQuizToDeckBank() {
     const qz = sState.quiz;
-    if (!qz || qz.questions.length === 0) { U().showToast("Quiz chưa có câu hỏi nào.", "warning"); return; }
+    if (!qz || qz.questions.length === 0) { U().showToast("Quiz ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi n\u00e0o.", "warning"); return; }
     const tEl = U().$("stQuizTitle"), tagEl = U().$("stQuizTag");
     if (tEl) qz.title = tEl.value.trim() || qz.title;
     if (tagEl) qz.tag = tagEl.value.trim() || qz.tag;
@@ -171,10 +171,10 @@
 
   const STUDIO_ROUTE_MAP = {
     home: ["/creator-studio", "Creator Studio | AI Tutor"],
-    editor: ["/creator-studio/editor", "Trình soạn thảo Quiz | AI Tutor"],
-    lobby: ["/creator-studio/lobby", "Cài đặt Quiz | AI Tutor"],
-    play: ["/creator-studio/play", "Đang chơi Quiz | AI Tutor"],
-    summary: ["/creator-studio/summary", "Tổng kết Quiz | AI Tutor"]
+    editor: ["/creator-studio/editor", "Tr\u00ecnh so\u1ea1n th\u1ea3o Quiz | AI Tutor"],
+    lobby: ["/creator-studio/lobby", "C\u00e0i \u0111\u1eb7t Quiz | AI Tutor"],
+    play: ["/creator-studio/play", "\u0110ang ch\u01a1i Quiz | AI Tutor"],
+    summary: ["/creator-studio/summary", "T\u1ed5ng k\u1ebft Quiz | AI Tutor"]
   };
   function syncStudioRoute(replace) {
     if (!U() || U().state.tab !== "studio") return;
@@ -182,7 +182,7 @@
     const curPath = (window.location.pathname || "").toLowerCase();
     // Keep /quiz?code=... URL intact when playing a shared link in Lobby
     if (curPath === "/quiz" && sState.screen === "lobby") {
-      document.title = "Làm bài chia sẻ | AI Tutor";
+      document.title = "L\u00e0m b\u00e0i chia s\u1ebb | AI Tutor";
       return;
     }
     if (typeof U().syncHistory === "function") U().syncHistory(entry[0], entry[1], !!replace);
@@ -222,32 +222,32 @@
 
     let h = '<div class="panel" style="margin-bottom:16px">' +
       '<div class="panel-head"><div><h2>🎮 Creator Studio / Quiz Studio</h2>' +
-      '<p class="muted" style="margin:0;font-size:.86rem">Trình tạo &amp; chơi Quiz tương tác chuẩn Quizizz / Wayground (KaTeX, Streak, Redemption, thời gian từng câu).</p></div></div>' +
+      '<p class="muted" style="margin:0;font-size:.86rem">Tr\u00ecnh t\u1ea1o &amp; ch\u01a1i Quiz t\u01b0\u01a1ng t\u00e1c chu\u1ea9n Quizizz / Wayground (KaTeX, Streak, Redemption, th\u1eddi gian t\u1eebng c\u00e2u).</p></div></div>' +
       '<div class="admin-grid" style="margin:12px 0 0">' +
-        '<div class="deck-row"><strong>✍️ Tạo Quiz thủ công</strong><span class="muted" style="font-size:.8rem">Tự soạn từng câu hỏi với toolbar B/I/U, LaTeX &amp; ảnh</span>' +
-          '<button type="button" class="btn btn-primary btn-sm" data-sact="new-manual">Tạo Quiz mới</button></div>' +
-        '<div class="deck-row"><strong>📚 Lấy từ Kho đề AI Tutor</strong><span class="muted" style="font-size:.8rem">Hiện có ' + decks.length + ' bộ đề trong Kho đề</span>' +
+        '<div class="deck-row"><strong>✍️ T\u1ea1o Quiz th\u1ee7 c\u00f4ng</strong><span class="muted" style="font-size:.8rem">T\u1ef1 so\u1ea1n t\u1eebng c\u00e2u h\u1ecfi v\u1edbi toolbar B/I/U, LaTeX &amp; \u1ea3nh</span>' +
+          '<button type="button" class="btn btn-primary btn-sm" data-sact="new-manual">T\u1ea1o Quiz m\u1edbi</button></div>' +
+        '<div class="deck-row"><strong>📚 L\u1ea5y t\u1eeb Kho \u0111\u1ec1 AI Tutor</strong><span class="muted" style="font-size:.8rem">Hi\u1ec7n c\u00f3 ' + decks.length + ' b\u1ed9 \u0111\u1ec1 trong Kho \u0111\u1ec1</span>' +
           (decks.length ? '<div style="display:flex;gap:6px"><select id="stPickDeck" style="flex:1;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text)">' +
-            decks.map(function (d) { return '<option value="' + U().esc(d.id) + '">' + U().esc(d.title) + ' (' + d.questions.length + ' câu)</option>'; }).join("") +
-            '</select><button type="button" class="btn btn-primary btn-sm" data-sact="import-deck">Mở</button></div>' : '<span class="muted" style="font-size:.78rem">Chưa có bộ đề nào</span>') +
+            decks.map(function (d) { return '<option value="' + U().esc(d.id) + '">' + U().esc(d.title) + ' (' + d.questions.length + ' c\u00e2u)</option>'; }).join("") +
+            '</select><button type="button" class="btn btn-primary btn-sm" data-sact="import-deck">M\u1edf</button></div>' : '<span class="muted" style="font-size:.78rem">Ch\u01b0a c\u00f3 b\u1ed9 \u0111\u1ec1 n\u00e0o</span>') +
         '</div>' +
-        '<div class="deck-row"><strong>✨ Nhập từ AI Converter</strong><span class="muted" style="font-size:.8rem">Hiện có ' + convCount + ' câu hợp lệ trong AI Converter</span>' +
-          '<button type="button" class="btn btn-emerald btn-sm" data-sact="import-conv"' + (convCount === 0 ? " disabled" : "") + '>Lấy từ AI Converter (' + convCount + ')</button></div>' +
+        '<div class="deck-row"><strong>✨ Nh\u1eadp t\u1eeb AI Converter</strong><span class="muted" style="font-size:.8rem">Hi\u1ec7n c\u00f3 ' + convCount + ' c\u00e2u h\u1ee3p l\u1ec7 trong AI Converter</span>' +
+          '<button type="button" class="btn btn-emerald btn-sm" data-sact="import-conv"' + (convCount === 0 ? " disabled" : "") + '>L\u1ea5y t\u1eeb AI Converter (' + convCount + ')</button></div>' +
       '</div></div>';
 
-    h += '<div class="panel"><div class="panel-head"><h2>Danh sách Quiz đã tạo (' + quizzes.length + ')</h2></div>';
+    h += '<div class="panel"><div class="panel-head"><h2>Danh s\u00e1ch Quiz \u0111\u00e3 t\u1ea1o (' + quizzes.length + ')</h2></div>';
     if (quizzes.length === 0) {
-      h += '<div class="empty-state">Bạn chưa lưu Quiz nào trong Creator Studio. Hãy tạo mới hoặc chọn từ Kho đề ở trên!</div>';
+      h += '<div class="empty-state">B\u1ea1n ch\u01b0a l\u01b0u Quiz n\u00e0o trong Creator Studio. H\u00e3y t\u1ea1o m\u1edbi ho\u1eb7c ch\u1ecdn t\u1eeb Kho \u0111\u1ec1 \u1edf tr\u00ean!</div>';
     } else {
       h += '<div class="list">' + quizzes.map(function (qz) {
-        return '<div class="deck-row"><div class="deck-title-line"><span class="deck-title">' + U().esc(qz.title) + '</span><span class="badge">' + U().esc(qz.tag || "Tổng hợp") + '</span></div>' +
-          '<div class="deck-sub"><span>' + (qz.questions ? qz.questions.length : 0) + ' câu hỏi</span>' + (qz.updatedAt ? '<span>Cập nhật: ' + U().esc(U().fmtDateTime(qz.updatedAt)) + '</span>' : "") + '</div>' +
+        return '<div class="deck-row"><div class="deck-title-line"><span class="deck-title">' + U().esc(qz.title) + '</span><span class="badge">' + U().esc(qz.tag || "T\u1ed5ng h\u1ee3p") + '</span></div>' +
+          '<div class="deck-sub"><span>' + (qz.questions ? qz.questions.length : 0) + ' c\u00e2u h\u1ecfi</span>' + (qz.updatedAt ? '<span>C\u1eadp nh\u1eadt: ' + U().esc(U().fmtDateTime(qz.updatedAt)) + '</span>' : "") + '</div>' +
           '<div class="deck-actions">' +
-            '<button type="button" class="btn btn-emerald btn-sm" data-sact="play-saved" data-id="' + U().esc(qz.id) + '">▶ Bắt đầu làm bài (Play)</button>' +
-            '<button type="button" class="btn btn-primary btn-sm" data-sact="edit-saved" data-id="' + U().esc(qz.id) + '">Chỉnh sửa</button>' +
-            '<button type="button" class="btn btn-outline btn-sm" data-sact="share-saved" data-id="' + U().esc(qz.id) + '">🔗 Chia sẻ</button>' +
-            '<button type="button" class="btn btn-outline btn-sm" data-sact="pdf-saved" data-id="' + U().esc(qz.id) + '">🖨️ Xuất PDF</button>' +
-            '<button type="button" class="btn btn-outline btn-sm" data-sact="del-saved" data-id="' + U().esc(qz.id) + '">Xóa</button>' +
+            '<button type="button" class="btn btn-emerald btn-sm" data-sact="play-saved" data-id="' + U().esc(qz.id) + '">▶ B\u1eaft \u0111\u1ea7u l\u00e0m b\u00e0i (Play)</button>' +
+            '<button type="button" class="btn btn-primary btn-sm" data-sact="edit-saved" data-id="' + U().esc(qz.id) + '">Ch\u1ec9nh s\u1eeda</button>' +
+            '<button type="button" class="btn btn-outline btn-sm" data-sact="share-saved" data-id="' + U().esc(qz.id) + '">🔗 Chia s\u1ebb</button>' +
+            '<button type="button" class="btn btn-outline btn-sm" data-sact="pdf-saved" data-id="' + U().esc(qz.id) + '">🖨️ Xu\u1ea5t PDF</button>' +
+            '<button type="button" class="btn btn-outline btn-sm" data-sact="del-saved" data-id="' + U().esc(qz.id) + '">X\u00f3a</button>' +
           '</div></div>';
       }).join("") + '</div>';
     }
@@ -266,30 +266,30 @@
   function renderEditor(root) {
     const qz = sState.quiz || newEmptyQuiz();
     sState.quiz = qz;
-    const advLock = U().can("studioAdv") ? "" : " (⏱️ Tuỳ chỉnh thời gian riêng mở khóa đầy đủ từ gói Silver)";
+    const advLock = U().can("studioAdv") ? "" : " (⏱️ Tu\u1ef3 ch\u1ec9nh th\u1eddi gian ri\u00eang m\u1edf kh\u00f3a \u0111\u1ea7y \u0111\u1ee7 t\u1eeb g\u00f3i Silver)";
 
     let h = '<div class="studio-header">' +
-      '<button type="button" class="btn btn-outline btn-sm" data-sact="back-home">← Danh sách</button>' +
-      '<input type="text" id="stQuizTitle" value="' + U().esc(qz.title) + '" placeholder="Tên Quiz..." style="flex:1;min-width:180px;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-weight:700">' +
-      '<input type="text" id="stQuizTag" value="' + U().esc(qz.tag) + '" placeholder="Môn học / Tag" style="width:150px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">' +
+      '<button type="button" class="btn btn-outline btn-sm" data-sact="back-home">← Danh s\u00e1ch</button>' +
+      '<input type="text" id="stQuizTitle" value="' + U().esc(qz.title) + '" placeholder="T\u00ean Quiz..." style="flex:1;min-width:180px;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-weight:700">' +
+      '<input type="text" id="stQuizTag" value="' + U().esc(qz.tag) + '" placeholder="M\u00f4n h\u1ecdc / Tag" style="width:150px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">' +
       '<div style="display:flex;align-items:center;gap:6px">' +
-        timeSelectHTML(30, 'id="stBatchTime" aria-label="Thời gian hàng loạt"') +
-        '<button type="button" class="btn btn-outline btn-sm" data-sact="batch-time">Đặt thời gian hàng loạt</button>' +
+        timeSelectHTML(30, 'id="stBatchTime" aria-label="Th\u1eddi gian h\u00e0ng lo\u1ea1t"') +
+        '<button type="button" class="btn btn-outline btn-sm" data-sact="batch-time">\u0110\u1eb7t th\u1eddi gian h\u00e0ng lo\u1ea1t</button>' +
       '</div>' +
-      '<button type="button" class="btn btn-outline btn-sm" data-sact="save-deck">Lưu vào Kho đề</button>' +
-      '<button type="button" class="btn btn-outline btn-sm" data-sact="share-cur"' + (qz.questions.length === 0 ? " disabled" : "") + '>🔗 Chia sẻ</button>' +
-      '<button type="button" class="btn btn-outline btn-sm" data-sact="pdf-cur"' + (qz.questions.length === 0 ? " disabled" : "") + '>🖨️ Xuất PDF</button>' +
-      '<button type="button" class="btn btn-primary btn-sm" data-sact="save-quiz">💾 Lưu Quiz</button>' +
-      '<button type="button" class="btn btn-emerald btn-sm" data-sact="go-lobby"' + (qz.questions.length === 0 ? " disabled" : "") + '>▶ Bắt đầu làm bài (Play)</button>' +
+      '<button type="button" class="btn btn-outline btn-sm" data-sact="save-deck">L\u01b0u v\u00e0o Kho \u0111\u1ec1</button>' +
+      '<button type="button" class="btn btn-outline btn-sm" data-sact="share-cur"' + (qz.questions.length === 0 ? " disabled" : "") + '>🔗 Chia s\u1ebb</button>' +
+      '<button type="button" class="btn btn-outline btn-sm" data-sact="pdf-cur"' + (qz.questions.length === 0 ? " disabled" : "") + '>🖨️ Xu\u1ea5t PDF</button>' +
+      '<button type="button" class="btn btn-primary btn-sm" data-sact="save-quiz">💾 L\u01b0u Quiz</button>' +
+      '<button type="button" class="btn btn-emerald btn-sm" data-sact="go-lobby"' + (qz.questions.length === 0 ? " disabled" : "") + '>▶ B\u1eaft \u0111\u1ea7u l\u00e0m b\u00e0i (Play)</button>' +
     '</div>';
 
     h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">' +
-      '<span class="muted" style="font-size:.84rem">Tổng cộng <strong>' + qz.questions.length + '</strong> câu hỏi' + advLock + '</span>' +
-      '<button type="button" class="btn btn-primary" data-sact="add-q">+ Thêm câu hỏi mới</button>' +
+      '<span class="muted" style="font-size:.84rem">T\u1ed5ng c\u1ed9ng <strong>' + qz.questions.length + '</strong> c\u00e2u h\u1ecfi' + advLock + '</span>' +
+      '<button type="button" class="btn btn-primary" data-sact="add-q">+ Th\u00eam c\u00e2u h\u1ecfi m\u1edbi</button>' +
     '</div>';
 
     if (qz.questions.length === 0) {
-      h += '<div class="panel"><div class="empty-state">Quiz này chưa có câu hỏi nào. Nhấn <strong>+ Thêm câu hỏi mới</strong> để mở Question Builder chuẩn Quizizz!</div></div>';
+      h += '<div class="panel"><div class="empty-state">Quiz n\u00e0y ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi n\u00e0o. Nh\u1ea5n <strong>+ Th\u00eam c\u00e2u h\u1ecfi m\u1edbi</strong> \u0111\u1ec3 m\u1edf Question Builder chu\u1ea9n Quizizz!</div></div>';
     } else {
       h += '<div class="list">' + qz.questions.map(function (q, idx) {
         const opts = q.options.map(function (o, k) {
@@ -298,18 +298,18 @@
         }).join("");
         return '<article class="studio-q-card">' +
           '<div class="studio-q-head">' +
-            '<div style="display:flex;align-items:center;gap:8px"><span class="badge">Câu ' + (idx + 1) + '</span><span class="muted" style="font-size:.78rem">' + (q.type === "multiple" ? "Nhiều đáp án" : "1 đáp án") + '</span></div>' +
+            '<div style="display:flex;align-items:center;gap:8px"><span class="badge">C\u00e2u ' + (idx + 1) + '</span><span class="muted" style="font-size:.78rem">' + (q.type === "multiple" ? "Nhi\u1ec1u \u0111\u00e1p \u00e1n" : "1 \u0111\u00e1p \u00e1n") + '</span></div>' +
             '<div class="deck-actions">' +
-              timeSelectHTML(q.time, 'data-sact="q-time" data-idx="' + idx + '" aria-label="Thời gian câu ' + (idx + 1) + '"') +
-              '<button type="button" class="btn btn-outline btn-sm" data-sact="edit-q" data-idx="' + idx + '">✏️ Chỉnh sửa</button>' +
-              '<button type="button" class="btn btn-outline btn-sm" data-sact="dup-q" data-idx="' + idx + '">📋 Nhân bản</button>' +
-              '<button type="button" class="btn btn-outline btn-sm" data-sact="del-q" data-idx="' + idx + '">🗑 Xóa</button>' +
+              timeSelectHTML(q.time, 'data-sact="q-time" data-idx="' + idx + '" aria-label="Th\u1eddi gian c\u00e2u ' + (idx + 1) + '"') +
+              '<button type="button" class="btn btn-outline btn-sm" data-sact="edit-q" data-idx="' + idx + '">✏️ Ch\u1ec9nh s\u1eeda</button>' +
+              '<button type="button" class="btn btn-outline btn-sm" data-sact="dup-q" data-idx="' + idx + '">📋 Nh\u00e2n b\u1ea3n</button>' +
+              '<button type="button" class="btn btn-outline btn-sm" data-sact="del-q" data-idx="' + idx + '">🗑 X\u00f3a</button>' +
             '</div>' +
           '</div>' +
           '<div class="rich-text" style="font-weight:700;font-size:1.02rem">' + U().renderRich(q.text) + '</div>' +
           (q.image ? '<img src="' + U().esc(q.image) + '" alt="" style="max-height:160px;border-radius:10px;align-self:flex-start" onerror="this.style.display=\'none\'">' : "") +
           '<div class="studio-opts-grid">' + opts + '</div>' +
-          (q.explanation ? '<div class="explain-box rich-text" style="margin-top:4px;font-size:.84rem"><strong>Giải thích:</strong> ' + U().renderRich(q.explanation) + '</div>' : "") +
+          (q.explanation ? '<div class="explain-box rich-text" style="margin-top:4px;font-size:.84rem"><strong>Gi\u1ea3i th\u00edch:</strong> ' + U().renderRich(q.explanation) + '</div>' : "") +
         '</article>';
       }).join("") + '</div>';
     }
@@ -330,34 +330,34 @@
     if (!host) return;
     host.innerHTML =
       '<div class="modal-overlay" id="qbModal" role="dialog" aria-modal="true"><div class="modal modal-lg">' +
-        '<h3>' + (isNew ? "Tạo câu hỏi mới (Question Builder)" : ("Chỉnh sửa câu #" + (idx + 1))) + '</h3>' +
+        '<h3>' + (isNew ? "T\u1ea1o c\u00e2u h\u1ecfi m\u1edbi (Question Builder)" : ("Ch\u1ec9nh s\u1eeda c\u00e2u #" + (idx + 1))) + '</h3>' +
         '<div class="qb-toolbar">' +
-          '<button type="button" data-fmt="b" title="In đậm"><b>B</b></button>' +
-          '<button type="button" data-fmt="i" title="In nghiêng"><i>I</i></button>' +
-          '<button type="button" data-fmt="u" title="Gạch chân"><u>U</u></button>' +
-          '<button type="button" data-fmt="math" title="Chèn công thức Toán LaTeX">∑ Công thức Toán (LaTeX)</button>' +
-          '<button type="button" data-fmt="img" title="Chèn ảnh">🖼️ Chèn link ảnh</button>' +
+          '<button type="button" data-fmt="b" title="In \u0111\u1eadm"><b>B</b></button>' +
+          '<button type="button" data-fmt="i" title="In nghi\u00eang"><i>I</i></button>' +
+          '<button type="button" data-fmt="u" title="G\u1ea1ch ch\u00e2n"><u>U</u></button>' +
+          '<button type="button" data-fmt="math" title="Ch\u00e8n c\u00f4ng th\u1ee9c To\u00e1n LaTeX">∑ C\u00f4ng th\u1ee9c To\u00e1n (LaTeX)</button>' +
+          '<button type="button" data-fmt="img" title="Ch\u00e8n \u1ea3nh">🖼️ Ch\u00e8n link \u1ea3nh</button>' +
           '<select id="qbType" style="margin-left:auto;padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.82rem">' +
-            '<option value="single"' + (q.type === "single" ? " selected" : "") + '>Single Choice (1 đáp án)</option>' +
-            '<option value="multiple"' + (q.type === "multiple" ? " selected" : "") + '>Multiple Choice (Nhiều đáp án)</option>' +
+            '<option value="single"' + (q.type === "single" ? " selected" : "") + '>Single Choice (1 \u0111\u00e1p \u00e1n)</option>' +
+            '<option value="multiple"' + (q.type === "multiple" ? " selected" : "") + '>Multiple Choice (Nhi\u1ec1u \u0111\u00e1p \u00e1n)</option>' +
           '</select>' +
           timeSelectHTML(q.time, 'id="qbTime"') +
         '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
-          '<label class="field" style="margin:0">Nội dung câu hỏi<textarea id="qbText" rows="4" placeholder="Nhập câu hỏi... (dùng $...$ cho công thức LaTeX, <u>...</u> cho gạch chân)">' + U().esc(q.text) + '</textarea></label>' +
-          '<div class="field" style="margin:0"><span>Xem trước trực tiếp (KaTeX + HTML)</span><div id="qbPrev" class="rich-text" style="padding:10px;border:1px solid var(--border);border-radius:10px;min-height:92px;background:var(--bg2)">' + U().renderRich(q.text) + '</div></div>' +
+          '<label class="field" style="margin:0">N\u1ed9i dung c\u00e2u h\u1ecfi<textarea id="qbText" rows="4" placeholder="Nh\u1eadp c\u00e2u h\u1ecfi... (d\u00f9ng $...$ cho c\u00f4ng th\u1ee9c LaTeX, <u>...</u> cho g\u1ea1ch ch\u00e2n)">' + U().esc(q.text) + '</textarea></label>' +
+          '<div class="field" style="margin:0"><span>Xem tr\u01b0\u1edbc tr\u1ef1c ti\u1ebfp (KaTeX + HTML)</span><div id="qbPrev" class="rich-text" style="padding:10px;border:1px solid var(--border);border-radius:10px;min-height:92px;background:var(--bg2)">' + U().renderRich(q.text) + '</div></div>' +
         '</div>' +
-        '<div id="qbImgRow" class="field' + (q.image ? "" : " hidden") + '">Link hình ảnh minh họa<input type="url" id="qbImage" value="' + U().esc(q.image || "") + '" placeholder="https://..."></div>' +
-        '<div class="field" style="margin-top:12px"><span>Các phương án trả lời (bấm nút tròn ✓ để chọn đáp án đúng)</span></div>' +
+        '<div id="qbImgRow" class="field' + (q.image ? "" : " hidden") + '">Link h\u00ecnh \u1ea3nh minh h\u1ecda<input type="url" id="qbImage" value="' + U().esc(q.image || "") + '" placeholder="https://..."></div>' +
+        '<div class="field" style="margin-top:12px"><span>C\u00e1c ph\u01b0\u01a1ng \u00e1n tr\u1ea3 l\u1eddi (b\u1ea5m n\u00fat tr\u00f2n ✓ \u0111\u1ec3 ch\u1ecdn \u0111\u00e1p \u00e1n \u0111\u00fang)</span></div>' +
         '<div class="qz-builder-grid">' + [0, 1, 2, 3, 4].map(function (k) {
           const on = q.correct.indexOf(k) !== -1;
           return '<div class="qz-opt-box c' + k + '">' +
-            '<button type="button" class="qz-tick' + (on ? " on" : "") + '" data-qbtick="' + k + '" title="Chọn đáp án đúng">' + (on ? "✓" : "") + '</button>' +
-            '<input type="text" id="qbOpt_' + k + '" value="' + U().esc(q.options[k] || "") + '" placeholder="Phương án ' + U().LETTERS.charAt(k) + (k >= 2 ? " (tùy chọn)" : "") + '">' +
+            '<button type="button" class="qz-tick' + (on ? " on" : "") + '" data-qbtick="' + k + '" title="Ch\u1ecdn \u0111\u00e1p \u00e1n \u0111\u00fang">' + (on ? "✓" : "") + '</button>' +
+            '<input type="text" id="qbOpt_' + k + '" value="' + U().esc(q.options[k] || "") + '" placeholder="Ph\u01b0\u01a1ng \u00e1n ' + U().LETTERS.charAt(k) + (k >= 2 ? " (t\u00f9y ch\u1ecdn)" : "") + '">' +
           '</div>';
         }).join("") + '</div>' +
-        '<label class="field" style="margin-top:12px">Giải thích đáp án (tùy chọn)<textarea id="qbExp" rows="2" placeholder="Giải thích ngắn gọn (hỗ trợ LaTeX $...$)...">' + U().esc(q.explanation || "") + '</textarea></label>' +
-        '<div class="modal-actions"><button type="button" class="btn btn-outline" id="qbCancel">Hủy</button><button type="button" class="btn btn-primary" id="qbSave">Lưu câu hỏi</button></div>' +
+        '<label class="field" style="margin-top:12px">Gi\u1ea3i th\u00edch \u0111\u00e1p \u00e1n (t\u00f9y ch\u1ecdn)<textarea id="qbExp" rows="2" placeholder="Gi\u1ea3i th\u00edch ng\u1eafn g\u1ecdn (h\u1ed7 tr\u1ee3 LaTeX $...$)...">' + U().esc(q.explanation || "") + '</textarea></label>' +
+        '<div class="modal-actions"><button type="button" class="btn btn-outline" id="qbCancel">H\u1ee7y</button><button type="button" class="btn btn-primary" id="qbSave">L\u01b0u c\u00e2u h\u1ecfi</button></div>' +
       '</div></div>';
 
     const modal = U().$("qbModal");
@@ -374,9 +374,9 @@
       const fb = ev.target.closest("[data-fmt]");
       if (fb) {
         const f = fb.getAttribute("data-fmt");
-        if (f === "b") wrapSel("<b>", "</b>", "chữ in đậm");
-        else if (f === "i") wrapSel("<i>", "</i>", "chữ in nghiêng");
-        else if (f === "u") wrapSel("<u>", "</u>", "chữ gạch chân");
+        if (f === "b") wrapSel("<b>", "</b>", "ch\u1eef in \u0111\u1eadm");
+        else if (f === "i") wrapSel("<i>", "</i>", "ch\u1eef in nghi\u00eang");
+        else if (f === "u") wrapSel("<u>", "</u>", "ch\u1eef g\u1ea1ch ch\u00e2n");
         else if (f === "math") wrapSel("$", "$", "\\frac{a}{b}");
         else if (f === "img") U().toggleEl("qbImgRow", true);
         return;
@@ -402,7 +402,7 @@
     U().on("qbCancel", "click", function () { host.innerHTML = ""; });
     U().on("qbSave", "click", function () {
       const text = ta.value.trim();
-      if (!text) { U().showToast("Vui lòng nhập nội dung câu hỏi.", "warning"); return; }
+      if (!text) { U().showToast("Vui l\u00f2ng nh\u1eadp n\u1ed9i dung c\u00e2u h\u1ecfi.", "warning"); return; }
       const opts = [], newCorr = [];
       for (let k = 0; k < 5; k++) {
         const v = U().$("qbOpt_" + k).value.trim();
@@ -411,8 +411,8 @@
           opts.push(v);
         }
       }
-      if (opts.length < 2) { U().showToast("Cần ít nhất 2 phương án trả lời.", "warning"); return; }
-      if (newCorr.length === 0) { U().showToast("Vui lòng chọn ít nhất 1 đáp án đúng.", "warning"); return; }
+      if (opts.length < 2) { U().showToast("C\u1ea7n \u00edt nh\u1ea5t 2 ph\u01b0\u01a1ng \u00e1n tr\u1ea3 l\u1eddi.", "warning"); return; }
+      if (newCorr.length === 0) { U().showToast("Vui l\u00f2ng ch\u1ecdn \u00edt nh\u1ea5t 1 \u0111\u00e1p \u00e1n \u0111\u00fang.", "warning"); return; }
       const item = {
         id: q.id, text: text, type: newCorr.length > 1 || U().$("qbType").value === "multiple" ? "multiple" : "single",
         options: opts, correct: newCorr, time: parseInt(U().$("qbTime").value, 10) || 0,
@@ -422,7 +422,7 @@
       if (isNew) qz.questions.push(item); else qz.questions[idx] = item;
       host.innerHTML = "";
       render();
-      U().showToast("Đã cập nhật câu hỏi.", "success");
+      U().showToast("\u0110\u00e3 c\u1eadp nh\u1eadt c\u00e2u h\u1ecfi.", "success");
     });
   }
 
@@ -447,7 +447,7 @@
         const e = Math.min(c * info.size, total);
         const cnt = e - s + 1;
         opts += '<option value="' + c + '"' + (lb.sessionIdx === c ? " selected" : "") + '>' +
-          (doneMap[String(c)] ? "✓ " : "") + "Phiên " + c + "/" + info.totalSessions + " (Câu " + s + "–" + e + " · " + cnt + " câu)</option>";
+          (doneMap[String(c)] ? "✓ " : "") + "Phi\u00ean " + c + "/" + info.totalSessions + " (C\u00e2u " + s + "–" + e + " · " + cnt + " c\u00e2u)</option>";
       }
       // Clickable pills for fast jumping (cap pill grid at 60 items so 824/4=206 stays ultra-snappy via dropdown)
       let pillsHtml = "";
@@ -458,8 +458,8 @@
           const e = Math.min(c * info.size, total);
           const cnt = e - s + 1;
           const done = !!doneMap[String(c)];
-          pillsHtml += '<button type="button" class="pill' + (lb.sessionIdx === c ? " active" : "") + '" data-sact="pick-sess" data-sess="' + c + '" title="Câu ' + s + '–' + e + '">' +
-            (done ? "✓ " : "") + "Phiên " + c + " (" + cnt + ")</button>";
+          pillsHtml += '<button type="button" class="pill' + (lb.sessionIdx === c ? " active" : "") + '" data-sact="pick-sess" data-sess="' + c + '" title="C\u00e2u ' + s + '–' + e + '">' +
+            (done ? "✓ " : "") + "Phi\u00ean " + c + " (" + cnt + ")</button>";
         }
         pillsHtml += "</div>";
       }
@@ -467,12 +467,12 @@
         '<div style="margin-top:10px">' +
           '<div class="pills pills-sm" style="margin-bottom:6px">' +
             [4, 5, 10, 25, 50, 100].map(function (n) {
-              return '<button type="button" class="pill' + (info.size === n ? " active" : "") + '" data-sact="sess-preset" data-val="' + n + '">' + n + ' câu/phiên</button>';
+              return '<button type="button" class="pill' + (info.size === n ? " active" : "") + '" data-sact="sess-preset" data-val="' + n + '">' + n + ' c\u00e2u/phi\u00ean</button>';
             }).join("") +
           '</div>' +
           '<div style="display:grid;grid-template-columns:160px 1fr;gap:10px;align-items:end">' +
-            '<label class="field" style="margin:0">Số câu mỗi phiên<input type="number" id="lbPerSession" min="1" max="' + total + '" value="' + info.size + '"></label>' +
-            '<label class="field" style="margin:0">Chọn phiên muốn làm<select id="lbSessionIdx">' + opts + '</select></label>' +
+            '<label class="field" style="margin:0">S\u1ed1 c\u00e2u m\u1ed7i phi\u00ean<input type="number" id="lbPerSession" min="1" max="' + total + '" value="' + info.size + '"></label>' +
+            '<label class="field" style="margin:0">Ch\u1ecdn phi\u00ean mu\u1ed1n l\u00e0m<select id="lbSessionIdx">' + opts + '</select></label>' +
           '</div>' +
           '<div class="checkout-notice" style="margin:8px 0 0;padding:8px 12px;font-size:.82rem">📊 <strong>' + U().esc(info.summary) + '</strong></div>' +
           pillsHtml +
@@ -480,62 +480,62 @@
     } else if (lb.splitMode === "random") {
       sessionPickerHtml =
         '<div style="margin-top:8px;display:flex;align-items:end;gap:10px;flex-wrap:wrap">' +
-          '<label class="field" style="margin:0;width:200px">Số câu ngẫu nhiên (1–' + total + ')<input type="number" id="lbRandomCount" min="1" max="' + total + '" value="' + lb.randomCount + '"></label>' +
+          '<label class="field" style="margin:0;width:200px">S\u1ed1 c\u00e2u ng\u1eabu nhi\u00ean (1–' + total + ')<input type="number" id="lbRandomCount" min="1" max="' + total + '" value="' + lb.randomCount + '"></label>' +
           '<div class="pills pills-sm" style="margin:0">' +
             [4, 5, 10, 20, 40, 50].filter(function (n) { return n <= total; }).map(function (n) {
-              return '<button type="button" class="pill' + (lb.randomCount === n ? " active" : "") + '" data-sact="rand-preset" data-val="' + n + '">' + n + ' câu</button>';
+              return '<button type="button" class="pill' + (lb.randomCount === n ? " active" : "") + '" data-sact="rand-preset" data-val="' + n + '">' + n + ' c\u00e2u</button>';
             }).join("") +
           '</div>' +
         '</div>';
     }
 
     const startLabel = lb.splitMode === "sessions"
-      ? ("🚀 Bắt đầu Phiên " + lb.sessionIdx + "/" + info.totalSessions + " (" + (Math.min(lb.sessionIdx * info.size, total) - (lb.sessionIdx - 1) * info.size) + " câu)")
-      : (lb.splitMode === "random" ? ("🚀 Bắt đầu (" + lb.randomCount + " câu ngẫu nhiên)") : ("🚀 Bắt đầu toàn bộ (" + total + " câu)"));
+      ? ("🚀 B\u1eaft \u0111\u1ea7u Phi\u00ean " + lb.sessionIdx + "/" + info.totalSessions + " (" + (Math.min(lb.sessionIdx * info.size, total) - (lb.sessionIdx - 1) * info.size) + " c\u00e2u)")
+      : (lb.splitMode === "random" ? ("🚀 B\u1eaft \u0111\u1ea7u (" + lb.randomCount + " c\u00e2u ng\u1eabu nhi\u00ean)") : ("🚀 B\u1eaft \u0111\u1ea7u to\u00e0n b\u1ed9 (" + total + " c\u00e2u)"));
 
     root.innerHTML =
       '<div class="panel" style="max-width:780px;margin:0 auto">' +
-        '<div class="panel-head"><div><h2>⚙️ Cài đặt trước khi làm bài (Quiz Lobby)</h2>' +
-        '<p class="muted" style="margin:0">' + U().esc(qz.title) + ' • <strong>' + total + '</strong> câu hỏi</p></div>' +
-        '<button type="button" class="btn btn-outline btn-sm" data-sact="back-editor">← Quay lại Editor</button></div>' +
+        '<div class="panel-head"><div><h2>⚙️ C\u00e0i \u0111\u1eb7t tr\u01b0\u1edbc khi l\u00e0m b\u00e0i (Quiz Lobby)</h2>' +
+        '<p class="muted" style="margin:0">' + U().esc(qz.title) + ' • <strong>' + total + '</strong> c\u00e2u h\u1ecfi</p></div>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-sact="back-editor">← Quay l\u1ea1i Editor</button></div>' +
 
         /* Session Splitter Box (Free for all users!) */
         '<div class="radio-group" style="margin-bottom:14px;background:var(--bg2)">' +
-          '<legend style="font-weight:700;font-size:.86rem">📦 Chọn số lượng câu &amp; Chia phiên làm bài</legend>' +
+          '<legend style="font-weight:700;font-size:.86rem">📦 Ch\u1ecdn s\u1ed1 l\u01b0\u1ee3ng c\u00e2u &amp; Chia phi\u00ean l\u00e0m b\u00e0i</legend>' +
           '<div class="pills" style="margin:6px 0 0">' +
-            '<button type="button" class="pill' + (lb.splitMode === "sessions" ? " active" : "") + '" data-sact="split-mode" data-val="sessions">Chia nhiều phiên (VD: 50 câu/phiên)</button>' +
-            '<button type="button" class="pill' + (lb.splitMode === "random" ? " active" : "") + '" data-sact="split-mode" data-val="random">Chọn ngẫu nhiên N câu</button>' +
-            '<button type="button" class="pill' + (lb.splitMode === "all" ? " active" : "") + '" data-sact="split-mode" data-val="all">Làm toàn bộ (' + total + ' câu)</button>' +
+            '<button type="button" class="pill' + (lb.splitMode === "sessions" ? " active" : "") + '" data-sact="split-mode" data-val="sessions">Chia nhi\u1ec1u phi\u00ean (VD: 50 c\u00e2u/phi\u00ean)</button>' +
+            '<button type="button" class="pill' + (lb.splitMode === "random" ? " active" : "") + '" data-sact="split-mode" data-val="random">Ch\u1ecdn ng\u1eabu nhi\u00ean N c\u00e2u</button>' +
+            '<button type="button" class="pill' + (lb.splitMode === "all" ? " active" : "") + '" data-sact="split-mode" data-val="all">L\u00e0m to\u00e0n b\u1ed9 (' + total + ' c\u00e2u)</button>' +
           '</div>' +
           sessionPickerHtml +
         '</div>' +
 
-        (!advOk ? '<p class="lock-note">🔒 Một số tính năng nâng cao (Streak 🔥, Redemption Question, Đảo đề/đáp án) mở khóa từ Gói Silver trở lên.</p>' : "") +
+        (!advOk ? '<p class="lock-note">🔒 M\u1ed9t s\u1ed1 t\u00ednh n\u0103ng n\u00e2ng cao (Streak 🔥, Redemption Question, \u0110\u1ea3o \u0111\u1ec1/\u0111\u00e1p \u00e1n) m\u1edf kh\u00f3a t\u1eeb G\u00f3i Silver tr\u1edf l\u00ean.</p>' : "") +
 
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">' +
-          '<label class="field">Chế độ thời gian<select id="lbTimeMode">' +
-            '<option value="per_q"' + (lb.timeMode === "per_q" ? " selected" : "") + '>Dùng thời gian riêng từng câu</option>' +
-            '<option value="uniform"' + (lb.timeMode === "uniform" ? " selected" : "") + '>Ghi đè thời gian chung cho tất cả câu</option>' +
-            '<option value="unlimited"' + (lb.timeMode === "unlimited" ? " selected" : "") + '>Không giới hạn thời gian</option>' +
+          '<label class="field">Ch\u1ebf \u0111\u1ed9 th\u1eddi gian<select id="lbTimeMode">' +
+            '<option value="per_q"' + (lb.timeMode === "per_q" ? " selected" : "") + '>D\u00f9ng th\u1eddi gian ri\u00eang t\u1eebng c\u00e2u</option>' +
+            '<option value="uniform"' + (lb.timeMode === "uniform" ? " selected" : "") + '>Ghi \u0111\u00e8 th\u1eddi gian chung cho t\u1ea5t c\u1ea3 c\u00e2u</option>' +
+            '<option value="unlimited"' + (lb.timeMode === "unlimited" ? " selected" : "") + '>Kh\u00f4ng gi\u1edbi h\u1ea1n th\u1eddi gian</option>' +
           '</select></label>' +
-          '<label class="field">Thời gian chung (giây)<input type="number" id="lbUniformSec" min="5" max="600" value="' + lb.uniformSec + '"' + (lb.timeMode !== "uniform" ? " disabled" : "") + '></label>' +
-          '<label class="field">Hiện đáp án đúng sau mỗi câu<select id="lbShowAnswer">' +
-            '<option value="full"' + (lb.showAnswer === "full" ? " selected" : "") + '>Bật (Hiện đáp án đúng + Đúng/Sai)</option>' +
-            '<option value="right_wrong"' + (lb.showAnswer === "right_wrong" ? " selected" : "") + '>Chỉ hiện Đúng / Sai</option>' +
-            '<option value="off"' + (lb.showAnswer === "off" ? " selected" : "") + '>Tắt (Ẩn cho đến khi nộp bài)</option>' +
+          '<label class="field">Th\u1eddi gian chung (gi\u00e2y)<input type="number" id="lbUniformSec" min="5" max="600" value="' + lb.uniformSec + '"' + (lb.timeMode !== "uniform" ? " disabled" : "") + '></label>' +
+          '<label class="field">Hi\u1ec7n \u0111\u00e1p \u00e1n \u0111\u00fang sau m\u1ed7i c\u00e2u<select id="lbShowAnswer">' +
+            '<option value="full"' + (lb.showAnswer === "full" ? " selected" : "") + '>B\u1eadt (Hi\u1ec7n \u0111\u00e1p \u00e1n \u0111\u00fang + \u0110\u00fang/Sai)</option>' +
+            '<option value="right_wrong"' + (lb.showAnswer === "right_wrong" ? " selected" : "") + '>Ch\u1ec9 hi\u1ec7n \u0110\u00fang / Sai</option>' +
+            '<option value="off"' + (lb.showAnswer === "off" ? " selected" : "") + '>T\u1eaft (\u1ea8n cho \u0111\u1ebfn khi n\u1ed9p b\u00e0i)</option>' +
           '</select></label>' +
-          '<div class="field"><span>Tùy chọn hiển thị</span>' +
-            '<label class="check-row" style="margin:4px 0"><input type="checkbox" id="lbShowExplain"' + (lb.showExplain ? " checked" : "") + '> Hiện giải thích đáp án ngay sau mỗi câu</label>' +
-            '<label class="check-row" style="margin:4px 0"><input type="checkbox" id="lbAllowReview"' + (lb.allowReview ? " checked" : "") + '> Cho phép xem lại bài làm &amp; đáp án sau khi nộp</label>' +
+          '<div class="field"><span>T\u00f9y ch\u1ecdn hi\u1ec3n th\u1ecb</span>' +
+            '<label class="check-row" style="margin:4px 0"><input type="checkbox" id="lbShowExplain"' + (lb.showExplain ? " checked" : "") + '> Hi\u1ec7n gi\u1ea3i th\u00edch \u0111\u00e1p \u00e1n ngay sau m\u1ed7i c\u00e2u</label>' +
+            '<label class="check-row" style="margin:4px 0"><input type="checkbox" id="lbAllowReview"' + (lb.allowReview ? " checked" : "") + '> Cho ph\u00e9p xem l\u1ea1i b\u00e0i l\u00e0m &amp; \u0111\u00e1p \u00e1n sau khi n\u1ed9p</label>' +
           '</div>' +
         '</div>' +
 
-        '<div class="radio-group" style="margin-top:12px"><legend style="font-weight:700;font-size:.86rem">Tùy chọn nâng cao chuẩn Quizizz</legend>' +
-          '<label class="check-row"><input type="checkbox" id="lbShuffleQ"' + (lb.shuffleQ && advOk ? " checked" : "") + (!advOk ? " disabled" : "") + '> Đảo thứ tự câu hỏi</label>' +
-          '<label class="check-row"><input type="checkbox" id="lbShuffleO"' + (lb.shuffleO && advOk ? " checked" : "") + (!advOk ? " disabled" : "") + '> Đảo thứ tự đáp án (Zero-Drift)</label>' +
-          '<label class="check-row"><input type="checkbox" id="lbSound"' + (lb.sound ? " checked" : "") + '> Bật âm thanh hiệu ứng Đúng / Sai</label>' +
-          '<label class="check-row"><input type="checkbox" id="lbStreak"' + (lb.streak && advOk ? " checked" : "") + (!advOk ? " disabled" : "") + '> Bật thanh Streak 🔥 &amp; điểm thưởng tốc độ</label>' +
-          '<label class="check-row"><input type="checkbox" id="lbRedemption"' + (lb.redemption && advOk ? " checked" : "") + (!advOk ? " disabled" : "") + '> Câu hỏi cứu vớt (Redemption Question – làm lại câu sai ở cuối bài)</label>' +
+        '<div class="radio-group" style="margin-top:12px"><legend style="font-weight:700;font-size:.86rem">T\u00f9y ch\u1ecdn n\u00e2ng cao chu\u1ea9n Quizizz</legend>' +
+          '<label class="check-row"><input type="checkbox" id="lbShuffleQ"' + (lb.shuffleQ && advOk ? " checked" : "") + (!advOk ? " disabled" : "") + '> \u0110\u1ea3o th\u1ee9 t\u1ef1 c\u00e2u h\u1ecfi</label>' +
+          '<label class="check-row"><input type="checkbox" id="lbShuffleO"' + (lb.shuffleO && advOk ? " checked" : "") + (!advOk ? " disabled" : "") + '> \u0110\u1ea3o th\u1ee9 t\u1ef1 \u0111\u00e1p \u00e1n (Zero-Drift)</label>' +
+          '<label class="check-row"><input type="checkbox" id="lbSound"' + (lb.sound ? " checked" : "") + '> B\u1eadt \u00e2m thanh hi\u1ec7u \u1ee9ng \u0110\u00fang / Sai</label>' +
+          '<label class="check-row"><input type="checkbox" id="lbStreak"' + (lb.streak && advOk ? " checked" : "") + (!advOk ? " disabled" : "") + '> B\u1eadt thanh Streak 🔥 &amp; \u0111i\u1ec3m th\u01b0\u1edfng t\u1ed1c \u0111\u1ed9</label>' +
+          '<label class="check-row"><input type="checkbox" id="lbRedemption"' + (lb.redemption && advOk ? " checked" : "") + (!advOk ? " disabled" : "") + '> C\u00e2u h\u1ecfi c\u1ee9u v\u1edbt (Redemption Question – l\u00e0m l\u1ea1i c\u00e2u sai \u1edf cu\u1ed1i b\u00e0i)</label>' +
         '</div>' +
 
         '<div class="modal-actions">' +
@@ -705,7 +705,7 @@
         pl.selected = [];
         pl.locked = false;
         pl.lastOk = null;
-        U().showToast("🔥 Câu hỏi cứu vớt (Redemption)! Làm lại " + pl.questions.length + " câu sai để gỡ điểm!", "info");
+        U().showToast("🔥 C\u00e2u h\u1ecfi c\u1ee9u v\u1edbt (Redemption)! L\u00e0m l\u1ea1i " + pl.questions.length + " c\u00e2u sai \u0111\u1ec3 g\u1ee1 \u0111i\u1ec3m!", "info");
         startQuestionClock();
         render();
         return;
@@ -723,7 +723,7 @@
     if (pl.sessionMeta && sState.quiz) {
       markSessionDone(sState.quiz.id, pl.sessionMeta.perSession, pl.sessionMeta.idx);
     }
-    const sessSuffix = pl.sessionMeta ? (" – Phiên " + pl.sessionMeta.idx + "/" + pl.sessionMeta.totalSessions) : "";
+    const sessSuffix = pl.sessionMeta ? (" – Phi\u00ean " + pl.sessionMeta.idx + "/" + pl.sessionMeta.totalSessions) : "";
     U().recordStats(sState.quiz ? (sState.quiz.deckId || sState.quiz.id) : "studio", total, pl.correctCount);
     U().saveExamHistory({
       deckId: sState.quiz ? sState.quiz.id : "studio",
@@ -748,21 +748,21 @@
     const showRW = pl.locked && (lb.showAnswer === "full" || lb.showAnswer === "right_wrong");
 
     let h = '<div class="qz-player-shell">' +
-      (pl.redemptionMode ? '<div class="pending-banner" style="margin:0">🔥 <strong>Vòng Cứu vớt (Redemption Question):</strong> Trả lời đúng để gỡ lại câu bạn vừa làm sai!</div>' : "") +
+      (pl.redemptionMode ? '<div class="pending-banner" style="margin:0">🔥 <strong>V\u00f2ng C\u1ee9u v\u1edbt (Redemption Question):</strong> Tr\u1ea3 l\u1eddi \u0111\u00fang \u0111\u1ec3 g\u1ee1 l\u1ea1i c\u00e2u b\u1ea1n v\u1eeba l\u00e0m sai!</div>' : "") +
       '<div class="qz-topbar">' +
         '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:160px">' +
-          (pl.sessionMeta ? '<span class="badge badge-warn">Phiên ' + pl.sessionMeta.idx + "/" + pl.sessionMeta.totalSessions + '</span>' : "") +
+          (pl.sessionMeta ? '<span class="badge badge-warn">Phi\u00ean ' + pl.sessionMeta.idx + "/" + pl.sessionMeta.totalSessions + '</span>' : "") +
           '<span class="badge">' + (pl.idx + 1) + "/" + total + '</span>' +
           '<div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:' + pct + '%"></div></div>' +
         '</div>' +
-        (q.time > 0 ? '<span class="qz-timer' + (pl.remSec > 0 && pl.remSec < 5 ? " danger" : "") + '" id="qzTimerBox">⏱ ' + pl.remSec + 's</span>' : '<span class="badge">∞ Không giới hạn</span>') +
+        (q.time > 0 ? '<span class="qz-timer' + (pl.remSec > 0 && pl.remSec < 5 ? " danger" : "") + '" id="qzTimerBox">⏱ ' + pl.remSec + 's</span>' : '<span class="badge">∞ Kh\u00f4ng gi\u1edbi h\u1ea1n</span>') +
         (lb.streak && U().can("studioAdv") ? '<span class="qz-streak">🔥 Streak ' + pl.streak + '</span>' : "") +
-        '<span class="badge badge-ok" style="font-size:.9rem">⭐ ' + pl.score + ' điểm</span>' +
-        '<button type="button" class="btn btn-outline btn-sm" data-sact="quit-play">Thoát</button>' +
+        '<span class="badge badge-ok" style="font-size:.9rem">⭐ ' + pl.score + ' \u0111i\u1ec3m</span>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-sact="quit-play">Tho\u00e1t</button>' +
       '</div>' +
 
       '<div class="qz-question-box">' +
-        '<div class="muted" style="font-size:.82rem;margin-bottom:6px">' + (q.type === "multiple" ? "Chọn nhiều đáp án rồi bấm Xác nhận (Enter)" : "Chọn một đáp án (phím tắt 1–" + q.options.length + ")") + '</div>' +
+        '<div class="muted" style="font-size:.82rem;margin-bottom:6px">' + (q.type === "multiple" ? "Ch\u1ecdn nhi\u1ec1u \u0111\u00e1p \u00e1n r\u1ed3i b\u1ea5m X\u00e1c nh\u1eadn (Enter)" : "Ch\u1ecdn m\u1ed9t \u0111\u00e1p \u00e1n (ph\u00edm t\u1eaft 1–" + q.options.length + ")") + '</div>' +
         '<div class="q-text rich-text">' + U().renderRich(q.text) + '</div>' +
         (q.image ? '<img src="' + U().esc(q.image) + '" alt="" style="max-height:260px;max-width:100%;border-radius:12px" onerror="this.style.display=\'none\'">' : "") +
       '</div>' +
@@ -784,16 +784,16 @@
       }).join("") + '</div>';
 
     if (!pl.locked && q.type === "multiple") {
-      h += '<div style="text-align:center"><button type="button" class="btn btn-emerald" data-sact="submit-multi"' + (pl.selected.length === 0 ? " disabled" : "") + '>Xác nhận đáp án (Enter)</button></div>';
+      h += '<div style="text-align:center"><button type="button" class="btn btn-emerald" data-sact="submit-multi"' + (pl.selected.length === 0 ? " disabled" : "") + '>X\u00e1c nh\u1eadn \u0111\u00e1p \u00e1n (Enter)</button></div>';
     }
     if (pl.locked) {
       if (showRW) {
-        h += '<div class="feedback ' + (pl.lastOk ? "ok" : "bad") + '" style="text-align:center">' + (pl.lastOk ? "🎉 Chính xác!" : "❌ Chưa chính xác!") + '</div>';
+        h += '<div class="feedback ' + (pl.lastOk ? "ok" : "bad") + '" style="text-align:center">' + (pl.lastOk ? "🎉 Ch\u00ednh x\u00e1c!" : "❌ Ch\u01b0a ch\u00ednh x\u00e1c!") + '</div>';
       }
       if (lb.showExplain && q.explanation) {
-        h += '<div class="explain-box rich-text"><strong>Giải thích:</strong> ' + U().renderRich(q.explanation) + '</div>';
+        h += '<div class="explain-box rich-text"><strong>Gi\u1ea3i th\u00edch:</strong> ' + U().renderRich(q.explanation) + '</div>';
       }
-      h += '<div style="text-align:center"><button type="button" class="btn btn-primary" data-sact="next-q">Câu tiếp theo → (Enter)</button></div>';
+      h += '<div style="text-align:center"><button type="button" class="btn btn-primary" data-sact="next-q">C\u00e2u ti\u1ebfp theo → (Enter)</button></div>';
     }
     h += '</div>';
     root.innerHTML = h;
@@ -811,32 +811,32 @@
     const sm = pl.sessionMeta;
     const hasNextSess = sm && sm.idx < sm.totalSessions;
     let h = '<div class="panel" style="max-width:920px;margin:0 auto">' +
-      '<div style="text-align:center;margin-bottom:18px"><h2>🏆 Tổng kết Quiz – ' + U().esc(sState.quiz ? sState.quiz.title : "") + (sm ? (' <span class="badge">Phiên ' + sm.idx + "/" + sm.totalSessions + '</span>') : "") + '</h2></div>' +
+      '<div style="text-align:center;margin-bottom:18px"><h2>🏆 T\u1ed5ng k\u1ebft Quiz – ' + U().esc(sState.quiz ? sState.quiz.title : "") + (sm ? (' <span class="badge">Phi\u00ean ' + sm.idx + "/" + sm.totalSessions + '</span>') : "") + '</h2></div>' +
       '<div class="kpi-grid">' +
-        '<div class="kpi-card"><span class="kpi-label">Độ chính xác</span><span class="kpi-value" style="color:var(--emerald)">' + acc + '%</span></div>' +
-        '<div class="kpi-card"><span class="kpi-label">Tổng điểm</span><span class="kpi-value">' + pl.score + '</span></div>' +
-        '<div class="kpi-card"><span class="kpi-label">Đúng / Sai / Bỏ qua</span><span class="kpi-value" style="font-size:1.35rem">' + pl.correctCount + ' / ' + pl.wrongCount + ' / ' + pl.skippedCount + '</span></div>' +
-        '<div class="kpi-card"><span class="kpi-label">Streak dài nhất · TB/câu</span><span class="kpi-value" style="font-size:1.35rem">🔥 ' + pl.maxStreak + ' · ' + avgSec + 's</span></div>' +
+        '<div class="kpi-card"><span class="kpi-label">\u0110\u1ed9 ch\u00ednh x\u00e1c</span><span class="kpi-value" style="color:var(--emerald)">' + acc + '%</span></div>' +
+        '<div class="kpi-card"><span class="kpi-label">T\u1ed5ng \u0111i\u1ec3m</span><span class="kpi-value">' + pl.score + '</span></div>' +
+        '<div class="kpi-card"><span class="kpi-label">\u0110\u00fang / Sai / B\u1ecf qua</span><span class="kpi-value" style="font-size:1.35rem">' + pl.correctCount + ' / ' + pl.wrongCount + ' / ' + pl.skippedCount + '</span></div>' +
+        '<div class="kpi-card"><span class="kpi-label">Streak d\u00e0i nh\u1ea5t · TB/c\u00e2u</span><span class="kpi-value" style="font-size:1.35rem">🔥 ' + pl.maxStreak + ' · ' + avgSec + 's</span></div>' +
       '</div>' +
       '<div class="deck-actions" style="justify-content:center;margin-bottom:20px">' +
-        (hasNextSess ? '<button type="button" class="btn btn-primary" data-sact="next-session">▶ Làm tiếp Phiên ' + (sm.idx + 1) + "/" + sm.totalSessions + '</button>' : "") +
-        (wrongCount > 0 ? '<button type="button" class="btn btn-danger" data-sact="retry-wrong">🔁 Làm lại các câu sai (' + wrongCount + ')</button>' : "") +
-        '<button type="button" class="btn btn-emerald" data-sact="retry-all">🔄 Làm lại phiên này</button>' +
-        '<button type="button" class="btn btn-outline" data-sact="back-lobby">⚙️ Chọn phiên khác</button>' +
-        '<button type="button" class="btn btn-outline" data-sact="back-editor">✏️ Quay lại Editor</button>' +
+        (hasNextSess ? '<button type="button" class="btn btn-primary" data-sact="next-session">▶ L\u00e0m ti\u1ebfp Phi\u00ean ' + (sm.idx + 1) + "/" + sm.totalSessions + '</button>' : "") +
+        (wrongCount > 0 ? '<button type="button" class="btn btn-danger" data-sact="retry-wrong">🔁 L\u00e0m l\u1ea1i c\u00e1c c\u00e2u sai (' + wrongCount + ')</button>' : "") +
+        '<button type="button" class="btn btn-emerald" data-sact="retry-all">🔄 L\u00e0m l\u1ea1i phi\u00ean n\u00e0y</button>' +
+        '<button type="button" class="btn btn-outline" data-sact="back-lobby">⚙️ Ch\u1ecdn phi\u00ean kh\u00e1c</button>' +
+        '<button type="button" class="btn btn-outline" data-sact="back-editor">✏️ Quay l\u1ea1i Editor</button>' +
       '</div>';
 
     if (sState.lobby.allowReview) {
-      h += '<h3>Xem lại chi tiết từng câu</h3><div class="list">' + pl.records.map(function (rec, idx) {
+      h += '<h3>Xem l\u1ea1i chi ti\u1ebft t\u1eebng c\u00e2u</h3><div class="list">' + pl.records.map(function (rec, idx) {
         const q = rec.q;
-        const userAns = rec.selected.length ? rec.selected.map(function (i) { return U().LETTERS.charAt(i) + ". " + q.options[i]; }).join(" | ") : "Chưa trả lời";
+        const userAns = rec.selected.length ? rec.selected.map(function (i) { return U().LETTERS.charAt(i) + ". " + q.options[i]; }).join(" | ") : "Ch\u01b0a tr\u1ea3 l\u1eddi";
         const corrAns = q.correct.map(function (i) { return U().LETTERS.charAt(i) + ". " + q.options[i]; }).join(" | ");
         return '<div class="deck-row" style="border-left:5px solid ' + (rec.ok ? "var(--emerald)" : "var(--rose)") + '">' +
-          '<div class="deck-title-line"><strong class="rich-text">Câu ' + (idx + 1) + ": " + U().renderRich(q.text) + '</strong>' +
-          '<span class="badge ' + (rec.ok ? "badge-ok" : "badge-bad") + '">' + (rec.redeemed ? "🔥 Đã cứu vớt" : (rec.ok ? "Đúng" : "Sai")) + '</span></div>' +
-          '<div class="rich-text" style="font-size:.84rem"><strong>Bạn chọn:</strong> ' + U().renderRich(userAns) + '</div>' +
-          '<div class="rich-text" style="font-size:.84rem;color:var(--emerald)"><strong>Đáp án đúng:</strong> ' + U().renderRich(corrAns) + '</div>' +
-          (q.explanation ? '<div class="muted rich-text" style="font-size:.82rem"><strong>Giải thích:</strong> ' + U().renderRich(q.explanation) + '</div>' : "") +
+          '<div class="deck-title-line"><strong class="rich-text">C\u00e2u ' + (idx + 1) + ": " + U().renderRich(q.text) + '</strong>' +
+          '<span class="badge ' + (rec.ok ? "badge-ok" : "badge-bad") + '">' + (rec.redeemed ? "🔥 \u0110\u00e3 c\u1ee9u v\u1edbt" : (rec.ok ? "\u0110\u00fang" : "Sai")) + '</span></div>' +
+          '<div class="rich-text" style="font-size:.84rem"><strong>B\u1ea1n ch\u1ecdn:</strong> ' + U().renderRich(userAns) + '</div>' +
+          '<div class="rich-text" style="font-size:.84rem;color:var(--emerald)"><strong>\u0110\u00e1p \u00e1n \u0111\u00fang:</strong> ' + U().renderRich(corrAns) + '</div>' +
+          (q.explanation ? '<div class="muted rich-text" style="font-size:.82rem"><strong>Gi\u1ea3i th\u00edch:</strong> ' + U().renderRich(q.explanation) + '</div>' : "") +
         '</div>';
       }).join("") + '</div>';
     }
@@ -857,7 +857,7 @@
     }
     else if (act === "import-conv") {
       const qs = window.UETConverter ? window.UETConverter.getValidQuestions() : [];
-      if (qs.length) openFromQuestions("Quiz từ AI Converter", "AI Converter", qs);
+      if (qs.length) openFromQuestions("Quiz t\u1eeb AI Converter", "AI Converter", qs);
     }
     else if (act === "edit-saved") {
       const qz = loadQuizzes().find(function (x) { return x && x.id === b.getAttribute("data-id"); });
@@ -869,7 +869,7 @@
     }
     else if (act === "del-saved") {
       const id = b.getAttribute("data-id");
-      U().showConfirm("Xóa Quiz", "Xóa Quiz này khỏi Creator Studio?", function () {
+      U().showConfirm("X\u00f3a Quiz", "X\u00f3a Quiz n\u00e0y kh\u1ecfi Creator Studio?", function () {
         saveQuizzes(loadQuizzes().filter(function (x) { return x && x.id !== id; }));
         render();
       });
@@ -878,7 +878,7 @@
     else if (act === "back-editor") { stopStudioTimer(); sState.screen = "editor"; render(); }
     else if (act === "batch-time") {
       const t = parseInt(U().$("stBatchTime") ? U().$("stBatchTime").value : "30", 10);
-      if (sState.quiz) { sState.quiz.questions.forEach(function (q) { q.time = t; }); render(); U().showToast("Đã đặt thời gian hàng loạt cho tất cả câu.", "success"); }
+      if (sState.quiz) { sState.quiz.questions.forEach(function (q) { q.time = t; }); render(); U().showToast("\u0110\u00e3 \u0111\u1eb7t th\u1eddi gian h\u00e0ng lo\u1ea1t cho t\u1ea5t c\u1ea3 c\u00e2u.", "success"); }
     }
     else if (act === "save-quiz") saveCurrentQuiz();
     else if (act === "save-deck") saveQuizToDeckBank();
@@ -948,7 +948,7 @@
     else if (act === "submit-multi") submitPlayAnswer(false);
     else if (act === "next-q") advancePlayQuestion();
     else if (act === "quit-play") {
-      U().showConfirm("Thoát Quiz", "Bạn có chắc muốn thoát phiên làm bài hiện tại?", function () { stopStudioTimer(); sState.screen = "editor"; render(); });
+      U().showConfirm("Tho\u00e1t Quiz", "B\u1ea1n c\u00f3 ch\u1eafc mu\u1ed1n tho\u00e1t phi\u00ean l\u00e0m b\u00e0i hi\u1ec7n t\u1ea1i?", function () { stopStudioTimer(); sState.screen = "editor"; render(); });
     }
     else if (act === "retry-wrong") {
       const wrongQs = sState.play ? sState.play.records.filter(function (r) { return !r.ok; }).map(function (r) { return r.q; }) : [];

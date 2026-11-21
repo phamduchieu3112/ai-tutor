@@ -330,7 +330,7 @@ module.exports = async function apiHandler(req, res) {
     if (p === "/api/shares" && method === "POST") {
       const body = await readBody(req);
       if (!body || !body.deck || !Array.isArray(body.deck.questions) || body.deck.questions.length === 0) {
-        return sendJson(res, 400, { error: "Bộ đề chia sẻ không hợp lệ." });
+        return sendJson(res, 400, { error: "B\u1ed9 \u0111\u1ec1 chia s\u1ebb kh\u00f4ng h\u1ee3p l\u1ec7." });
       }
       const db = loadDb();
       let code = String(body.code || "").trim().toUpperCase();
@@ -353,20 +353,20 @@ module.exports = async function apiHandler(req, res) {
       const code = decodeURIComponent(shareGet[1]).trim().toUpperCase();
       const db = loadDb();
       const entry = db.shares[code];
-      if (!entry) return sendJson(res, 404, { error: "Không tìm thấy mã đề " + code });
+      if (!entry) return sendJson(res, 404, { error: "Kh\u00f4ng t\u00ecm th\u1ea5y m\u00e3 \u0111\u1ec1 " + code });
       return sendJson(res, 200, { ok: true, share: entry });
     }
 
     /* ---------- Cloud User Data Sync API ---------- */
     if (p === "/api/cloud/sync" && method === "GET") {
       const caller = getCallerEmail(req);
-      if (!caller) return sendJson(res, 401, { error: "Chưa đăng nhập." });
+      if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
       const db = loadDb();
       return sendJson(res, 200, { ok: true, data: db.cloudUsers[caller] || null });
     }
     if (p === "/api/cloud/sync" && method === "PUT") {
       const caller = getCallerEmail(req);
-      if (!caller) return sendJson(res, 401, { error: "Chưa đăng nhập." });
+      if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
       const body = await readBody(req);
       const db = loadDb();
       db.cloudUsers[caller] = Object.assign({}, db.cloudUsers[caller] || {}, body, { updatedAt: new Date().toISOString() });
@@ -395,11 +395,11 @@ module.exports = async function apiHandler(req, res) {
     if (p === "/api/subscriptions/unranked" && method === "POST") {
       const body = await readBody(req);
       const caller = getCallerEmail(req) || String((body && body.email) || "").trim().toLowerCase();
-      if (!caller) return sendJson(res, 401, { error: "Chưa đăng nhập." });
+      if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
       const db = loadDb();
       const cur = db.subscriptions[caller];
       if (cur && PAID_PLANS.includes(cur.tier) && Number(cur.expires) > Date.now()) {
-        return sendJson(res, 400, { error: "Bạn đang có gói cao hơn Unranked." });
+        return sendJson(res, 400, { error: "B\u1ea1n \u0111ang c\u00f3 g\u00f3i cao h\u01a1n Unranked." });
       }
       const now = Date.now();
       db.subscriptions[caller] = { tier: "unranked", since: now, expires: now + 365 * DAY_MS };
@@ -411,13 +411,13 @@ module.exports = async function apiHandler(req, res) {
     if (p === "/api/payment-requests" && method === "POST") {
       const body = await readBody(req);
       const caller = getCallerEmail(req) || String((body && body.userEmail) || "").trim().toLowerCase();
-      if (!caller) return sendJson(res, 401, { error: "Chưa đăng nhập." });
-      if (!body || !PAID_PLANS.includes(body.plan)) return sendJson(res, 400, { error: "Gói thanh toán không hợp lệ." });
+      if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
+      if (!body || !PAID_PLANS.includes(body.plan)) return sendJson(res, 400, { error: "G\u00f3i thanh to\u00e1n kh\u00f4ng h\u1ee3p l\u1ec7." });
       const db = loadDb();
       const dup = db.payment_requests.some(function (r) {
         return r && String(r.userEmail || "").toLowerCase() === caller && r.plan === body.plan && r.status === "pending";
       });
-      if (dup) return sendJson(res, 409, { error: "Bạn đã có yêu cầu đang chờ duyệt cho gói này." });
+      if (dup) return sendJson(res, 409, { error: "B\u1ea1n \u0111\u00e3 c\u00f3 y\u00eau c\u1ea7u \u0111ang ch\u1edd duy\u1ec7t cho g\u00f3i n\u00e0y." });
       const rec = {
         id: String(body.id || ("req_" + Date.now())),
         userId: String(body.userId || caller),
@@ -443,7 +443,7 @@ module.exports = async function apiHandler(req, res) {
     /* ---------- Strict Admin Routes ---------- */
     if (p.startsWith("/api/admin/")) {
       if (!isCallerAdmin(req)) {
-        return sendJson(res, 403, { error: "Forbidden: Chỉ tài khoản phamduchieurobotics@gmail.com có quyền quản trị." });
+        return sendJson(res, 403, { error: "Forbidden: Ch\u1ec9 t\u00e0i kho\u1ea3n phamduchieurobotics@gmail.com c\u00f3 quy\u1ec1n qu\u1ea3n tr\u1ecb." });
       }
       const db = loadDb();
       if (!db.revokedSubscriptions) db.revokedSubscriptions = {};
@@ -458,7 +458,7 @@ module.exports = async function apiHandler(req, res) {
           rec = Object.assign({}, body.request, { status: "pending" });
           db.payment_requests.push(rec);
         }
-        if (!rec || rec.status !== "pending") return sendJson(res, 404, { error: "Không tìm thấy đơn chờ duyệt." });
+        if (!rec || rec.status !== "pending") return sendJson(res, 404, { error: "Kh\u00f4ng t\u00ecm th\u1ea5y \u0111\u01a1n ch\u1edd duy\u1ec7t." });
         rec.status = "approved";
         rec.reviewedAt = new Date().toISOString();
         rec.reviewedBy = ADMIN_EMAIL;
@@ -482,11 +482,11 @@ module.exports = async function apiHandler(req, res) {
           rec = Object.assign({}, body.request, { status: "pending" });
           db.payment_requests.push(rec);
         }
-        if (!rec || rec.status !== "pending") return sendJson(res, 404, { error: "Không tìm thấy đơn chờ duyệt." });
+        if (!rec || rec.status !== "pending") return sendJson(res, 404, { error: "Kh\u00f4ng t\u00ecm th\u1ea5y \u0111\u01a1n ch\u1edd duy\u1ec7t." });
         rec.status = "rejected";
         rec.reviewedAt = new Date().toISOString();
         rec.reviewedBy = ADMIN_EMAIL;
-        rec.rejectReason = String((body && body.rejectReason) || "Yêu cầu bị từ chối").trim();
+        rec.rejectReason = String((body && body.rejectReason) || "Y\u00eau c\u1ea7u b\u1ecb t\u1eeb ch\u1ed1i").trim();
         saveDb(db);
         return sendJson(res, 200, { ok: true, request: rec });
       }
@@ -494,7 +494,7 @@ module.exports = async function apiHandler(req, res) {
       if (p === "/api/admin/subscriptions" && method === "POST") {
         const body = await readBody(req);
         const em = String((body && body.email) || "").trim().toLowerCase();
-        if (!em || !ALL_PLANS.includes(body && body.tier)) return sendJson(res, 400, { error: "Dữ liệu không hợp lệ." });
+        if (!em || !ALL_PLANS.includes(body && body.tier)) return sendJson(res, 400, { error: "D\u1eef li\u1ec7u kh\u00f4ng h\u1ee3p l\u1ec7." });
         const now = Date.now();
         db.subscriptions[em] = { tier: body.tier, since: now, expires: now + 365 * DAY_MS };
         delete db.revokedSubscriptions[em];
@@ -559,7 +559,7 @@ module.exports = async function apiHandler(req, res) {
         const apiKey = String((body && body.apiKey) || "").trim();
         const model = String((body && body.model) || "gemini-2.5-flash").trim();
         if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em) || !apiKey) {
-          return sendJson(res, 400, { error: "Email hoặc Gemini API Key không hợp lệ." });
+          return sendJson(res, 400, { error: "Email ho\u1eb7c Gemini API Key kh\u00f4ng h\u1ee3p l\u1ec7." });
         }
         const now = Date.now();
         db.userApis[em] = {

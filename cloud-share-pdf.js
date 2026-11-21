@@ -2,14 +2,14 @@
    AI Tutor – 3-Layer Cloud/Drive Backup, Share Link/QR & Print-Ready PDF
    ============================================================ */
 
-// Dán OAuth 2.0 Web Client ID từ Google Cloud Console (đã bật Google Drive API) vào đây:
+// D\u00e1n OAuth 2.0 Web Client ID t\u1eeb Google Cloud Console (\u0111\u00e3 b\u1eadt Google Drive API) v\u00e0o \u0111\u00e2y:
 const GOOGLE_DRIVE_CLIENT_ID = "480927164540-o3o4h9v5vmi8h93605ridg4eqvtf5rcf.apps.googleusercontent.com";
 const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file openid email";
 const DRIVE_BACKUP_NAME = "AI_Tutor_Cloud_Backup.json";
 
-// Cấu hình mở rộng cho Cloud Sync (sẵn sàng kết nối Supabase / Firebase khi triển khai)
+// C\u1ea5u h\u00ecnh m\u1edf r\u1ed9ng cho Cloud Sync (s\u1eb5n s\u00e0ng k\u1ebft n\u1ed1i Supabase / Firebase khi tri\u1ec3n khai)
 const CLOUD_CONFIG = {
-  provider: "auto", // "auto" (dùng server cục bộ nếu có, fallback IndexedDB/localStorage) | "supabase" | "firebase"
+  provider: "auto", // "auto" (d\u00f9ng server c\u1ee5c b\u1ed9 n\u1ebfu c\u00f3, fallback IndexedDB/localStorage) | "supabase" | "firebase"
   supabaseUrl: "",
   supabaseAnonKey: "",
   firebaseConfig: null
@@ -28,7 +28,7 @@ const CLOUD_CONFIG = {
     driveTokenExp: 0,
     driveBusy: false,
     restoreMode: "merge",
-    lastSyncText: "☁️ Đã đồng bộ",
+    lastSyncText: "☁️ \u0110\u00e3 \u0111\u1ed3ng b\u1ed9",
     syncTimer: null,
     backupMounted: false
   };
@@ -46,7 +46,7 @@ const CLOUD_CONFIG = {
     const el = U().$("syncStatusChip");
     if (el) {
       el.textContent = stateStr;
-      el.classList.toggle("saving", stateStr.indexOf("Đang lưu") !== -1);
+      el.classList.toggle("saving", stateStr.indexOf("\u0110ang l\u01b0u") !== -1);
     }
   }
 
@@ -121,7 +121,7 @@ const CLOUD_CONFIG = {
 
   function applyBackupPayload(obj, mode) {
     if (!validateBackupPayload(obj)) {
-      U().showToast("File sao lưu không hợp lệ hoặc bị hỏng cấu trúc.", "error");
+      U().showToast("File sao l\u01b0u kh\u00f4ng h\u1ee3p l\u1ec7 ho\u1eb7c b\u1ecb h\u1ecfng c\u1ea5u tr\u00fac.", "error");
       return false;
     }
     const isReplace = mode === "replace";
@@ -189,7 +189,7 @@ const CLOUD_CONFIG = {
   const cloudStorageService = {
     scheduleSync: function () {
       if (!U() || !U().state.user) return;
-      setSyncIndicator("🔄 Đang lưu...");
+      setSyncIndicator("🔄 \u0110ang l\u01b0u...");
       if (cs.syncTimer) clearTimeout(cs.syncTimer);
       cs.syncTimer = setTimeout(function () { cloudStorageService.push(); }, 500);
     },
@@ -206,12 +206,12 @@ const CLOUD_CONFIG = {
           await fetch("/api/cloud/sync", { method: "PUT", headers: hdr, body: JSON.stringify(payload) });
         } catch (e) { /* offline fallback already in IndexedDB */ }
       }
-      setSyncIndicator("☁️ Đã đồng bộ");
+      setSyncIndicator("☁️ \u0110\u00e3 \u0111\u1ed3ng b\u1ed9");
     },
     pull: async function () {
       const u = U().state.user;
       if (!u) return;
-      setSyncIndicator("🔄 Đang đồng bộ...");
+      setSyncIndicator("🔄 \u0110ang \u0111\u1ed3ng b\u1ed9...");
       let remote = null;
       if (U().state.backendOnline) {
         try {
@@ -228,9 +228,9 @@ const CLOUD_CONFIG = {
       // Auto-recover if localStorage was wiped but IndexedDB/Cloud still has decks
       if (remote && U().loadArr(U().KEYS.decks).length === 0 && Array.isArray(remote.exam_sets) && remote.exam_sets.length > 0) {
         applyBackupPayload(remote, "merge");
-        U().showToast("Đã tự động khôi phục " + remote.exam_sets.length + " bộ đề từ bộ nhớ đệm Cloud/IndexedDB!", "success");
+        U().showToast("\u0110\u00e3 t\u1ef1 \u0111\u1ed9ng kh\u00f4i ph\u1ee5c " + remote.exam_sets.length + " b\u1ed9 \u0111\u1ec1 t\u1eeb b\u1ed9 nh\u1edb \u0111\u1ec7m Cloud/IndexedDB!", "success");
       }
-      setSyncIndicator("☁️ Đã đồng bộ");
+      setSyncIndicator("☁️ \u0110\u00e3 \u0111\u1ed3ng b\u1ed9");
     }
   };
 
@@ -250,7 +250,7 @@ const CLOUD_CONFIG = {
         return resolve(cs.driveToken);
       }
       if (typeof google === "undefined" || !google.accounts || !google.accounts.oauth2) {
-        return reject(new Error("Thư viện Google Identity Services chưa tải xong. Vui lòng kiểm tra kết nối mạng."));
+        return reject(new Error("Th\u01b0 vi\u1ec7n Google Identity Services ch\u01b0a t\u1ea3i xong. Vui l\u00f2ng ki\u1ec3m tra k\u1ebft n\u1ed1i m\u1ea1ng."));
       }
       try {
         const client = google.accounts.oauth2.initTokenClient({
@@ -258,7 +258,7 @@ const CLOUD_CONFIG = {
           scope: GOOGLE_DRIVE_SCOPE,
           callback: function (resp) {
             if (!resp || resp.error || !resp.access_token) {
-              return reject(new Error(resp && resp.error ? ("Google OAuth: " + resp.error) : "Đã hủy cấp quyền Google Drive."));
+              return reject(new Error(resp && resp.error ? ("Google OAuth: " + resp.error) : "\u0110\u00e3 h\u1ee7y c\u1ea5p quy\u1ec1n Google Drive."));
             }
             cs.driveToken = resp.access_token;
             cs.driveTokenExp = Date.now() + (Number(resp.expires_in) || 3500) * 1000;
@@ -279,9 +279,9 @@ const CLOUD_CONFIG = {
       headers: { Authorization: "Bearer " + accessToken }
     });
     if (res.status === 401) { cs.driveToken = ""; cs.driveTokenExp = 0; throw new Error("TOKEN_EXPIRED"); }
-    if (!res.ok) throw new Error("Không thể lấy thông tin email Google (HTTP " + res.status + ")");
+    if (!res.ok) throw new Error("Kh\u00f4ng th\u1ec3 l\u1ea5y th\u00f4ng tin email Google (HTTP " + res.status + ")");
     const info = await res.json();
-    if (!info || !info.email) throw new Error("Tài khoản Google không cung cấp địa chỉ email.");
+    if (!info || !info.email) throw new Error("T\u00e0i kho\u1ea3n Google kh\u00f4ng cung c\u1ea5p \u0111\u1ecba ch\u1ec9 email.");
     return String(info.email).trim().toLowerCase();
   }
 
@@ -293,7 +293,7 @@ const CLOUD_CONFIG = {
     const searchUrl = "https://www.googleapis.com/drive/v3/files?q=" + q + "&fields=files(id,name)";
     const searchRes = await fetch(searchUrl, { headers: { Authorization: "Bearer " + accessToken } });
     if (searchRes.status === 401) { cs.driveToken = ""; cs.driveTokenExp = 0; throw new Error("TOKEN_EXPIRED"); }
-    if (!searchRes.ok) throw new Error("Lỗi kiểm tra thư mục Google Drive (HTTP " + searchRes.status + ")");
+    if (!searchRes.ok) throw new Error("L\u1ed7i ki\u1ec3m tra th\u01b0 m\u1ee5c Google Drive (HTTP " + searchRes.status + ")");
     const searchData = await searchRes.json();
     if (searchData && Array.isArray(searchData.files) && searchData.files.length > 0) {
       return { id: searchData.files[0].id, name: folderName };
@@ -310,7 +310,7 @@ const CLOUD_CONFIG = {
       })
     });
     if (createRes.status === 401) { cs.driveToken = ""; cs.driveTokenExp = 0; throw new Error("TOKEN_EXPIRED"); }
-    if (!createRes.ok) throw new Error("Lỗi tạo thư mục trên Google Drive (HTTP " + createRes.status + ")");
+    if (!createRes.ok) throw new Error("L\u1ed7i t\u1ea1o th\u01b0 m\u1ee5c tr\u00ean Google Drive (HTTP " + createRes.status + ")");
     const created = await createRes.json();
     return { id: created.id, name: folderName };
   }
@@ -324,7 +324,7 @@ const CLOUD_CONFIG = {
       cs.driveToken = ""; cs.driveTokenExp = 0;
       throw new Error("TOKEN_EXPIRED");
     }
-    if (!res.ok) throw new Error("Lỗi tìm file Google Drive (HTTP " + res.status + ")");
+    if (!res.ok) throw new Error("L\u1ed7i t\u00ecm file Google Drive (HTTP " + res.status + ")");
     const data = await res.json();
     return (data && Array.isArray(data.files) && data.files[0]) ? data.files[0] : null;
   }
@@ -333,13 +333,13 @@ const CLOUD_CONFIG = {
     try {
       const token = await requestDriveToken();
       const folder = await getOrCreateUserDriveFolder(token);
-      U().showToast("Đã kết nối Google Drive! Thư mục lưu trữ: \"" + folder.name + "\".", "success");
+      U().showToast("\u0110\u00e3 k\u1ebft n\u1ed1i Google Drive! Th\u01b0 m\u1ee5c l\u01b0u tr\u1eef: \"" + folder.name + "\".", "success");
       renderBackupPage();
     } catch (e) {
       if (e.message === "UNCONFIGURED") {
-        U().showToast("Chưa cấu hình GOOGLE_DRIVE_CLIENT_ID! Hãy thay thế \"YOUR_GOOGLE_CLIENT_ID\" ở dòng 6 của file cloud-share-pdf.js bằng Client ID từ Google Cloud Console.", "warning");
+        U().showToast("Ch\u01b0a c\u1ea5u h\u00ecnh GOOGLE_DRIVE_CLIENT_ID! H\u00e3y thay th\u1ebf \"YOUR_GOOGLE_CLIENT_ID\" \u1edf d\u00f2ng 6 c\u1ee7a file cloud-share-pdf.js b\u1eb1ng Client ID t\u1eeb Google Cloud Console.", "warning");
       } else {
-        U().showToast(e.message || "Không thể kết nối Google Drive.", "error");
+        U().showToast(e.message || "Kh\u00f4ng th\u1ec3 k\u1ebft n\u1ed1i Google Drive.", "error");
       }
     }
   }
@@ -372,17 +372,17 @@ const CLOUD_CONFIG = {
         body: body
       });
       if (res.status === 401) { cs.driveToken = ""; cs.driveTokenExp = 0; throw new Error("TOKEN_EXPIRED"); }
-      if (!res.ok) throw new Error("Lỗi tải lên Google Drive (HTTP " + res.status + ")");
+      if (!res.ok) throw new Error("L\u1ed7i t\u1ea3i l\u00ean Google Drive (HTTP " + res.status + ")");
       const nowIso = new Date().toISOString();
       try { localStorage.setItem(DRIVE_LAST_KEY, nowIso); } catch (e) { /* */ }
-      U().showToast("Đã sao lưu " + DRIVE_BACKUP_NAME + " vào thư mục \"" + folder.name + "\" thành công!", "success");
+      U().showToast("\u0110\u00e3 sao l\u01b0u " + DRIVE_BACKUP_NAME + " v\u00e0o th\u01b0 m\u1ee5c \"" + folder.name + "\" th\u00e0nh c\u00f4ng!", "success");
     } catch (e) {
       if (e.message === "UNCONFIGURED") {
-        U().showToast("Chưa thay \"YOUR_GOOGLE_CLIENT_ID\" trong cloud-share-pdf.js bằng OAuth Client ID từ Google Cloud Console.", "warning");
+        U().showToast("Ch\u01b0a thay \"YOUR_GOOGLE_CLIENT_ID\" trong cloud-share-pdf.js b\u1eb1ng OAuth Client ID t\u1eeb Google Cloud Console.", "warning");
       } else if (e.message === "TOKEN_EXPIRED") {
-        U().showToast("Phiên Google Drive đã hết hạn (401). Vui lòng bấm Kết nối lại.", "warning");
+        U().showToast("Phi\u00ean Google Drive \u0111\u00e3 h\u1ebft h\u1ea1n (401). Vui l\u00f2ng b\u1ea5m K\u1ebft n\u1ed1i l\u1ea1i.", "warning");
       } else {
-        U().showToast("Sao lưu thất bại: " + (e.message || "Không xác định"), "error");
+        U().showToast("Sao l\u01b0u th\u1ea5t b\u1ea1i: " + (e.message || "Kh\u00f4ng x\u00e1c \u0111\u1ecbnh"), "error");
       }
     } finally {
       cs.driveBusy = false;
@@ -399,29 +399,29 @@ const CLOUD_CONFIG = {
       const folder = await getOrCreateUserDriveFolder(token);
       let existing = await findDriveBackupFile(token, folder.id);
       if (!existing) {
-        // Fallback: tìm bản sao lưu cũ nằm ngoài thư mục nếu có
+        // Fallback: t\u00ecm b\u1ea3n sao l\u01b0u c\u0169 n\u1eb1m ngo\u00e0i th\u01b0 m\u1ee5c n\u1ebfu c\u00f3
         existing = await findDriveBackupFile(token, "");
       }
       if (!existing) {
-        U().showToast("Không tìm thấy file " + DRIVE_BACKUP_NAME + " trong thư mục \"" + folder.name + "\" trên Google Drive.", "warning");
+        U().showToast("Kh\u00f4ng t\u00ecm th\u1ea5y file " + DRIVE_BACKUP_NAME + " trong th\u01b0 m\u1ee5c \"" + folder.name + "\" tr\u00ean Google Drive.", "warning");
         return;
       }
       const res = await fetch("https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(existing.id) + "?alt=media", {
         headers: { Authorization: "Bearer " + token }
       });
       if (res.status === 401) { cs.driveToken = ""; cs.driveTokenExp = 0; throw new Error("TOKEN_EXPIRED"); }
-      if (!res.ok) throw new Error("Không tải được dữ liệu từ Google Drive (HTTP " + res.status + ")");
+      if (!res.ok) throw new Error("Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c d\u1eef li\u1ec7u t\u1eeb Google Drive (HTTP " + res.status + ")");
       const data = await res.json();
       if (applyBackupPayload(data, mode)) {
-        U().showToast("Đã khôi phục dữ liệu từ \"" + folder.name + "\" thành công (" + (mode === "replace" ? "Ghi đè" : "Gộp thêm") + ")!", "success");
+        U().showToast("\u0110\u00e3 kh\u00f4i ph\u1ee5c d\u1eef li\u1ec7u t\u1eeb \"" + folder.name + "\" th\u00e0nh c\u00f4ng (" + (mode === "replace" ? "Ghi \u0111\u00e8" : "G\u1ed9p th\u00eam") + ")!", "success");
       }
     } catch (e) {
       if (e.message === "UNCONFIGURED") {
-        U().showToast("Chưa thay \"YOUR_GOOGLE_CLIENT_ID\" trong cloud-share-pdf.js bằng OAuth Client ID từ Google Cloud Console.", "warning");
+        U().showToast("Ch\u01b0a thay \"YOUR_GOOGLE_CLIENT_ID\" trong cloud-share-pdf.js b\u1eb1ng OAuth Client ID t\u1eeb Google Cloud Console.", "warning");
       } else if (e.message === "TOKEN_EXPIRED") {
-        U().showToast("Phiên Google Drive đã hết hạn (401). Vui lòng kết nối lại.", "warning");
+        U().showToast("Phi\u00ean Google Drive \u0111\u00e3 h\u1ebft h\u1ea1n (401). Vui l\u00f2ng k\u1ebft n\u1ed1i l\u1ea1i.", "warning");
       } else {
-        U().showToast("Khôi phục thất bại: " + (e.message || "Không xác định"), "error");
+        U().showToast("Kh\u00f4i ph\u1ee5c th\u1ea5t b\u1ea1i: " + (e.message || "Kh\u00f4ng x\u00e1c \u0111\u1ecbnh"), "error");
       }
     } finally {
       cs.driveBusy = false;
@@ -435,32 +435,32 @@ const CLOUD_CONFIG = {
       const payload = buildBackupPayload();
       const fname = "AI_Tutor_Backup_" + dateStamp() + ".json";
       U().downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" }), fname);
-      U().showToast("Đã tải file sao lưu " + fname, "success");
-    } catch (e) { U().showToast("Không thể xuất file sao lưu.", "error"); }
+      U().showToast("\u0110\u00e3 t\u1ea3i file sao l\u01b0u " + fname, "success");
+    } catch (e) { U().showToast("Kh\u00f4ng th\u1ec3 xu\u1ea5t file sao l\u01b0u.", "error"); }
   }
 
   function importJsonBackupFile(file, mode) {
     if (!file) return;
     const reader = new FileReader();
-    reader.onerror = function () { U().showToast("Không thể đọc file sao lưu.", "error"); };
+    reader.onerror = function () { U().showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc file sao l\u01b0u.", "error"); };
     reader.onload = function (ev) {
       try {
         const parsed = JSON.parse(String(ev.target.result || ""));
         if (!validateBackupPayload(parsed)) {
-          U().showToast("File JSON không đúng định dạng sao lưu của AI Tutor.", "error");
+          U().showToast("File JSON kh\u00f4ng \u0111\u00fang \u0111\u1ecbnh d\u1ea1ng sao l\u01b0u c\u1ee7a AI Tutor.", "error");
           return;
         }
         const deckCnt = Array.isArray(parsed.exam_sets) ? parsed.exam_sets.length : 0;
         const doApply = function () {
           if (applyBackupPayload(parsed, mode)) {
-            U().showToast("Đã khôi phục " + deckCnt + " bộ đề và dữ liệu học tập thành công!", "success");
+            U().showToast("\u0110\u00e3 kh\u00f4i ph\u1ee5c " + deckCnt + " b\u1ed9 \u0111\u1ec1 v\u00e0 d\u1eef li\u1ec7u h\u1ecdc t\u1eadp th\u00e0nh c\u00f4ng!", "success");
             renderBackupPage();
           }
         };
         if (mode === "replace") {
-          U().showConfirm("Ghi đè dữ liệu hiện tại", "Chế độ Ghi đè sẽ thay thế toàn bộ bộ đề và tiến độ hiện tại bằng dữ liệu từ file (" + deckCnt + " bộ đề). Tiếp tục?", doApply);
+          U().showConfirm("Ghi \u0111\u00e8 d\u1eef li\u1ec7u hi\u1ec7n t\u1ea1i", "Ch\u1ebf \u0111\u1ed9 Ghi \u0111\u00e8 s\u1ebd thay th\u1ebf to\u00e0n b\u1ed9 b\u1ed9 \u0111\u1ec1 v\u00e0 ti\u1ebfn \u0111\u1ed9 hi\u1ec7n t\u1ea1i b\u1eb1ng d\u1eef li\u1ec7u t\u1eeb file (" + deckCnt + " b\u1ed9 \u0111\u1ec1). Ti\u1ebfp t\u1ee5c?", doApply);
         } else doApply();
-      } catch (e) { U().showToast("File JSON bị lỗi cú pháp.", "error"); }
+      } catch (e) { U().showToast("File JSON b\u1ecb l\u1ed7i c\u00fa ph\u00e1p.", "error"); }
     };
     reader.readAsText(file, "UTF-8");
   }
@@ -482,48 +482,49 @@ const CLOUD_CONFIG = {
     root.innerHTML =
       '<div class="api-wrap">' +
         '<section class="panel">' +
-          '<div class="panel-head"><div><h2>☁️ Sao lưu &amp; Khôi phục dữ liệu (3 Lớp)</h2>' +
-          '<p class="muted" style="margin:0;font-size:.84rem">Dữ liệu hiện có: <strong>' + deckCount + '</strong> bộ đề · <strong>' + mkCount + '</strong> câu sai · <strong>' + histCount + '</strong> lịch sử thi.</p></div>' +
+          '<div class="panel-head"><div><h2>☁️ Sao l\u01b0u &amp; Kh\u00f4i ph\u1ee5c d\u1eef li\u1ec7u (3 L\u1edbp)</h2>' +
+          '<p class="muted" style="margin:0;font-size:.84rem">D\u1eef li\u1ec7u hi\u1ec7n c\u00f3: <strong>' + deckCount + '</strong> b\u1ed9 \u0111\u1ec1 · <strong>' + mkCount + '</strong> c\u00e2u sai · <strong>' + histCount + '</strong> l\u1ecbch s\u1eed thi.</p></div>' +
           '<span class="badge badge-ok">' + U().esc(cs.lastSyncText) + '</span></div>' +
 
-          '<div class="radio-group" style="margin-bottom:14px"><legend style="font-weight:700;font-size:.84rem">Chế độ khi khôi phục dữ liệu</legend>' +
-            '<label class="check-row"><input type="radio" name="restoreMode" value="merge"' + (cs.restoreMode === "merge" ? " checked" : "") + '> <strong>Gộp thêm (Merge)</strong> – Giữ bộ đề hiện có và thêm bộ đề mới từ bản sao lưu</label>' +
-            '<label class="check-row"><input type="radio" name="restoreMode" value="replace"' + (cs.restoreMode === "replace" ? " checked" : "") + '> <strong>Ghi đè (Replace)</strong> – Thay thế toàn bộ dữ liệu trên trình duyệt bằng bản sao lưu</label>' +
+          '<div class="radio-group" style="margin-bottom:14px"><legend style="font-weight:700;font-size:.84rem">Ch\u1ebf \u0111\u1ed9 khi kh\u00f4i ph\u1ee5c d\u1eef li\u1ec7u</legend>' +
+            '<label class="check-row"><input type="radio" name="restoreMode" value="merge"' + (cs.restoreMode === "merge" ? " checked" : "") + '> <strong>G\u1ed9p th\u00eam (Merge)</strong> – Gi\u1eef b\u1ed9 \u0111\u1ec1 hi\u1ec7n c\u00f3 v\u00e0 th\u00eam b\u1ed9 \u0111\u1ec1 m\u1edbi t\u1eeb b\u1ea3n sao l\u01b0u</label>' +
+            '<label class="check-row"><input type="radio" name="restoreMode" value="replace"' + (cs.restoreMode === "replace" ? " checked" : "") + '> <strong>Ghi \u0111\u00e8 (Replace)</strong> – Thay th\u1ebf to\u00e0n b\u1ed9 d\u1eef li\u1ec7u tr\u00ean tr\u00ecnh duy\u1ec7t b\u1eb1ng b\u1ea3n sao l\u01b0u</label>' +
           '</div>' +
 
           /* Google Drive Card */
           '<div class="deck-row" style="margin-bottom:14px">' +
-            '<div class="deck-title-line"><span class="deck-title">1. Google Drive cá nhân (📁 <code>' + U().esc(folderDisplay) + '</code> / <code>' + DRIVE_BACKUP_NAME + '</code>)</span>' +
-            '<span class="badge ' + (connected ? "badge-ok" : "badge-warn") + '">' + (connected ? "Đã kết nối" : "Chưa kết nối") + '</span></div>' +
-            '<p class="muted" style="margin:0;font-size:.82rem">Tự động tạo thư mục riêng <strong>' + U().esc(folderDisplay) + '</strong> và ghi đè duy nhất 1 file sao lưu bên trong bằng quyền <code>drive.file</code>.' +
-              (lastDrive ? ' Lần sao lưu gần nhất: <strong>' + U().esc(U().fmtDateTime(lastDrive)) + '</strong>.' : '') + '</p>' +
-            (!configured ? '<div class="pending-banner" style="margin:4px 0;font-size:.8rem">ℹ️ Đang dùng placeholder <code>YOUR_GOOGLE_CLIENT_ID</code>. Hãy dán OAuth Client ID từ Google Cloud Console vào dòng 6 của <code>cloud-share-pdf.js</code> để bật Google Drive.</div>' : "") +
+            '<div class="deck-title-line"><span class="deck-title">1. Google Drive c\u00e1 nh\u00e2n (📁 <code>' + U().esc(folderDisplay) + '</code> / <code>' + DRIVE_BACKUP_NAME + '</code>)</span>' +
+            '<span class="badge ' + (connected ? "badge-ok" : "badge-warn") + '">' + (connected ? "\u0110\u00e3 k\u1ebft n\u1ed1i" : "Ch\u01b0a k\u1ebft n\u1ed1i") + '</span></div>' +
+            '<p class="muted" style="margin:0;font-size:.82rem">T\u1ef1 \u0111\u1ed9ng t\u1ea1o th\u01b0 m\u1ee5c ri\u00eang <strong>' + U().esc(folderDisplay) + '</strong> v\u00e0 ghi \u0111\u00e8 duy nh\u1ea5t 1 file sao l\u01b0u b\u00ean trong b\u1eb1ng quy\u1ec1n <code>drive.file</code>.' +
+              (lastDrive ? ' L\u1ea7n sao l\u01b0u g\u1ea7n nh\u1ea5t: <strong>' + U().esc(U().fmtDateTime(lastDrive)) + '</strong>.' : '') + '</p>' +
+            (!configured ? '<div class="pending-banner" style="margin:4px 0;font-size:.8rem">ℹ️ \u0110ang d\u00f9ng placeholder <code>YOUR_GOOGLE_CLIENT_ID</code>. H\u00e3y d\u00e1n OAuth Client ID t\u1eeb Google Cloud Console v\u00e0o d\u00f2ng 6 c\u1ee7a <code>cloud-share-pdf.js</code> \u0111\u1ec3 b\u1eadt Google Drive.</div>' : "") +
             '<div class="deck-actions">' +
-              '<button type="button" class="btn btn-outline btn-sm" data-bact="drive-connect"' + (cs.driveBusy ? " disabled" : "") + '>🔗 ' + (connected ? "Kết nối lại Drive" : "Kết nối Google Drive") + '</button>' +
-              '<button type="button" class="btn btn-primary btn-sm" data-bact="drive-backup"' + (cs.driveBusy ? " disabled" : "") + '>' + (cs.driveBusy ? '<span class="spinner"></span>Đang xử lý...' : "☁️ Sao lưu lên Google Drive") + '</button>' +
-              '<button type="button" class="btn btn-emerald btn-sm" data-bact="drive-restore"' + (cs.driveBusy ? " disabled" : "") + '>⬇️ Khôi phục từ Google Drive</button>' +
+              '<button type="button" class="btn btn-outline btn-sm" data-bact="drive-connect"' + (cs.driveBusy ? " disabled" : "") + '>🔗 ' + (connected ? "K\u1ebft n\u1ed1i l\u1ea1i Drive" : "K\u1ebft n\u1ed1i Google Drive") + '</button>' +
+              '<button type="button" class="btn btn-primary btn-sm" data-bact="drive-backup"' + (cs.driveBusy ? " disabled" : "") + '>' + (cs.driveBusy ? '<span class="spinner"></span>\u0110ang x\u1eed l\u00fd...' : "☁️ Sao l\u01b0u l\u00ean Google Drive") + '</button>' +
+              '<button type="button" class="btn btn-emerald btn-sm" data-bact="drive-restore"' + (cs.driveBusy ? " disabled" : "") + '>⬇️ Kh\u00f4i ph\u1ee5c t\u1eeb Google Drive</button>' +
             '</div>' +
           '</div>' +
 
           /* Offline JSON Card */
           '<div class="deck-row" style="margin-bottom:14px">' +
-            '<div class="deck-title-line"><span class="deck-title">2. Sao lưu &amp; Khôi phục ngoại tuyến (.json)</span><span class="badge">Hoạt động 100% Offline</span></div>' +
-            '<p class="muted" style="margin:0;font-size:.82rem">Tải về máy tính/điện thoại file <code>AI_Tutor_Backup_' + dateStamp() + '.json</code> để lưu trữ an toàn hoặc chuyển sang thiết bị khác.</p>' +
+            '<div class="deck-title-line"><span class="deck-title">2. Sao l\u01b0u &amp; Kh\u00f4i ph\u1ee5c ngo\u1ea1i tuy\u1ebfn (.json)</span><span class="badge">Ho\u1ea1t \u0111\u1ed9ng 100% Offline</span></div>' +
+            '<p class="muted" style="margin:0;font-size:.82rem">T\u1ea3i v\u1ec1 m\u00e1y t\u00ednh/\u0111i\u1ec7n tho\u1ea1i file <code>AI_Tutor_Backup_' + dateStamp() + '.json</code> \u0111\u1ec3 l\u01b0u tr\u1eef an to\u00e0n ho\u1eb7c chuy\u1ec3n sang thi\u1ebft b\u1ecb kh\u00e1c.</p>' +
             '<div class="deck-actions">' +
-              '<button type="button" class="btn btn-primary btn-sm" data-bact="json-export">⬇️ Xuất file sao lưu (.json)</button>' +
-              '<label class="btn btn-outline btn-sm file-btn">⬆️ Khôi phục từ file (.json)<input type="file" id="jsonRestoreFile" accept=".json,application/json" hidden></label>' +
+              '<button type="button" class="btn btn-primary btn-sm" data-bact="json-export">⬇️ Xu\u1ea5t file sao l\u01b0u (.json)</button>' +
+              '<label class="btn btn-outline btn-sm file-btn">⬆️ Kh\u00f4i ph\u1ee5c t\u1eeb file (.json)<input type="file" id="jsonRestoreFile" accept=".json,application/json" hidden></label>' +
             '</div>' +
           '</div>' +
 
           /* Cloud Sync Layer Info */
           '<div class="deck-row">' +
-            '<div class="deck-title-line"><span class="deck-title">3. Lớp đồng bộ Cloud &amp; IndexedDB tự động</span>' +
-            '<span class="badge badge-ok">' + (U().state.backendOnline ? "Server cục bộ + IndexedDB" : "IndexedDB + localStorage") + '</span></div>' +
-            '<p class="muted" style="margin:0;font-size:.82rem">Dịch vụ <code>cloudStorageService</code> tự động đồng bộ nền theo tài khoản Google và giữ bản dự phòng trong IndexedDB (sẵn sàng kết nối Supabase / Firebase).</p>' +
-            '<div class="deck-actions"><button type="button" class="btn btn-outline btn-sm" data-bact="cloud-sync-now">🔄 Đồng bộ ngay</button></div>' +
+            '<div class="deck-title-line"><span class="deck-title">3. L\u1edbp \u0111\u1ed3ng b\u1ed9 Cloud &amp; IndexedDB t\u1ef1 \u0111\u1ed9ng</span>' +
+            '<span class="badge badge-ok">' + (U().state.backendOnline ? "Server c\u1ee5c b\u1ed9 + IndexedDB" : "IndexedDB + localStorage") + '</span></div>' +
+            '<p class="muted" style="margin:0;font-size:.82rem">D\u1ecbch v\u1ee5 <code>cloudStorageService</code> t\u1ef1 \u0111\u1ed9ng \u0111\u1ed3ng b\u1ed9 n\u1ec1n theo t\u00e0i kho\u1ea3n Google v\u00e0 gi\u1eef b\u1ea3n d\u1ef1 ph\u00f2ng trong IndexedDB (s\u1eb5n s\u00e0ng k\u1ebft n\u1ed1i Supabase / Firebase).</p>' +
+            '<div class="deck-actions"><button type="button" class="btn btn-outline btn-sm" data-bact="cloud-sync-now">🔄 \u0110\u1ed3ng b\u1ed9 ngay</button></div>' +
           '</div>' +
         '</section>' +
       '</div>';
+    if (typeof U().applyI18n === "function") U().applyI18n(root);
 
     if (!cs.backupMounted) {
       cs.backupMounted = true;
@@ -535,7 +536,7 @@ const CLOUD_CONFIG = {
         else if (act === "drive-backup") backupToGoogleDrive();
         else if (act === "drive-restore") restoreFromGoogleDrive(cs.restoreMode);
         else if (act === "json-export") exportJsonBackup();
-        else if (act === "cloud-sync-now") { cloudStorageService.push().then(function () { U().showToast("Đã đồng bộ dữ liệu thành công.", "success"); }); }
+        else if (act === "cloud-sync-now") { cloudStorageService.push().then(function () { U().showToast("\u0110\u00e3 \u0111\u1ed3ng b\u1ed9 d\u1eef li\u1ec7u th\u00e0nh c\u00f4ng.", "success"); }); }
       });
       root.addEventListener("change", function (e) {
         if (e.target && e.target.name === "restoreMode") cs.restoreMode = e.target.value;
@@ -576,8 +577,8 @@ const CLOUD_CONFIG = {
       if (!c || !Array.isArray(c.q) || c.q.length === 0) return null;
       return {
         id: "shared_" + Date.now(),
-        title: String(c.t || "Bộ đề được chia sẻ"),
-        tag: String(c.g || "Chia sẻ"),
+        title: String(c.t || "B\u1ed9 \u0111\u1ec1 \u0111\u01b0\u1ee3c chia s\u1ebb"),
+        tag: String(c.g || "Chia s\u1ebb"),
         questions: c.q.map(function (row, idx) {
           return {
             id: "sq_" + idx,
@@ -596,7 +597,7 @@ const CLOUD_CONFIG = {
 
   async function openShareModal(deck) {
     if (!deck || !Array.isArray(deck.questions) || deck.questions.length === 0) {
-      U().showToast("Bộ đề chưa có câu hỏi để chia sẻ.", "warning");
+      U().showToast("B\u1ed9 \u0111\u1ec1 ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi \u0111\u1ec3 chia s\u1ebb.", "warning");
       return;
     }
     let code = "AIT-" + Math.floor(1000 + Math.random() * 9000);
@@ -632,35 +633,36 @@ const CLOUD_CONFIG = {
     if (!host) return;
     host.innerHTML =
       '<div class="modal-overlay" id="shareModal" role="dialog" aria-modal="true"><div class="modal modal-lg">' +
-        '<h3>🔗 Chia sẻ bộ đề: ' + U().esc(deck.title) + '</h3>' +
-        '<p class="muted" style="margin-top:0;font-size:.84rem">Học sinh mở Link, quét mã QR hoặc nhập Mã đề ở trang chủ sẽ vào thẳng <strong>Quiz Lobby</strong> làm bài ngay (không cần import Excel).</p>' +
+        '<h3>🔗 Chia s\u1ebb b\u1ed9 \u0111\u1ec1: ' + U().esc(deck.title) + '</h3>' +
+        '<p class="muted" style="margin-top:0;font-size:.84rem">H\u1ecdc sinh m\u1edf Link, qu\u00e9t m\u00e3 QR ho\u1eb7c nh\u1eadp M\u00e3 \u0111\u1ec1 \u1edf trang ch\u1ee7 s\u1ebd v\u00e0o th\u1eb3ng <strong>Quiz Lobby</strong> l\u00e0m b\u00e0i ngay (kh\u00f4ng c\u1ea7n import Excel).</p>' +
         '<div class="checkout-grid">' +
           '<div class="qr-box" style="flex-direction:column;gap:8px">' +
-            '<img id="shareQrImg" src="' + U().esc(qrImgUrl) + '" alt="Mã QR chia sẻ đề" crossorigin="anonymous">' +
-            '<button type="button" class="btn btn-outline btn-sm" id="shareDownQrBtn">⬇ Tải mã QR</button>' +
+            '<img id="shareQrImg" src="' + U().esc(qrImgUrl) + '" alt="M\u00e3 QR chia s\u1ebb \u0111\u1ec1" crossorigin="anonymous">' +
+            '<button type="button" class="btn btn-outline btn-sm" id="shareDownQrBtn">⬇ T\u1ea3i m\u00e3 QR</button>' +
           '</div>' +
           '<div>' +
-            '<div class="field"><span>Mã đề ngắn</span>' +
-              '<div class="voucher-row"><input type="text" id="shareCodeOut" value="' + U().esc(code) + '" readonly style="font-weight:800;font-size:1.05rem;letter-spacing:.08em"><button type="button" class="btn btn-primary btn-sm" id="shareCopyCode">Sao chép Mã đề</button></div>' +
+            '<div class="field"><span>M\u00e3 \u0111\u1ec1 ng\u1eafn</span>' +
+              '<div class="voucher-row"><input type="text" id="shareCodeOut" value="' + U().esc(code) + '" readonly style="font-weight:800;font-size:1.05rem;letter-spacing:.08em"><button type="button" class="btn btn-primary btn-sm" id="shareCopyCode">Sao ch\u00e9p M\u00e3 \u0111\u1ec1</button></div>' +
             '</div>' +
-            '<div class="field"><span>Đường dẫn trực tiếp (hoạt động cả tab ẩn danh)</span>' +
-              '<div class="voucher-row"><input type="text" id="shareUrlOut" value="' + U().esc(shareUrl) + '" readonly><button type="button" class="btn btn-emerald btn-sm" id="shareCopyUrl">Sao chép Link</button></div>' +
+            '<div class="field"><span>\u0110\u01b0\u1eddng d\u1eabn tr\u1ef1c ti\u1ebfp (ho\u1ea1t \u0111\u1ed9ng c\u1ea3 tab \u1ea9n danh)</span>' +
+              '<div class="voucher-row"><input type="text" id="shareUrlOut" value="' + U().esc(shareUrl) + '" readonly><button type="button" class="btn btn-emerald btn-sm" id="shareCopyUrl">Sao ch\u00e9p Link</button></div>' +
             '</div>' +
-            '<p class="muted" style="font-size:.78rem;margin:10px 0 0">Bộ đề gồm <strong>' + deck.questions.length + ' câu hỏi</strong>. ' + (includeHash ? "Dữ liệu đã được đóng gói kèm Link để mở trực tiếp trên mọi trình duyệt." : "Bộ đề dung lượng lớn được lưu qua mã đề " + U().esc(code) + " trên máy chủ.") + '</p>' +
+            '<p class="muted" style="font-size:.78rem;margin:10px 0 0">B\u1ed9 \u0111\u1ec1 g\u1ed3m <strong>' + deck.questions.length + ' c\u00e2u h\u1ecfi</strong>. ' + (includeHash ? "D\u1eef li\u1ec7u \u0111\u00e3 \u0111\u01b0\u1ee3c \u0111\u00f3ng g\u00f3i k\u00e8m Link \u0111\u1ec3 m\u1edf tr\u1ef1c ti\u1ebfp tr\u00ean m\u1ecdi tr\u00ecnh duy\u1ec7t." : "B\u1ed9 \u0111\u1ec1 dung l\u01b0\u1ee3ng l\u1edbn \u0111\u01b0\u1ee3c l\u01b0u qua m\u00e3 \u0111\u1ec1 " + U().esc(code) + " tr\u00ean m\u00e1y ch\u1ee7.") + '</p>' +
           '</div>' +
         '</div>' +
-        '<div class="modal-actions"><button type="button" class="btn btn-primary" id="shareCloseBtn">Đóng</button></div>' +
+        '<div class="modal-actions"><button type="button" class="btn btn-primary" id="shareCloseBtn">\u0110\u00f3ng</button></div>' +
       '</div></div>';
+    if (typeof U().applyI18n === "function") U().applyI18n(host);
 
     U().on("shareCloseBtn", "click", function () { host.innerHTML = ""; });
-    U().on("shareCopyCode", "click", function () { U().copyText(code, "mã đề " + code); });
-    U().on("shareCopyUrl", "click", function () { U().copyText(shareUrl, "đường dẫn chia sẻ"); });
+    U().on("shareCopyCode", "click", function () { U().copyText(code, "m\u00e3 \u0111\u1ec1 " + code); });
+    U().on("shareCopyUrl", "click", function () { U().copyText(shareUrl, "\u0111\u01b0\u1eddng d\u1eabn chia s\u1ebb"); });
     U().on("shareDownQrBtn", "click", async function () {
       try {
         const resp = await fetch(qrImgUrl);
         const blob = await resp.blob();
         U().downloadBlob(blob, "QR_" + code + ".png");
-        U().showToast("Đã tải mã QR " + code + ".png", "success");
+        U().showToast("\u0110\u00e3 t\u1ea3i m\u00e3 QR " + code + ".png", "success");
       } catch (e) {
         window.open(qrImgUrl, "_blank", "noopener,noreferrer");
       }
@@ -698,7 +700,7 @@ const CLOUD_CONFIG = {
     if (!deck && hashData) deck = decodeSharedDeck(hashData);
 
     if (!deck || !Array.isArray(deck.questions) || deck.questions.length === 0) {
-      U().showToast("Không tìm thấy bộ đề với mã " + (code || "đã nhập") + ".", "error");
+      U().showToast("Kh\u00f4ng t\u00ecm th\u1ea5y b\u1ed9 \u0111\u1ec1 v\u1edbi m\u00e3 " + (code || "\u0111\u00e3 nh\u1eadp") + ".", "error");
       return false;
     }
 
@@ -708,7 +710,7 @@ const CLOUD_CONFIG = {
     }
     if (window.UETStudio && typeof window.UETStudio.openLobbyFromDeck === "function") {
       window.UETStudio.openLobbyFromDeck(deck);
-      U().showToast("Đã mở bộ đề \"" + deck.title + "\" (" + deck.questions.length + " câu). Sẵn sàng làm bài!", "success");
+      U().showToast("\u0110\u00e3 m\u1edf b\u1ed9 \u0111\u1ec1 \"" + deck.title + "\" (" + deck.questions.length + " c\u00e2u). S\u1eb5n s\u00e0ng l\u00e0m b\u00e0i!", "success");
       return true;
     }
     return false;
@@ -717,28 +719,29 @@ const CLOUD_CONFIG = {
   /* ==================== PART 4: PRINT-READY PDF EXPORT ==================== */
   function openPdfModal(deck) {
     if (!deck || !Array.isArray(deck.questions) || deck.questions.length === 0) {
-      U().showToast("Bộ đề chưa có câu hỏi để xuất PDF.", "warning");
+      U().showToast("B\u1ed9 \u0111\u1ec1 ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi \u0111\u1ec3 xu\u1ea5t PDF.", "warning");
       return;
     }
     const host = U().$("extraModals");
     if (!host) return;
     host.innerHTML =
       '<div class="modal-overlay" id="pdfModal" role="dialog" aria-modal="true"><div class="modal">' +
-        '<h3>🖨️ Xuất đề thi ra PDF (Chuẩn khổ A4)</h3>' +
-        '<p class="muted" style="margin-top:0;font-size:.84rem">' + U().esc(deck.title) + ' • <strong>' + deck.questions.length + ' câu hỏi</strong></p>' +
-        '<fieldset class="radio-group"><legend style="font-weight:700;font-size:.84rem">Chế độ xuất</legend>' +
-          '<label class="check-row"><input type="radio" name="pdfMode" value="student" checked> <strong>Bản cho học sinh</strong> (chỉ in đề thi, ẩn đáp án)</label>' +
-          '<label class="check-row"><input type="radio" name="pdfMode" value="teacher"> <strong>Bản cho giáo viên</strong> (tô đậm đáp án đúng + bảng đáp án &amp; giải thích cuối trang)</label>' +
+        '<h3>🖨️ Xu\u1ea5t \u0111\u1ec1 thi ra PDF (Chu\u1ea9n kh\u1ed5 A4)</h3>' +
+        '<p class="muted" style="margin-top:0;font-size:.84rem">' + U().esc(deck.title) + ' • <strong>' + deck.questions.length + ' c\u00e2u h\u1ecfi</strong></p>' +
+        '<fieldset class="radio-group"><legend style="font-weight:700;font-size:.84rem">Ch\u1ebf \u0111\u1ed9 xu\u1ea5t</legend>' +
+          '<label class="check-row"><input type="radio" name="pdfMode" value="student" checked> <strong>B\u1ea3n cho h\u1ecdc sinh</strong> (ch\u1ec9 in \u0111\u1ec1 thi, \u1ea9n \u0111\u00e1p \u00e1n)</label>' +
+          '<label class="check-row"><input type="radio" name="pdfMode" value="teacher"> <strong>B\u1ea3n cho gi\u00e1o vi\u00ean</strong> (t\u00f4 \u0111\u1eadm \u0111\u00e1p \u00e1n \u0111\u00fang + b\u1ea3ng \u0111\u00e1p \u00e1n &amp; gi\u1ea3i th\u00edch cu\u1ed1i trang)</label>' +
         '</fieldset>' +
-        '<label class="field">Bố cục cột phương án trả lời' +
-          '<select id="pdfCols"><option value="2">2 cột gọn gàng (A/B – C/D)</option><option value="1">1 cột dọc (phù hợp câu dài / nhiều công thức)</option></select>' +
+        '<label class="field">B\u1ed1 c\u1ee5c c\u1ed9t ph\u01b0\u01a1ng \u00e1n tr\u1ea3 l\u1eddi' +
+          '<select id="pdfCols"><option value="2">2 c\u1ed9t g\u1ecdn g\u00e0ng (A/B – C/D)</option><option value="1">1 c\u1ed9t d\u1ecdc (ph\u00f9 h\u1ee3p c\u00e2u d\u00e0i / nhi\u1ec1u c\u00f4ng th\u1ee9c)</option></select>' +
         '</label>' +
-        '<label class="check-row"><input type="checkbox" id="pdfHeaderBox" checked> Thêm khung <strong>Họ tên / Lớp / Điểm</strong> ở đầu trang</label>' +
+        '<label class="check-row"><input type="checkbox" id="pdfHeaderBox" checked> Th\u00eam khung <strong>H\u1ecd t\u00ean / L\u1edbp / \u0110i\u1ec3m</strong> \u1edf \u0111\u1ea7u trang</label>' +
         '<div class="modal-actions">' +
-          '<button type="button" class="btn btn-outline" id="pdfCancelBtn">Hủy</button>' +
-          '<button type="button" class="btn btn-primary" id="pdfPrintBtn">🖨️ In / Lưu thành PDF</button>' +
+          '<button type="button" class="btn btn-outline" id="pdfCancelBtn">H\u1ee7y</button>' +
+          '<button type="button" class="btn btn-primary" id="pdfPrintBtn">🖨️ In / L\u01b0u th\u00e0nh PDF</button>' +
         '</div>' +
       '</div></div>';
+    if (typeof U().applyI18n === "function") U().applyI18n(host);
 
     U().on("pdfCancelBtn", "click", function () { host.innerHTML = ""; });
     U().on("pdfPrintBtn", "click", function () {
@@ -759,13 +762,13 @@ const CLOUD_CONFIG = {
     let h = '<div class="print-doc">';
     if (opts.showHeader) {
       h += '<div class="print-header-box">' +
-        '<div><strong>Họ và tên:</strong> ................................................</div>' +
-        '<div><strong>Lớp / MSSV:</strong> ..........................................</div>' +
-        '<div><strong>Điểm:</strong> ....................</div>' +
+        '<div><strong>H\u1ecd v\u00e0 t\u00ean:</strong> ................................................</div>' +
+        '<div><strong>L\u1edbp / MSSV:</strong> ..........................................</div>' +
+        '<div><strong>\u0110i\u1ec3m:</strong> ....................</div>' +
       '</div>';
     }
     h += '<div class="print-title"><h1>' + U().esc(deck.title) + '</h1>' +
-      '<div class="print-sub">' + (deck.tag ? ("Môn: " + U().esc(deck.tag) + " · ") : "") + 'Tổng số: ' + deck.questions.length + ' câu · ' + (isTeacher ? "BẢN GIÁO VIÊN (CÓ ĐÁP ÁN)" : "ĐỀ THI DÀNH CHO HỌC SINH") + '</div></div>';
+      '<div class="print-sub">' + (deck.tag ? ("M\u00f4n: " + U().esc(deck.tag) + " · ") : "") + 'T\u1ed5ng s\u1ed1: ' + deck.questions.length + ' c\u00e2u · ' + (isTeacher ? "B\u1ea2N GI\u00c1O VI\u00caN (C\u00d3 \u0110\u00c1P \u00c1N)" : "\u0110\u1ec0 THI D\u00c0NH CHO H\u1eccC SINH") + '</div></div>';
 
     h += '<div class="print-questions">' + deck.questions.map(function (q, idx) {
       const optCls = opts.cols === 2 ? "print-opts cols-2" : "print-opts cols-1";
@@ -774,22 +777,22 @@ const CLOUD_CONFIG = {
         return '<div class="print-opt' + (isCor ? " is-cor" : "") + '"><strong>' + U().LETTERS.charAt(k) + '.</strong> <span class="rich-text">' + U().renderRich(o) + '</span></div>';
       }).join("");
       return '<article class="print-q">' +
-        '<div class="print-q-text"><strong>Câu ' + (idx + 1) + '.</strong> <span class="rich-text">' + U().renderRich(q.text) + '</span></div>' +
+        '<div class="print-q-text"><strong>C\u00e2u ' + (idx + 1) + '.</strong> <span class="rich-text">' + U().renderRich(q.text) + '</span></div>' +
         (q.image ? '<img src="' + U().esc(q.image) + '" class="print-q-img" alt="">' : "") +
         '<div class="' + optCls + '">' + optsHtml + '</div>' +
       '</article>';
     }).join("") + '</div>';
 
     if (isTeacher) {
-      h += '<section class="print-answer-section"><h2>BẢNG ĐÁP ÁN &amp; GIẢI THÍCH CHI TIẾT</h2>' +
+      h += '<section class="print-answer-section"><h2>B\u1ea2NG \u0110\u00c1P \u00c1N &amp; GI\u1ea2I TH\u00cdCH CHI TI\u1ebeT</h2>' +
         '<div class="print-key-grid">' + deck.questions.map(function (q, idx) {
           const ans = q.correct.map(function (c) { return U().LETTERS.charAt(c); }).join(",");
           return '<div class="print-key-cell"><strong>' + (idx + 1) + '.</strong> ' + ans + '</div>';
         }).join("") + '</div>';
       const withExp = deck.questions.map(function (q, i) { return { q: q, i: i }; }).filter(function (x) { return x.q.explanation; });
       if (withExp.length > 0) {
-        h += '<div class="print-exps"><h3>Giải thích chi tiết</h3>' + withExp.map(function (x) {
-          return '<div class="print-exp-item"><strong>Câu ' + (x.i + 1) + ':</strong> <span class="rich-text">' + U().renderRich(x.q.explanation) + '</span></div>';
+        h += '<div class="print-exps"><h3>Gi\u1ea3i th\u00edch chi ti\u1ebft</h3>' + withExp.map(function (x) {
+          return '<div class="print-exp-item"><strong>C\u00e2u ' + (x.i + 1) + ':</strong> <span class="rich-text">' + U().renderRich(x.q.explanation) + '</span></div>';
         }).join("") + '</div>';
       }
       h += '</section>';

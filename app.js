@@ -46,7 +46,7 @@ const XLSX_HEADERS = [
   "Option 5", "Correct Answer", "Time in seconds", "Image Link", "Answer explanation"
 ];
 const LETTERS = "ABCDE";
-const MODE_LABEL = { practice: "Ôn tập", exam: "Thi thử", mistake: "Sổ tay câu hay sai" };
+const MODE_LABEL = { practice: "\u00d4n t\u1eadp", exam: "Thi th\u1eed", mistake: "S\u1ed5 tay c\u00e2u hay sai" };
 const FONT_MIN = 15, FONT_MAX = 24, FONT_DEFAULT = 17;
 const PAGE_SIZE = 5;
 const RING_C = 2 * Math.PI * 52;
@@ -56,12 +56,12 @@ const DAY_MS = 86400000;
 /* 5-Tier Rank System (Arena of Valor inspired) */
 const TIER_ORDER = ["none", "unranked", "bronze", "silver", "gold", "diamond"];
 const TIERS = {
-  none: { name: "Chưa xếp hạng", full: "Chưa đăng ký", sub: "Đăng ký Unranked 0đ để bắt đầu", price: 0, maxDecks: 3, maxQ: 50, maxImages: 5, memo: "UNRANKED", icon: "🛡️", cls: "rank-unranked" },
-  unranked: { name: "Unranked", full: "Unranked (Chưa xếp hạng)", sub: "Miễn phí trọn đời • Kích hoạt ngay", price: 0, maxDecks: 3, maxQ: 50, maxImages: 5, memo: "UNRANKED", icon: "🛡️", cls: "rank-unranked" },
-  bronze: { name: "Bronze", full: "Bronze (Đồng)", sub: "Thanh toán → Chờ Admin duyệt", price: 100000, maxDecks: 15, maxQ: 200, maxImages: 20, memo: "BRONZE", icon: "🥉", cls: "rank-bronze" },
-  silver: { name: "Silver", full: "Silver (Bạc)", sub: "Thanh toán → Chờ Admin duyệt", price: 200000, maxDecks: 50, maxQ: 500, maxImages: 50, memo: "SILVER", icon: "🥈", cls: "rank-silver" },
-  gold: { name: "Gold", full: "Gold (Vàng)", sub: "Phổ biến nhất • Chờ Admin duyệt", price: 300000, maxDecks: Infinity, maxQ: Infinity, maxImages: 100, memo: "GOLD", icon: "🥇", cls: "rank-gold" },
-  diamond: { name: "Diamond", full: "Diamond (Kim Cương)", sub: "Toàn quyền VIP • Chờ Admin duyệt", price: 500000, maxDecks: Infinity, maxQ: Infinity, maxImages: 200, memo: "DIAMOND", icon: "💎", cls: "rank-diamond" }
+  none: { name: "Ch\u01b0a x\u1ebfp h\u1ea1ng", full: "Ch\u01b0a \u0111\u0103ng k\u00fd", sub: "\u0110\u0103ng k\u00fd Unranked 0\u0111 \u0111\u1ec3 b\u1eaft \u0111\u1ea7u", price: 0, maxDecks: 3, maxQ: 50, maxImages: 5, memo: "UNRANKED", icon: "🛡️", cls: "rank-unranked" },
+  unranked: { name: "Unranked", full: "Unranked (Ch\u01b0a x\u1ebfp h\u1ea1ng)", sub: "Mi\u1ec5n ph\u00ed tr\u1ecdn \u0111\u1eddi • K\u00edch ho\u1ea1t ngay", price: 0, maxDecks: 3, maxQ: 50, maxImages: 5, memo: "UNRANKED", icon: "🛡️", cls: "rank-unranked" },
+  bronze: { name: "Bronze", full: "Bronze (\u0110\u1ed3ng)", sub: "Thanh to\u00e1n → Ch\u1edd Admin duy\u1ec7t", price: 100000, maxDecks: 15, maxQ: 200, maxImages: 20, memo: "BRONZE", icon: "🥉", cls: "rank-bronze" },
+  silver: { name: "Silver", full: "Silver (B\u1ea1c)", sub: "Thanh to\u00e1n → Ch\u1edd Admin duy\u1ec7t", price: 200000, maxDecks: 50, maxQ: 500, maxImages: 50, memo: "SILVER", icon: "🥈", cls: "rank-silver" },
+  gold: { name: "Gold", full: "Gold (V\u00e0ng)", sub: "Ph\u1ed5 bi\u1ebfn nh\u1ea5t • Ch\u1edd Admin duy\u1ec7t", price: 300000, maxDecks: Infinity, maxQ: Infinity, maxImages: 100, memo: "GOLD", icon: "🥇", cls: "rank-gold" },
+  diamond: { name: "Diamond", full: "Diamond (Kim C\u01b0\u01a1ng)", sub: "To\u00e0n quy\u1ec1n VIP • Ch\u1edd Admin duy\u1ec7t", price: 500000, maxDecks: Infinity, maxQ: Infinity, maxImages: 200, memo: "DIAMOND", icon: "💎", cls: "rank-diamond" }
 };
 const FEATURE_MIN = {
   mistake: 2,        // Bronze+
@@ -78,49 +78,49 @@ const FEATURE_MIN = {
   backupSync: 5      // Diamond
 };
 const FEATURE_NAME = {
-  mistake: "Sổ tay câu hay sai (Làm lại câu sai)",
-  exam: "Thi thử chuẩn phòng thi & Lịch sử luyện đề",
-  exportData: "Xuất bộ đề .json / .xlsx không giới hạn",
-  studioAdv: "Creator Studio nâng cao (Streak, Redemption, thời gian từng câu, đảo đề)",
-  shuffle: "Đảo thứ tự câu hỏi / đáp án",
-  aiExplain: "AI giải thích đáp án",
-  splitReview: "Chế độ kiểm duyệt song song (Split-Screen Review)",
-  merge: "Gộp thêm vào bộ đề có sẵn khi Import",
-  doubleCheck: "AI Kiểm tra chéo đáp án (Double-Check) hàng loạt",
-  chunk: "Chia nhỏ chặng học",
-  proAi: "Chế độ AI Chính xác cao ưu tiên (Gemini Pro)",
-  backupSync: "Xuất báo cáo thống kê chi tiết & Sao lưu Kho đề"
+  mistake: "S\u1ed5 tay c\u00e2u hay sai (L\u00e0m l\u1ea1i c\u00e2u sai)",
+  exam: "Thi th\u1eed chu\u1ea9n ph\u00f2ng thi & L\u1ecbch s\u1eed luy\u1ec7n \u0111\u1ec1",
+  exportData: "Xu\u1ea5t b\u1ed9 \u0111\u1ec1 .json / .xlsx kh\u00f4ng gi\u1edbi h\u1ea1n",
+  studioAdv: "Creator Studio n\u00e2ng cao (Streak, Redemption, th\u1eddi gian t\u1eebng c\u00e2u, \u0111\u1ea3o \u0111\u1ec1)",
+  shuffle: "\u0110\u1ea3o th\u1ee9 t\u1ef1 c\u00e2u h\u1ecfi / \u0111\u00e1p \u00e1n",
+  aiExplain: "AI gi\u1ea3i th\u00edch \u0111\u00e1p \u00e1n",
+  splitReview: "Ch\u1ebf \u0111\u1ed9 ki\u1ec3m duy\u1ec7t song song (Split-Screen Review)",
+  merge: "G\u1ed9p th\u00eam v\u00e0o b\u1ed9 \u0111\u1ec1 c\u00f3 s\u1eb5n khi Import",
+  doubleCheck: "AI Ki\u1ec3m tra ch\u00e9o \u0111\u00e1p \u00e1n (Double-Check) h\u00e0ng lo\u1ea1t",
+  chunk: "Chia nh\u1ecf ch\u1eb7ng h\u1ecdc",
+  proAi: "Ch\u1ebf \u0111\u1ed9 AI Ch\u00ednh x\u00e1c cao \u01b0u ti\u00ean (Gemini Pro)",
+  backupSync: "Xu\u1ea5t b\u00e1o c\u00e1o th\u1ed1ng k\u00ea chi ti\u1ebft & Sao l\u01b0u Kho \u0111\u1ec1"
 };
 const PRICING_FEATURES = {
   unranked: [
-    "Lưu tối đa 3 bộ đề trong Kho đề, tối đa 50 câu/bộ đề",
-    "Làm bài luyện tập cơ bản & xem thống kê điểm số",
-    "Dùng Creator/Quiz Studio cơ bản (tạo & làm bài)",
-    "Dùng AI Converter (tối đa 5 ảnh/lần, dùng Gemini API Key cá nhân)"
+    "L\u01b0u t\u1ed1i \u0111a 3 b\u1ed9 \u0111\u1ec1 trong Kho \u0111\u1ec1, t\u1ed1i \u0111a 50 c\u00e2u/b\u1ed9 \u0111\u1ec1",
+    "L\u00e0m b\u00e0i luy\u1ec7n t\u1eadp c\u01a1 b\u1ea3n & xem th\u1ed1ng k\u00ea \u0111i\u1ec3m s\u1ed1",
+    "D\u00f9ng Creator/Quiz Studio c\u01a1 b\u1ea3n (t\u1ea1o & l\u00e0m b\u00e0i)",
+    "D\u00f9ng AI Converter (t\u1ed1i \u0111a 5 \u1ea3nh/l\u1ea7n, d\u00f9ng Gemini API Key c\u00e1 nh\u00e2n)"
   ],
   bronze: [
-    "Toàn bộ quyền lợi gói Unranked",
-    "Lưu tối đa 15 bộ đề, tối đa 200 câu/bộ đề",
-    "AI Converter tối đa 20 ảnh/lần + xuất file Excel chuẩn không giới hạn",
-    "Mở khóa Làm lại câu sai (Sổ tay sai), Thi thử & Lịch sử luyện đề"
+    "To\u00e0n b\u1ed9 quy\u1ec1n l\u1ee3i g\u00f3i Unranked",
+    "L\u01b0u t\u1ed1i \u0111a 15 b\u1ed9 \u0111\u1ec1, t\u1ed1i \u0111a 200 c\u00e2u/b\u1ed9 \u0111\u1ec1",
+    "AI Converter t\u1ed1i \u0111a 20 \u1ea3nh/l\u1ea7n + xu\u1ea5t file Excel chu\u1ea9n kh\u00f4ng gi\u1edbi h\u1ea1n",
+    "M\u1edf kh\u00f3a L\u00e0m l\u1ea1i c\u00e2u sai (S\u1ed5 tay sai), Thi th\u1eed & L\u1ecbch s\u1eed luy\u1ec7n \u0111\u1ec1"
   ],
   silver: [
-    "Toàn bộ quyền lợi gói Bronze",
-    "Lưu tối đa 50 bộ đề, tối đa 500 câu/bộ đề",
-    "Mở khóa Creator/Quiz Studio nâng cao (Streak, Redemption, thời gian từng câu, đảo đề)",
-    "Hỗ trợ AI giải thích đáp án & Chế độ kiểm duyệt song song (Split-Screen Review)"
+    "To\u00e0n b\u1ed9 quy\u1ec1n l\u1ee3i g\u00f3i Bronze",
+    "L\u01b0u t\u1ed1i \u0111a 50 b\u1ed9 \u0111\u1ec1, t\u1ed1i \u0111a 500 c\u00e2u/b\u1ed9 \u0111\u1ec1",
+    "M\u1edf kh\u00f3a Creator/Quiz Studio n\u00e2ng cao (Streak, Redemption, th\u1eddi gian t\u1eebng c\u00e2u, \u0111\u1ea3o \u0111\u1ec1)",
+    "H\u1ed7 tr\u1ee3 AI gi\u1ea3i th\u00edch \u0111\u00e1p \u00e1n & Ch\u1ebf \u0111\u1ed9 ki\u1ec3m duy\u1ec7t song song (Split-Screen Review)"
   ],
   gold: [
-    "Toàn bộ quyền lợi gói Silver",
-    "Không giới hạn số lượng bộ đề & số câu hỏi",
-    "Mở khóa Gộp thêm vào bộ đề có sẵn khi Import",
-    "Mở khóa AI Kiểm tra chéo đáp án (Double-Check) hàng loạt & lọc câu nghi ngờ sai"
+    "To\u00e0n b\u1ed9 quy\u1ec1n l\u1ee3i g\u00f3i Silver",
+    "Kh\u00f4ng gi\u1edbi h\u1ea1n s\u1ed1 l\u01b0\u1ee3ng b\u1ed9 \u0111\u1ec1 & s\u1ed1 c\u00e2u h\u1ecfi",
+    "M\u1edf kh\u00f3a G\u1ed9p th\u00eam v\u00e0o b\u1ed9 \u0111\u1ec1 c\u00f3 s\u1eb5n khi Import",
+    "M\u1edf kh\u00f3a AI Ki\u1ec3m tra ch\u00e9o \u0111\u00e1p \u00e1n (Double-Check) h\u00e0ng lo\u1ea1t & l\u1ecdc c\u00e2u nghi ng\u1edd sai"
   ],
   diamond: [
-    "Toàn bộ quyền lợi gói Gold (không giới hạn mọi tính năng)",
-    "Ưu tiên chế độ AI Chính xác cao cho đề Toán/Lý/Hóa/Tiếng Anh phức tạp",
-    "Xuất báo cáo thống kê học tập chi tiết & sao lưu/đồng bộ Kho đề",
-    "Huy hiệu Diamond VIP nổi bật trên hồ sơ & hỗ trợ ưu tiên 1-1"
+    "To\u00e0n b\u1ed9 quy\u1ec1n l\u1ee3i g\u00f3i Gold (kh\u00f4ng gi\u1edbi h\u1ea1n m\u1ecdi t\u00ednh n\u0103ng)",
+    "\u01afu ti\u00ean ch\u1ebf \u0111\u1ed9 AI Ch\u00ednh x\u00e1c cao cho \u0111\u1ec1 To\u00e1n/L\u00fd/H\u00f3a/Ti\u1ebfng Anh ph\u1ee9c t\u1ea1p",
+    "Xu\u1ea5t b\u00e1o c\u00e1o th\u1ed1ng k\u00ea h\u1ecdc t\u1eadp chi ti\u1ebft & sao l\u01b0u/\u0111\u1ed3ng b\u1ed9 Kho \u0111\u1ec1",
+    "Huy hi\u1ec7u Diamond VIP n\u1ed5i b\u1eadt tr\u00ean h\u1ed3 s\u01a1 & h\u1ed7 tr\u1ee3 \u01b0u ti\u00ean 1-1"
   ]
 };
 
@@ -192,7 +192,7 @@ function setHTML(id, h) { const el = $(id); if (el) el.innerHTML = h; }
 function toggleEl(id, show) { const el = $(id); if (el) el.classList.toggle("hidden", !show); }
 function on(id, evt, fn) { const el = $(id); if (el) el.addEventListener(evt, fn); }
 function clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
-function fmtMoney(n) { return Number(n || 0).toLocaleString("vi-VN") + "đ"; }
+function fmtMoney(n) { return Number(n || 0).toLocaleString("vi-VN") + "\u0111"; }
 function fmtDate(v) {
   try { const d = new Date(v); return isNaN(d.getTime()) ? "" : d.toLocaleDateString("vi-VN"); } catch (e) { return ""; }
 }
@@ -218,23 +218,24 @@ function saveJSON(key, value) {
       window.UETCloud.cloudStorageService.scheduleSync();
     }
     return true;
-  } catch (e) { showToast("Không thể lưu dữ liệu vào trình duyệt (bộ nhớ đầy hoặc bị chặn).", "error"); return false; }
+  } catch (e) { showToast("Kh\u00f4ng th\u1ec3 l\u01b0u d\u1eef li\u1ec7u v\u00e0o tr\u00ecnh duy\u1ec7t (b\u1ed9 nh\u1edb \u0111\u1ea7y ho\u1eb7c b\u1ecb ch\u1eb7n).", "error"); return false; }
 }
-function removeKey(key) { try { localStorage.removeItem(key); } catch (e) { /* bỏ qua */ } }
+function removeKey(key) { try { localStorage.removeItem(key); } catch (e) { /* b\u1ecf qua */ } }
 
 function showToast(msg, type, action) {
   const box = $("toastContainer");
   if (!box) return;
   const t = document.createElement("div");
   t.className = "toast " + (type || "info");
+  const curLang = typeof getLang === "function" ? getLang() : "vi";
   const sp = document.createElement("span");
-  sp.textContent = msg;
+  sp.textContent = typeof translateString === "function" ? translateString(String(msg || ""), curLang) : msg;
   t.appendChild(sp);
   if (action && action.label && typeof action.onClick === "function") {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "toast-act";
-    btn.textContent = action.label;
+    btn.textContent = typeof translateString === "function" ? translateString(String(action.label || ""), curLang) : action.label;
     btn.addEventListener("click", function () { action.onClick(); if (t.parentNode) t.parentNode.removeChild(t); });
     t.appendChild(btn);
   }
@@ -242,12 +243,20 @@ function showToast(msg, type, action) {
   setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, action ? 6500 : 4200);
 }
 function anyModalOpen() { return !!document.querySelector(".modal-overlay:not(.hidden)"); }
-function openModal(id) { const m = $(id); if (!m) return; m.classList.remove("hidden"); document.body.classList.add("modal-open"); }
+function openModal(id) {
+  const m = $(id);
+  if (!m) return;
+  m.classList.remove("hidden");
+  document.body.classList.add("modal-open");
+  if (typeof applyI18n === "function") applyI18n(m);
+}
 function closeModal(id) { const m = $(id); if (m) m.classList.add("hidden"); if (!anyModalOpen()) document.body.classList.remove("modal-open"); }
 function showConfirm(title, msg, onConfirm, okLabel) {
-  setText("confirmTitle", title);
-  setText("confirmMsg", msg);
-  setText("confirmOk", okLabel || "Xác nhận");
+  const curLang = typeof getLang === "function" ? getLang() : "vi";
+  const tr = function (s) { return typeof translateString === "function" ? translateString(String(s || ""), curLang) : s; };
+  setText("confirmTitle", tr(title));
+  setText("confirmMsg", tr(msg));
+  setText("confirmOk", tr(okLabel || "X\u00e1c nh\u1eadn"));
   state.confirmCb = typeof onConfirm === "function" ? onConfirm : null;
   openModal("confirmModal");
 }
@@ -266,7 +275,7 @@ function downloadBlob(blob, filename) {
     a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-  } catch (e) { showToast("Không thể tải file xuống.", "error"); }
+  } catch (e) { showToast("Kh\u00f4ng th\u1ec3 t\u1ea3i file xu\u1ed1ng.", "error"); }
 }
 function fileSafe(name) { return String(name || "de").replace(/[\\/:*?"<>|]+/g, "_").trim().slice(0, 80) || "de"; }
 
@@ -276,7 +285,7 @@ function paginate(arr, page) {
   return { items: arr.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE), page: p, pages: pages };
 }
 function renderPager(id, key, page, pages) {
-  let h = '<button type="button" data-pager="' + key + '" data-page="' + (page - 1) + '"' + (page <= 1 ? " disabled" : "") + ' aria-label="Trang trước">&lt;</button>';
+  let h = '<button type="button" data-pager="' + key + '" data-page="' + (page - 1) + '"' + (page <= 1 ? " disabled" : "") + ' aria-label="Trang tr\u01b0\u1edbc">&lt;</button>';
   for (let i = 1; i <= pages; i++) {
     h += '<button type="button" data-pager="' + key + '" data-page="' + i + '" class="' + (i === page ? "active" : "") + '">' + i + "</button>";
   }
@@ -460,7 +469,7 @@ function isAdmin() {
 }
 function assertAdmin() {
   if (!isAdmin()) {
-    showToast("Truy cập bị từ chối! Chỉ tài khoản quản trị phamduchieurobotics@gmail.com mới có quyền thực hiện thao tác này.", "error");
+    showToast("Truy c\u1eadp b\u1ecb t\u1eeb ch\u1ed1i! Ch\u1ec9 t\u00e0i kho\u1ea3n qu\u1ea3n tr\u1ecb phamduchieurobotics@gmail.com m\u1edbi c\u00f3 quy\u1ec1n th\u1ef1c hi\u1ec7n thao t\u00e1c n\u00e0y.", "error");
     return false;
   }
   return true;
@@ -496,13 +505,13 @@ function can(feature) {
   return tierRank() >= req;
 }
 function promptUpgrade(msg) {
-  showConfirm("Nâng cấp hạng gói", msg + " Bạn có muốn xem các gói nâng cấp không?", function () { showTab("pricing"); }, "Xem gói nâng cấp");
+  showConfirm("N\u00e2ng c\u1ea5p h\u1ea1ng g\u00f3i", msg + " B\u1ea1n c\u00f3 mu\u1ed1n xem c\u00e1c g\u00f3i n\u00e2ng c\u1ea5p kh\u00f4ng?", function () { showTab("pricing"); }, "Xem g\u00f3i n\u00e2ng c\u1ea5p");
 }
 function requireFeature(feature) {
   if (can(feature)) return true;
   const minRank = FEATURE_MIN[feature] || 2;
-  const minTierName = TIERS[TIER_ORDER[minRank]] ? TIERS[TIER_ORDER[minRank]].name : "cao hơn";
-  promptUpgrade("Tính năng \"" + FEATURE_NAME[feature] + "\" yêu cầu gói " + minTierName + " trở lên.");
+  const minTierName = TIERS[TIER_ORDER[minRank]] ? TIERS[TIER_ORDER[minRank]].name : "cao h\u01a1n";
+  promptUpgrade("T\u00ednh n\u0103ng \"" + FEATURE_NAME[feature] + "\" y\u00eau c\u1ea7u g\u00f3i " + minTierName + " tr\u1edf l\u00ean.");
   return false;
 }
 
@@ -541,9 +550,9 @@ function handleGoogleLogin(response) {
       hideLoginError();
       onAuthenticated(user);
     } else {
-      showLoginError("Đăng nhập thất bại! Tài khoản Google chưa được xác minh email. Vui lòng thử lại bằng tài khoản khác.");
+      showLoginError("\u0110\u0103ng nh\u1eadp th\u1ea5t b\u1ea1i! T\u00e0i kho\u1ea3n Google ch\u01b0a \u0111\u01b0\u1ee3c x\u00e1c minh email. Vui l\u00f2ng th\u1eed l\u1ea1i b\u1eb1ng t\u00e0i kho\u1ea3n kh\u00e1c.");
     }
-  } catch (e) { showLoginError("Đăng nhập thất bại. Vui lòng thử lại."); }
+  } catch (e) { showLoginError("\u0110\u0103ng nh\u1eadp th\u1ea5t b\u1ea1i. Vui l\u00f2ng th\u1eed l\u1ea1i."); }
 }
 
 function loadStoredAuth() {
@@ -571,10 +580,10 @@ function initGoogle() {
         google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: handleGoogleLogin, auto_select: false });
         const wrap = $("googleBtnWrap");
         if (wrap) google.accounts.id.renderButton(wrap, { theme: "outline", size: "large", text: "signin_with", locale: "vi", width: 280 });
-      } catch (e) { showLoginError("Không thể khởi tạo đăng nhập Google. Vui lòng tải lại trang."); }
+      } catch (e) { showLoginError("Kh\u00f4ng th\u1ec3 kh\u1edfi t\u1ea1o \u0111\u0103ng nh\u1eadp Google. Vui l\u00f2ng t\u1ea3i l\u1ea1i trang."); }
     } else if (tries > 100) {
       clearInterval(timer);
-      showLoginError("Không tải được dịch vụ đăng nhập Google. Vui lòng kiểm tra kết nối mạng và tải lại trang.");
+      showLoginError("Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c d\u1ecbch v\u1ee5 \u0111\u0103ng nh\u1eadp Google. Vui l\u00f2ng ki\u1ec3m tra k\u1ebft n\u1ed1i m\u1ea1ng v\u00e0 t\u1ea3i l\u1ea1i trang.");
     }
   }, 100);
 }
@@ -619,11 +628,11 @@ function logout() {
   state.session = null; state.flash = null; state.user = null; state.checkout = null;
   state.decks = []; state.manifestDecks = [];
   removeKey(KEYS.auth);
-  try { if (typeof google !== "undefined" && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect(); } catch (e) { /* bỏ qua */ }
+  try { if (typeof google !== "undefined" && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect(); } catch (e) { /* b\u1ecf qua */ }
   ["userChip", "navTabs", "hamburgerBtn", "syncStatusChip", "tierBadge", "appShell"].forEach(function (id) { toggleEl(id, false); });
   toggleEl("loginView", true);
   hideLoginError();
-  document.title = "Đăng nhập | AI Tutor";
+  document.title = "\u0110\u0103ng nh\u1eadp | AI Tutor";
   ["configModal", "importModal", "checkoutModal", "profileModal", "confirmModal", "rejectModal", "receiptModal"].forEach(closeModal);
 }
 
@@ -658,8 +667,8 @@ function normalizeDeck(d, idx) {
     if (questions.length === 0) return null;
     return {
       id: d.id !== undefined && d.id !== null && String(d.id) ? String(d.id) : "deck_" + idx,
-      title: String(d.title || "Bộ đề không tên"),
-      tag: String(d.tag || "Chưa phân loại"),
+      title: String(d.title || "B\u1ed9 \u0111\u1ec1 kh\u00f4ng t\u00ean"),
+      tag: String(d.tag || "Ch\u01b0a ph\u00e2n lo\u1ea1i"),
       isBuiltIn: false,
       questions: questions
     };
@@ -726,34 +735,34 @@ function mistakeCount() { return Object.keys(loadObj(KEYS.mistakes)).length; }
 
 /* ------------------------------ SPA Router (History API) ------------------------------ */
 const ROUTES = {
-  "/": { tab: "dashboard", title: "Tổng quan | AI Tutor" },
-  "/dashboard": { tab: "dashboard", title: "Tổng quan | AI Tutor" },
-  "/practice": { tab: "study", title: "Ôn tập & Thi | AI Tutor" },
-  "/practice/session": { tab: "study", sub: "session", title: "Đang làm bài | AI Tutor" },
+  "/": { tab: "dashboard", title: "T\u1ed5ng quan | AI Tutor" },
+  "/dashboard": { tab: "dashboard", title: "T\u1ed5ng quan | AI Tutor" },
+  "/practice": { tab: "study", title: "\u00d4n t\u1eadp & Thi | AI Tutor" },
+  "/practice/session": { tab: "study", sub: "session", title: "\u0110ang l\u00e0m b\u00e0i | AI Tutor" },
   "/creator-studio": { tab: "studio", sub: "home", title: "Creator Studio | AI Tutor" },
-  "/creator-studio/editor": { tab: "studio", sub: "editor", title: "Trình soạn thảo Quiz | AI Tutor" },
-  "/creator-studio/lobby": { tab: "studio", sub: "lobby", title: "Cài đặt Quiz | AI Tutor" },
-  "/creator-studio/play": { tab: "studio", sub: "play", title: "Đang chơi Quiz | AI Tutor" },
-  "/creator-studio/summary": { tab: "studio", sub: "summary", title: "Tổng kết Quiz | AI Tutor" },
+  "/creator-studio/editor": { tab: "studio", sub: "editor", title: "Tr\u00ecnh so\u1ea1n th\u1ea3o Quiz | AI Tutor" },
+  "/creator-studio/lobby": { tab: "studio", sub: "lobby", title: "C\u00e0i \u0111\u1eb7t Quiz | AI Tutor" },
+  "/creator-studio/play": { tab: "studio", sub: "play", title: "\u0110ang ch\u01a1i Quiz | AI Tutor" },
+  "/creator-studio/summary": { tab: "studio", sub: "summary", title: "T\u1ed5ng k\u1ebft Quiz | AI Tutor" },
   "/converter": { tab: "converter", sub: "upload", title: "AI Converter | AI Tutor" },
   "/converter/image": { tab: "converter", sub: "upload", title: "AI Converter | AI Tutor" },
   "/converter/markdown": { tab: "converter", sub: "upload", title: "AI Converter | AI Tutor" },
   "/converter/excel": { tab: "converter", sub: "upload", title: "AI Converter | AI Tutor" },
-  "/converter/review": { tab: "converter", sub: "split", title: "Kiểm duyệt song song | AI Tutor" },
-  "/flashcards": { tab: "flash", title: "Lật thẻ | AI Tutor" },
-  "/flashcards/play": { tab: "flash", sub: "play", title: "Đang học Lật thẻ | AI Tutor" },
-  "/mistakes": { tab: "mistake", title: "Sổ tay câu hay sai | AI Tutor" },
-  "/profile": { tab: "profile", title: "Hồ sơ cá nhân | AI Tutor" },
-  "/pricing": { tab: "pricing", title: "Gói nâng cấp | AI Tutor" },
-  "/api-settings": { tab: "api", title: "Cài đặt Gemini API | AI Tutor" },
-  "/backup": { tab: "backup", title: "Sao lưu & Khôi phục | AI Tutor" },
-  "/admin": { tab: "admin", sub: "requests", title: "Quản trị duyệt đơn | AI Tutor", adminOnly: true },
-  "/admin/requests": { tab: "admin", sub: "requests", title: "Quản trị – Duyệt thanh toán | AI Tutor", adminOnly: true },
-  "/admin/members": { tab: "admin", sub: "members", title: "Quản trị – Thành viên | AI Tutor", adminOnly: true },
-  "/admin/vietqr": { tab: "admin", sub: "cfg", title: "Quản trị – Cấu hình VietQR | AI Tutor", adminOnly: true },
-  "/admin/vouchers": { tab: "admin", sub: "voucher", title: "Quản trị – Mã giảm giá | AI Tutor", adminOnly: true },
-  "/admin/backup": { tab: "admin", sub: "backup", title: "Quản trị – Sao lưu hệ thống | AI Tutor", adminOnly: true },
-  "/quiz": { tab: "studio", sub: "quiz", title: "Làm bài chia sẻ | AI Tutor" }
+  "/converter/review": { tab: "converter", sub: "split", title: "Ki\u1ec3m duy\u1ec7t song song | AI Tutor" },
+  "/flashcards": { tab: "flash", title: "L\u1eadt th\u1ebb | AI Tutor" },
+  "/flashcards/play": { tab: "flash", sub: "play", title: "\u0110ang h\u1ecdc L\u1eadt th\u1ebb | AI Tutor" },
+  "/mistakes": { tab: "mistake", title: "S\u1ed5 tay c\u00e2u hay sai | AI Tutor" },
+  "/profile": { tab: "profile", title: "H\u1ed3 s\u01a1 c\u00e1 nh\u00e2n | AI Tutor" },
+  "/pricing": { tab: "pricing", title: "G\u00f3i n\u00e2ng c\u1ea5p | AI Tutor" },
+  "/api-settings": { tab: "api", title: "C\u00e0i \u0111\u1eb7t Gemini API | AI Tutor" },
+  "/backup": { tab: "backup", title: "Sao l\u01b0u & Kh\u00f4i ph\u1ee5c | AI Tutor" },
+  "/admin": { tab: "admin", sub: "requests", title: "Qu\u1ea3n tr\u1ecb duy\u1ec7t \u0111\u01a1n | AI Tutor", adminOnly: true },
+  "/admin/requests": { tab: "admin", sub: "requests", title: "Qu\u1ea3n tr\u1ecb – Duy\u1ec7t thanh to\u00e1n | AI Tutor", adminOnly: true },
+  "/admin/members": { tab: "admin", sub: "members", title: "Qu\u1ea3n tr\u1ecb – Th\u00e0nh vi\u00ean | AI Tutor", adminOnly: true },
+  "/admin/vietqr": { tab: "admin", sub: "cfg", title: "Qu\u1ea3n tr\u1ecb – C\u1ea5u h\u00ecnh VietQR | AI Tutor", adminOnly: true },
+  "/admin/vouchers": { tab: "admin", sub: "voucher", title: "Qu\u1ea3n tr\u1ecb – M\u00e3 gi\u1ea3m gi\u00e1 | AI Tutor", adminOnly: true },
+  "/admin/backup": { tab: "admin", sub: "backup", title: "Qu\u1ea3n tr\u1ecb – Sao l\u01b0u h\u1ec7 th\u1ed1ng | AI Tutor", adminOnly: true },
+  "/quiz": { tab: "studio", sub: "quiz", title: "L\u00e0m b\u00e0i chia s\u1ebb | AI Tutor" }
 };
 const TAB_TO_PATH = {
   dashboard: "/dashboard",
@@ -813,7 +822,7 @@ function navigateTo(rawPath, options) {
     replace = true;
   }
   if (route.adminOnly && !isAdmin()) {
-    if (!opts.silentGuard) showToast("Truy cập bị từ chối! Bạn không có quyền vào trang Quản trị.", "error");
+    if (!opts.silentGuard) showToast("Truy c\u1eadp b\u1ecb t\u1eeb ch\u1ed1i! B\u1ea1n kh\u00f4ng c\u00f3 quy\u1ec1n v\u00e0o trang Qu\u1ea3n tr\u1ecb.", "error");
     route = ROUTES["/"];
     finalPath = "/";
     replace = true;
@@ -829,7 +838,7 @@ function navigateTo(rawPath, options) {
 
   let pageTitle = route.title;
   if (finalPath === "/practice/session" && state.session) {
-    pageTitle = (state.session.review ? "Xem lại bài thi" : (MODE_LABEL[state.session.mode] || "Đang làm bài")) + " | AI Tutor";
+    pageTitle = (state.session.review ? "Xem l\u1ea1i b\u00e0i thi" : (MODE_LABEL[state.session.mode] || "\u0110ang l\u00e0m b\u00e0i")) + " | AI Tutor";
   }
 
   const fullUrl = finalPath + (parsed.search || "") + (parsed.hash || "");
@@ -952,7 +961,7 @@ function updateChrome() {
     const assigned = getActiveUserAssignedApi();
     const hasKey = !!((localStorage.getItem(KEYS.apiKey) || "").trim() || (assigned && assigned.apiKey));
     dot.classList.toggle("ok", hasKey);
-    dot.title = hasKey ? "Đã cấu hình Gemini API Key" : "Chưa cấu hình Gemini API Key";
+    dot.title = hasKey ? "\u0110\u00e3 c\u1ea5u h\u00ecnh Gemini API Key" : "Ch\u01b0a c\u1ea5u h\u00ecnh Gemini API Key";
   }
   const curLang = getLang();
   const langBtns = document.querySelectorAll("[data-lang]");
@@ -970,8 +979,8 @@ function renderDashboard() {
     const pendings = getUserPendingReqs(state.user.email);
     if (pendings.length > 0 && !isAdmin()) {
       const names = pendings.map(function (r) { return TIERS[r.plan] ? TIERS[r.plan].name : r.plan; }).join(", ");
-      pbox.innerHTML = '<span>⏳ Đang chờ Quản trị viên xác nhận yêu cầu nâng cấp gói <strong>' + esc(names) + '</strong>.</span>' +
-        '<button type="button" class="btn btn-outline btn-sm" data-action="go-pricing">Xem chi tiết</button>';
+      pbox.innerHTML = '<span>⏳ \u0110ang ch\u1edd Qu\u1ea3n tr\u1ecb vi\u00ean x\u00e1c nh\u1eadn y\u00eau c\u1ea7u n\u00e2ng c\u1ea5p g\u00f3i <strong>' + esc(names) + '</strong>.</span>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-action="go-pricing">Xem chi ti\u1ebft</button>';
       pbox.classList.remove("hidden");
     } else { pbox.classList.add("hidden"); pbox.innerHTML = ""; }
   }
@@ -994,25 +1003,25 @@ function deckRowHTML(d, mode) {
   const lockExp = can("exportData") ? "" : "🔒 ";
   let actions = "";
   if (mode === "flash") {
-    actions = '<button type="button" class="btn btn-primary btn-sm" data-action="flash">Lật thẻ</button>';
+    actions = '<button type="button" class="btn btn-primary btn-sm" data-action="flash">L\u1eadt th\u1ebb</button>';
   } else {
-    actions = '<button type="button" class="btn btn-primary btn-sm" data-action="practice">' + (resume ? "Tiếp tục ôn tập" : "Ôn tập") + "</button>" +
-      '<button type="button" class="btn btn-primary btn-sm" data-action="exam">' + lockExam + "Thi thử</button>" +
+    actions = '<button type="button" class="btn btn-primary btn-sm" data-action="practice">' + (resume ? "Ti\u1ebfp t\u1ee5c \u00f4n t\u1eadp" : "\u00d4n t\u1eadp") + "</button>" +
+      '<button type="button" class="btn btn-primary btn-sm" data-action="exam">' + lockExam + "Thi th\u1eed</button>" +
       '<button type="button" class="btn btn-outline btn-sm" data-action="studio">Quiz Studio</button>';
     if (mode === "dash") {
-      actions += '<button type="button" class="btn btn-outline btn-sm" data-action="flash">Lật thẻ</button>' +
-        '<button type="button" class="btn btn-outline btn-sm" data-action="share" title="Chia sẻ bằng Link, Mã đề &amp; QR">🔗 Chia sẻ</button>' +
-        '<button type="button" class="btn btn-outline btn-sm" data-action="pdf" title="Xuất PDF để in chuẩn A4">🖨️ Xuất PDF</button>' +
-        '<button type="button" class="btn btn-outline btn-sm" data-action="export-json" title="Xuất bộ đề ra file .json">' + lockExp + "Xuất .json</button>" +
-        '<button type="button" class="btn btn-outline btn-sm" data-action="export-xlsx" title="Xuất bộ đề ra file .xlsx">' + lockExp + "Xuất .xlsx</button>" +
-        (d.kind === "user" ? '<button type="button" class="btn btn-outline btn-sm" data-action="delete" title="Xóa bộ đề này">Xóa</button>' : "");
+      actions += '<button type="button" class="btn btn-outline btn-sm" data-action="flash">L\u1eadt th\u1ebb</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-action="share" title="Chia s\u1ebb b\u1eb1ng Link, M\u00e3 \u0111\u1ec1 &amp; QR">🔗 Chia s\u1ebb</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-action="pdf" title="Xu\u1ea5t PDF \u0111\u1ec3 in chu\u1ea9n A4">🖨️ Xu\u1ea5t PDF</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-action="export-json" title="Xu\u1ea5t b\u1ed9 \u0111\u1ec1 ra file .json">' + lockExp + "Xu\u1ea5t .json</button>" +
+        '<button type="button" class="btn btn-outline btn-sm" data-action="export-xlsx" title="Xu\u1ea5t b\u1ed9 \u0111\u1ec1 ra file .xlsx">' + lockExp + "Xu\u1ea5t .xlsx</button>" +
+        (d.kind === "user" ? '<button type="button" class="btn btn-outline btn-sm" data-action="delete" title="X\u00f3a b\u1ed9 \u0111\u1ec1 n\u00e0y">X\u00f3a</button>' : "");
     }
   }
   return '<div class="deck-row' + (pinned ? " pinned" : "") + '" data-deck-id="' + esc(d.id) + '">' +
     '<div class="deck-title-line"><span class="deck-title">' + esc(d.title) + "</span>" +
-    (mode === "dash" ? '<button type="button" class="pin-btn' + (pinned ? " on" : "") + '" data-action="pin" aria-pressed="' + (pinned ? "true" : "false") + '" title="' + (pinned ? "Bỏ ghim bộ đề" : "Ghim bộ đề lên đầu") + '">📌</button>' : "") + "</div>" +
-    '<div class="deck-sub"><span class="badge">' + esc(d.tag) + "</span><span>" + d.questions.length + " câu hỏi</span>" +
-    '<span>Tiến độ ' + pct + '%</span><span class="mini-bar"><i style="width:' + pct + '%"></i></span></div>' +
+    (mode === "dash" ? '<button type="button" class="pin-btn' + (pinned ? " on" : "") + '" data-action="pin" aria-pressed="' + (pinned ? "true" : "false") + '" title="' + (pinned ? "B\u1ecf ghim b\u1ed9 \u0111\u1ec1" : "Ghim b\u1ed9 \u0111\u1ec1 l\u00ean \u0111\u1ea7u") + '">📌</button>' : "") + "</div>" +
+    '<div class="deck-sub"><span class="badge">' + esc(d.tag) + "</span><span>" + d.questions.length + " c\u00e2u h\u1ecfi</span>" +
+    '<span>Ti\u1ebfn \u0111\u1ed9 ' + pct + '%</span><span class="mini-bar"><i style="width:' + pct + '%"></i></span></div>' +
     '<div class="deck-actions">' + actions + "</div></div>";
 }
 
@@ -1027,7 +1036,7 @@ function renderDeckPanel() {
   const tags = [];
   state.decks.forEach(function (d) { if (d.tag && tags.indexOf(d.tag) === -1) tags.push(d.tag); });
   if (state.filterTag !== "all" && tags.indexOf(state.filterTag) === -1) state.filterTag = "all";
-  let pills = '<button type="button" class="pill ' + (state.filterTag === "all" ? "active" : "") + '" data-tag="all">Tất cả</button>';
+  let pills = '<button type="button" class="pill ' + (state.filterTag === "all" ? "active" : "") + '" data-tag="all">T\u1ea5t c\u1ea3</button>';
   tags.forEach(function (t) {
     pills += '<button type="button" class="pill ' + (state.filterTag === t ? "active" : "") + '" data-tag="' + esc(t) + '">' + esc(t) + "</button>";
   });
@@ -1035,9 +1044,9 @@ function renderDeckPanel() {
   toggleEl("tagPills", state.decks.length > 0);
 
   if (state.decks.length === 0) {
-    setHTML("deckList", '<div class="empty-state"><div style="font-size:2.4rem">📚</div><p>Bạn chưa có bộ đề nào. Nhập từ Excel hoặc chuyển đề thi ngay bằng AI Converter!</p>' +
-      '<div class="deck-actions" style="justify-content:center"><button type="button" class="btn btn-primary" data-action="import">+ Nhập đề từ Excel</button>' +
-      '<button type="button" class="btn btn-outline" data-action="go-converter">✨ Mở AI Converter</button></div></div>');
+    setHTML("deckList", '<div class="empty-state"><div style="font-size:2.4rem">📚</div><p>B\u1ea1n ch\u01b0a c\u00f3 b\u1ed9 \u0111\u1ec1 n\u00e0o. Nh\u1eadp t\u1eeb Excel ho\u1eb7c chuy\u1ec3n \u0111\u1ec1 thi ngay b\u1eb1ng AI Converter!</p>' +
+      '<div class="deck-actions" style="justify-content:center"><button type="button" class="btn btn-primary" data-action="import">+ Nh\u1eadp \u0111\u1ec1 t\u1eeb Excel</button>' +
+      '<button type="button" class="btn btn-outline" data-action="go-converter">✨ M\u1edf AI Converter</button></div></div>');
     setHTML("deckPager", "");
     return;
   }
@@ -1047,7 +1056,7 @@ function renderDeckPanel() {
   });
   list = sortedDecks(list);
   if (list.length === 0) {
-    setHTML("deckList", '<div class="empty-state">Không tìm thấy bộ đề phù hợp.</div>');
+    setHTML("deckList", '<div class="empty-state">Kh\u00f4ng t\u00ecm th\u1ea5y b\u1ed9 \u0111\u1ec1 ph\u00f9 h\u1ee3p.</div>');
     setHTML("deckPager", "");
     return;
   }
@@ -1061,21 +1070,21 @@ function renderHistPanel() {
   const tier = currentTier();
   const tInfo = isAdmin() ? TIERS.diamond : (TIERS[tier] || TIERS.none);
   let info = '<span><strong>' + (isAdmin() ? "👑 Admin (Diamond)" : (tInfo.icon + " " + esc(tInfo.name))) + "</strong>";
-  if (isAdmin()) info += " · Toàn quyền không giới hạn";
+  if (isAdmin()) info += " · To\u00e0n quy\u1ec1n kh\u00f4ng gi\u1edbi h\u1ea1n";
   else {
     const s = getActiveSub(state.user ? state.user.email : "");
-    if (s && s.tier === "unranked") info += " · Gói miễn phí 0đ/năm";
-    else if (s) info += " · Hết hạn: " + esc(fmtDate(s.expires));
-    else info += " · Chưa đăng ký gói (Đăng ký Unranked 0đ miễn phí)";
+    if (s && s.tier === "unranked") info += " · G\u00f3i mi\u1ec5n ph\u00ed 0\u0111/n\u0103m";
+    else if (s) info += " · H\u1ebft h\u1ea1n: " + esc(fmtDate(s.expires));
+    else info += " · Ch\u01b0a \u0111\u0103ng k\u00fd g\u00f3i (\u0110\u0103ng k\u00fd Unranked 0\u0111 mi\u1ec5n ph\u00ed)";
   }
-  info += '</span><span class="deck-actions"><button type="button" class="btn btn-outline btn-sm" data-action="edit-profile">Chỉnh sửa hồ sơ</button><button type="button" class="btn btn-primary btn-sm" data-action="go-pricing">Gói nâng cấp</button></span>';
+  info += '</span><span class="deck-actions"><button type="button" class="btn btn-outline btn-sm" data-action="edit-profile">Ch\u1ec9nh s\u1eeda h\u1ed3 s\u01a1</button><button type="button" class="btn btn-primary btn-sm" data-action="go-pricing">G\u00f3i n\u00e2ng c\u1ea5p</button></span>';
   setHTML("tierInfo", info);
 
   const q = state.histQuery.trim().toLowerCase();
   const hist = loadArr(KEYS.history).filter(function (h) { return h && typeof h === "object"; }).slice().reverse()
     .filter(function (h) { return !q || String(h.deckTitle || "").toLowerCase().indexOf(q) !== -1; });
   if (hist.length === 0) {
-    setHTML("histList", '<div class="empty-state">Chưa có lịch sử thi thử.</div>');
+    setHTML("histList", '<div class="empty-state">Ch\u01b0a c\u00f3 l\u1ecbch s\u1eed thi th\u1eed.</div>');
     setHTML("histPager", "");
     return;
   }
@@ -1083,7 +1092,7 @@ function renderHistPanel() {
   state.histPage = pg.page;
   setHTML("histList", pg.items.map(function (h) {
     return '<div class="hist-row"><span><strong>' + esc(h.deckTitle) + '</strong><br><span class="hist-date">' + esc(fmtDateTime(h.date)) + "</span></span>" +
-      '<span class="hist-score">' + esc(h.score) + '/10</span><span class="hist-date">' + esc(h.correct) + "/" + esc(h.total) + " câu</span></div>";
+      '<span class="hist-score">' + esc(h.score) + '/10</span><span class="hist-date">' + esc(h.correct) + "/" + esc(h.total) + " c\u00e2u</span></div>";
   }).join(""));
   renderPager("histPager", "hist", pg.page, pg.pages);
 }
@@ -1099,12 +1108,12 @@ function renderChart() {
   const btns = document.querySelectorAll(".seg-btn");
   for (let i = 0; i < btns.length; i++) btns[i].classList.toggle("active", btns[i].getAttribute("data-range") === state.chartRange);
   if (items.length === 0) {
-    setHTML("chartBox", '<div class="empty-state">Chưa có dữ liệu điểm thi trong ' + (days === 7 ? "tuần" : "tháng") + " này. Hãy làm một bài thi thử hoặc Quiz Studio để xem biểu đồ.</div>");
+    setHTML("chartBox", '<div class="empty-state">Ch\u01b0a c\u00f3 d\u1eef li\u1ec7u \u0111i\u1ec3m thi trong ' + (days === 7 ? "tu\u1ea7n" : "th\u00e1ng") + " n\u00e0y. H\u00e3y l\u00e0m m\u1ed9t b\u00e0i thi th\u1eed ho\u1eb7c Quiz Studio \u0111\u1ec3 xem bi\u1ec3u \u0111\u1ed3.</div>");
     return;
   }
   const W = 640, H = 250, pl = 36, pr = 12, pt = 24, pb = 40;
   const pw = W - pl - pr, ph = H - pt - pb;
-  let svg = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Biểu đồ điểm thi gần đây">';
+  let svg = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="Bi\u1ec3u \u0111\u1ed3 \u0111i\u1ec3m thi g\u1ea7n \u0111\u00e2y">';
   [0, 5, 10].forEach(function (v) {
     const y = pt + ph - (v / 10) * ph;
     svg += '<line class="ch-grid" x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y + '" y2="' + y + '"/><text class="ch-text" x="' + (pl - 6) + '" y="' + (y + 4) + '" text-anchor="end">' + v + "</text>";
@@ -1150,7 +1159,7 @@ function onDeckListClick(e) {
   else if (action === "export-json") { if (requireFeature("exportData")) exportJSON(deck); }
   else if (action === "export-xlsx") { if (requireFeature("exportData")) exportXLSX(deck); }
   else if (action === "delete") {
-    showConfirm("Xóa bộ đề", "Bạn có chắc muốn xóa bộ đề \"" + deck.title + "\"? Hành động này không thể hoàn tác.", function () { deleteDeck(deck.id); });
+    showConfirm("X\u00f3a b\u1ed9 \u0111\u1ec1", "B\u1ea1n c\u00f3 ch\u1eafc mu\u1ed1n x\u00f3a b\u1ed9 \u0111\u1ec1 \"" + deck.title + "\"? H\u00e0nh \u0111\u1ed9ng n\u00e0y kh\u00f4ng th\u1ec3 ho\u00e0n t\u00e1c.", function () { deleteDeck(deck.id); });
   }
 }
 function onPagerClick(e) {
@@ -1175,11 +1184,11 @@ function deleteDeck(id) {
   if (state.flash && state.flash.deckId === id) state.flash = null;
   rebuildDecks();
   renderTab();
-  showToast("Đã xóa bộ đề.", "success");
+  showToast("\u0110\u00e3 x\u00f3a b\u1ed9 \u0111\u1ec1.", "success");
 }
 function renderPicker(containerId, mode) {
   if (state.decks.length === 0) {
-    setHTML(containerId, '<div class="empty-state"><div style="font-size:2.4rem">📚</div><p>Bạn chưa có bộ đề nào để học.</p><button type="button" class="btn btn-primary" data-action="import">+ Nhập đề từ Excel</button></div>');
+    setHTML(containerId, '<div class="empty-state"><div style="font-size:2.4rem">📚</div><p>B\u1ea1n ch\u01b0a c\u00f3 b\u1ed9 \u0111\u1ec1 n\u00e0o \u0111\u1ec3 h\u1ecdc.</p><button type="button" class="btn btn-primary" data-action="import">+ Nh\u1eadp \u0111\u1ec1 t\u1eeb Excel</button></div>');
     return;
   }
   setHTML(containerId, sortedDecks(state.decks).map(function (d) { return deckRowHTML(d, mode); }).join(""));
@@ -1190,8 +1199,8 @@ function renderMistakeTab() {
   const mk = loadObj(KEYS.mistakes);
   const keys = Object.keys(mk);
   if (!can("mistake")) {
-    setHTML("mistakeBody", '<div class="lock-card"><div class="lock-ico">🔒</div><h2>Sổ tay câu hay sai (Làm lại câu sai)</h2><p class="muted">Tính năng này mở khóa từ Gói Bronze (100.000đ/năm) trở lên.</p>' +
-      '<button type="button" class="btn btn-primary" data-action="go-pricing">Xem gói nâng cấp</button></div>');
+    setHTML("mistakeBody", '<div class="lock-card"><div class="lock-ico">🔒</div><h2>S\u1ed5 tay c\u00e2u hay sai (L\u00e0m l\u1ea1i c\u00e2u sai)</h2><p class="muted">T\u00ednh n\u0103ng n\u00e0y m\u1edf kh\u00f3a t\u1eeb G\u00f3i Bronze (100.000\u0111/n\u0103m) tr\u1edf l\u00ean.</p>' +
+      '<button type="button" class="btn btn-primary" data-action="go-pricing">Xem g\u00f3i n\u00e2ng c\u1ea5p</button></div>');
     return;
   }
   const byDeck = {};
@@ -1202,15 +1211,15 @@ function renderMistakeTab() {
   });
   let rows = Object.keys(byDeck).map(function (id) {
     const d = getDeck(id);
-    return '<div class="hist-row"><span><strong>' + esc(d ? d.title : "Bộ đề đã bị xóa") + '</strong></span><span class="badge badge-bad">' + byDeck[id] + " câu</span><span></span></div>";
+    return '<div class="hist-row"><span><strong>' + esc(d ? d.title : "B\u1ed9 \u0111\u1ec1 \u0111\u00e3 b\u1ecb x\u00f3a") + '</strong></span><span class="badge badge-bad">' + byDeck[id] + " c\u00e2u</span><span></span></div>";
   }).join("");
-  if (!rows) rows = '<div class="empty-state">Sổ tay đang trống. Những câu bạn làm sai sẽ xuất hiện ở đây.</div>';
-  setHTML("mistakeBody", '<div class="mistake-hero"><div><h2>Sổ tay câu hay sai (Mistake Bank)</h2>' +
-    '<p class="muted">Trả lời đúng liên tiếp 2 lần để loại câu khỏi sổ tay.</p></div>' +
-    '<div><span class="mistake-count">' + keys.length + '</span> <span class="muted">câu cần ôn lại</span></div></div>' +
+  if (!rows) rows = '<div class="empty-state">S\u1ed5 tay \u0111ang tr\u1ed1ng. Nh\u1eefng c\u00e2u b\u1ea1n l\u00e0m sai s\u1ebd xu\u1ea5t hi\u1ec7n \u1edf \u0111\u00e2y.</div>';
+  setHTML("mistakeBody", '<div class="mistake-hero"><div><h2>S\u1ed5 tay c\u00e2u hay sai (Mistake Bank)</h2>' +
+    '<p class="muted">Tr\u1ea3 l\u1eddi \u0111\u00fang li\u00ean ti\u1ebfp 2 l\u1ea7n \u0111\u1ec3 lo\u1ea1i c\u00e2u kh\u1ecfi s\u1ed5 tay.</p></div>' +
+    '<div><span class="mistake-count">' + keys.length + '</span> <span class="muted">c\u00e2u c\u1ea7n \u00f4n l\u1ea1i</span></div></div>' +
     '<div class="deck-actions" style="margin-bottom:14px">' +
-    '<button type="button" class="btn btn-danger" data-action="mistake-start"' + (keys.length === 0 ? " disabled" : "") + ">Luyện tập sổ tay</button>" +
-    '<button type="button" class="btn btn-outline" data-action="mistake-clear"' + (keys.length === 0 ? " disabled" : "") + ">Xóa toàn bộ sổ tay</button></div>" +
+    '<button type="button" class="btn btn-danger" data-action="mistake-start"' + (keys.length === 0 ? " disabled" : "") + ">Luy\u1ec7n t\u1eadp s\u1ed5 tay</button>" +
+    '<button type="button" class="btn btn-outline" data-action="mistake-clear"' + (keys.length === 0 ? " disabled" : "") + ">X\u00f3a to\u00e0n b\u1ed9 s\u1ed5 tay</button></div>" +
     '<div class="list">' + rows + "</div>");
 }
 function onMistakeClick(e) {
@@ -1220,8 +1229,8 @@ function onMistakeClick(e) {
   if (a === "go-pricing") showTab("pricing");
   else if (a === "mistake-start") { if (requireFeature("mistake")) openConfig("mistake", null); }
   else if (a === "mistake-clear") {
-    showConfirm("Xóa sổ tay", "Bạn có chắc muốn xóa toàn bộ câu trong Sổ tay câu hay sai?", function () {
-      saveJSON(KEYS.mistakes, {}); renderTab(); showToast("Đã xóa toàn bộ sổ tay.", "success");
+    showConfirm("X\u00f3a s\u1ed5 tay", "B\u1ea1n c\u00f3 ch\u1eafc mu\u1ed1n x\u00f3a to\u00e0n b\u1ed9 c\u00e2u trong S\u1ed5 tay c\u00e2u hay sai?", function () {
+      saveJSON(KEYS.mistakes, {}); renderTab(); showToast("\u0110\u00e3 x\u00f3a to\u00e0n b\u1ed9 s\u1ed5 tay.", "success");
     });
   }
 }
@@ -1235,11 +1244,11 @@ function describeSessions(total, perSession) {
   const remainder = t % sz;
   let summary = "";
   if (totalSessions === 1) {
-    summary = "1 phiên duy nhất (" + t + " câu).";
+    summary = "1 phi\u00ean duy nh\u1ea5t (" + t + " c\u00e2u).";
   } else if (remainder === 0) {
-    summary = "Tự động chia thành " + totalSessions + " phiên × " + sz + " câu.";
+    summary = "T\u1ef1 \u0111\u1ed9ng chia th\u00e0nh " + totalSessions + " phi\u00ean × " + sz + " c\u00e2u.";
   } else {
-    summary = "Tự động chia thành " + totalSessions + " phiên: " + fullSessions + " phiên × " + sz + " câu + 1 phiên cuối × " + remainder + " câu.";
+    summary = "T\u1ef1 \u0111\u1ed9ng chia th\u00e0nh " + totalSessions + " phi\u00ean: " + fullSessions + " phi\u00ean × " + sz + " c\u00e2u + 1 phi\u00ean cu\u1ed1i × " + remainder + " c\u00e2u.";
   }
   return { total: t, size: sz, totalSessions: totalSessions, fullSessions: fullSessions, remainder: remainder, summary: summary };
 }
@@ -1271,11 +1280,11 @@ function syncExamConfigVisibility() {
 function openConfig(mode, deck) {
   let total = 0;
   if (mode === "mistake") total = mistakeCount(); else if (deck) total = deck.questions.length;
-  if (total === 0) { showToast("Không có câu hỏi nào để bắt đầu.", "warning"); return; }
+  if (total === 0) { showToast("Kh\u00f4ng c\u00f3 c\u00e2u h\u1ecfi n\u00e0o \u0111\u1ec3 b\u1eaft \u0111\u1ea7u.", "warning"); return; }
   state.pending = { mode: mode, deckId: deck ? deck.id : null, total: total };
-  const titles = { practice: "Thiết lập chế độ Ôn tập", exam: "Thiết lập chế độ Thi thử (Kiểm tra)", flash: "Thiết lập chế độ Lật thẻ", mistake: "Luyện tập Sổ tay câu hay sai" };
-  setText("configTitle", titles[mode] || "Thiết lập");
-  setText("configSub", (deck ? deck.title + " – " : "") + total + " câu hỏi");
+  const titles = { practice: "Thi\u1ebft l\u1eadp ch\u1ebf \u0111\u1ed9 \u00d4n t\u1eadp", exam: "Thi\u1ebft l\u1eadp ch\u1ebf \u0111\u1ed9 Thi th\u1eed (Ki\u1ec3m tra)", flash: "Thi\u1ebft l\u1eadp ch\u1ebf \u0111\u1ed9 L\u1eadt th\u1ebb", mistake: "Luy\u1ec7n t\u1eadp S\u1ed5 tay c\u00e2u hay sai" };
+  setText("configTitle", titles[mode] || "Thi\u1ebft l\u1eadp");
+  setText("configSub", (deck ? deck.title + " – " : "") + total + " c\u00e2u h\u1ecfi");
   const canShuffle = can("shuffle");
   const q = $("cfgShuffleQ"); if (q) { q.checked = false; q.disabled = !canShuffle; }
   const o = $("cfgShuffleO"); if (o) { o.checked = false; o.disabled = !canShuffle; }
@@ -1303,7 +1312,7 @@ function updateChunkSelector() {
     const s = (c - 1) * info.size + 1;
     const e = Math.min(c * info.size, info.total);
     const cnt = e - s + 1;
-    html += '<option value="' + c + '">Phiên ' + c + "/" + info.totalSessions + " (Câu " + s + "–" + e + " · " + cnt + " câu)</option>";
+    html += '<option value="' + c + '">Phi\u00ean ' + c + "/" + info.totalSessions + " (C\u00e2u " + s + "–" + e + " · " + cnt + " c\u00e2u)</option>";
   }
   sel.innerHTML = html;
 }
@@ -1328,7 +1337,7 @@ function sliceBySelectedSession(allQs) {
   const end = Math.min(chunk * info.size, allQs.length);
   return {
     items: allQs.slice(start, end),
-    label: "Phiên " + chunk + "/" + info.totalSessions + " (" + (end - start) + " câu)"
+    label: "Phi\u00ean " + chunk + "/" + info.totalSessions + " (" + (end - start) + " c\u00e2u)"
   };
 }
 function startFromConfig() {
@@ -1346,15 +1355,15 @@ function startFromConfig() {
         const nq = m && normalizeQuestion(m.question, i);
         if (nq && m.deckId) base.push({ q: nq, deckId: String(m.deckId) });
       });
-      if (base.length === 0) { showToast("Sổ tay hiện đang trống.", "warning"); return; }
+      if (base.length === 0) { showToast("S\u1ed5 tay hi\u1ec7n \u0111ang tr\u1ed1ng.", "warning"); return; }
       if (shuffleQ) base = shuffleArray(base);
       closeModal("configModal");
-      beginSession({ mode: "mistake", deckId: "mistake_bank", title: "Sổ tay câu hay sai",
+      beginSession({ mode: "mistake", deckId: "mistake_bank", title: "S\u1ed5 tay c\u00e2u hay sai",
         questions: base.map(function (b) { return prepareQuestion(b.q, b.deckId, shuffleO); }) });
       return;
     }
     const deck = getDeck(p.deckId);
-    if (!deck) { showToast("Không tìm thấy bộ đề.", "error"); return; }
+    if (!deck) { showToast("Kh\u00f4ng t\u00ecm th\u1ea5y b\u1ed9 \u0111\u1ec1.", "error"); return; }
     if (p.mode === "flash") {
       let qs = deck.questions.slice();
       let title = deck.title;
@@ -1402,7 +1411,7 @@ function startFromConfig() {
     closeModal("configModal");
     beginSession({ mode: "practice", deckId: deck.id, title: pTitle,
       questions: base.map(function (q) { return prepareQuestion(q, deck.id, shuffleO); }) });
-  } catch (e) { showToast("Không thể bắt đầu phiên làm bài. Vui lòng thử lại.", "error"); }
+  } catch (e) { showToast("Kh\u00f4ng th\u1ec3 b\u1eaft \u0111\u1ea7u phi\u00ean l\u00e0m b\u00e0i. Vui l\u00f2ng th\u1eed l\u1ea1i.", "error"); }
 }
 
 /* ------------------------------ Study Session ------------------------------ */
@@ -1434,7 +1443,7 @@ function startPractice(deck) {
   };
   startTimer();
   navigateTo("/practice/session");
-  showToast("Đã khôi phục tiến độ làm bài trước đó.", "info");
+  showToast("\u0110\u00e3 kh\u00f4i ph\u1ee5c ti\u1ebfn \u0111\u1ed9 l\u00e0m b\u00e0i tr\u01b0\u1edbc \u0111\u00f3.", "info");
 }
 function saveProgress() {
   const s = state.session;
@@ -1471,7 +1480,7 @@ function renderStudy() {
   const q = s.questions[i];
   if (!q) return;
 
-  setText("statusMode", MODE_LABEL[s.mode] + (s.review ? " (Xem lại)" : ""));
+  setText("statusMode", MODE_LABEL[s.mode] + (s.review ? " (Xem l\u1ea1i)" : ""));
   setText("statusDeck", s.title);
   const done = countDone(s);
   const pct = Math.round(done / total * 100);
@@ -1480,23 +1489,23 @@ function renderStudy() {
   const fill = $("statusFill"); if (fill) fill.style.width = pct + "%";
   toggleEl("resetBtn", s.mode === "practice");
   toggleEl("finishBtn", !s.review);
-  setText("finishBtn", s.mode === "exam" ? "Nộp bài" : "Hoàn thành");
+  setText("finishBtn", s.mode === "exam" ? "N\u1ed9p b\u00e0i" : "Ho\u00e0n th\u00e0nh");
 
   const rb = $("examResult");
   if (rb) {
     if (s.review && s.result) {
-      rb.innerHTML = '<div class="score">' + esc(s.result.score) + "/10</div><div>Bạn trả lời đúng <strong>" + s.result.correct + "/" + s.result.total + "</strong> câu" +
-        (s.result.unanswered > 0 ? " (" + s.result.unanswered + " câu chưa trả lời)" : "") + ". Hãy xem lại chi tiết từng câu bên dưới.</div>";
+      rb.innerHTML = '<div class="score">' + esc(s.result.score) + "/10</div><div>B\u1ea1n tr\u1ea3 l\u1eddi \u0111\u00fang <strong>" + s.result.correct + "/" + s.result.total + "</strong> c\u00e2u" +
+        (s.result.unanswered > 0 ? " (" + s.result.unanswered + " c\u00e2u ch\u01b0a tr\u1ea3 l\u1eddi)" : "") + ". H\u00e3y xem l\u1ea1i chi ti\u1ebft t\u1eebng c\u00e2u b\u00ean d\u01b0\u1edbi.</div>";
       rb.classList.remove("hidden");
     } else { rb.classList.add("hidden"); rb.innerHTML = ""; }
   }
 
-  setText("qBadge", "Câu hỏi: " + (i + 1));
-  setText("qHint", q.type === "multiple" ? "(Chọn nhiều đáp án)" : "(Chọn một đáp án)");
+  setText("qBadge", "C\u00e2u h\u1ecfi: " + (i + 1));
+  setText("qHint", q.type === "multiple" ? "(Ch\u1ecdn nhi\u1ec1u \u0111\u00e1p \u00e1n)" : "(Ch\u1ecdn m\u1ed9t \u0111\u00e1p \u00e1n)");
   const fb = $("flagBtn");
-  if (fb) { fb.setAttribute("aria-pressed", s.flags[i] ? "true" : "false"); fb.title = s.flags[i] ? "Bỏ đánh dấu (phím F)" : "Đánh dấu câu hỏi (phím F)"; }
+  if (fb) { fb.setAttribute("aria-pressed", s.flags[i] ? "true" : "false"); fb.title = s.flags[i] ? "B\u1ecf \u0111\u00e1nh d\u1ea5u (ph\u00edm F)" : "\u0110\u00e1nh d\u1ea5u c\u00e2u h\u1ecfi (ph\u00edm F)"; }
   setHTML("qText", renderRich(q.text));
-  setHTML("qImage", q.image ? '<img src="' + esc(q.image) + '" alt="Hình minh họa câu hỏi" onerror="this.style.display=\'none\'">' : "");
+  setHTML("qImage", q.image ? '<img src="' + esc(q.image) + '" alt="H\u00ecnh minh h\u1ecda c\u00e2u h\u1ecfi" onerror="this.style.display=\'none\'">' : "");
 
   const revealed = isRevealed(s, i);
   const ans = getAnswer(s, i);
@@ -1518,12 +1527,12 @@ function renderStudy() {
     if (revealed && s.mode !== "exam" && !s.review) {
       const ok = gradeQ(q, ans);
       fbx.className = "feedback " + (ok ? "ok" : "bad");
-      fbx.textContent = (ok ? "Chính xác! " : "Chưa chính xác. ") + (s.notes[i] || "");
+      fbx.textContent = (ok ? "Ch\u00ednh x\u00e1c! " : "Ch\u01b0a ch\u00ednh x\u00e1c. ") + (s.notes[i] || "");
     } else { fbx.className = "feedback hidden"; fbx.textContent = ""; }
   }
   const ex = $("explainBox");
   if (ex) {
-    if (revealed && q.explanation) { ex.innerHTML = "<strong>Giải thích:</strong> " + renderRich(q.explanation); ex.classList.remove("hidden"); }
+    if (revealed && q.explanation) { ex.innerHTML = "<strong>Gi\u1ea3i th\u00edch:</strong> " + renderRich(q.explanation); ex.classList.remove("hidden"); }
     else { ex.classList.add("hidden"); ex.innerHTML = ""; }
   }
 
@@ -1549,9 +1558,9 @@ function renderPalette() {
     const st = questionState(s, k);
     shown++;
     html += '<button type="button" class="pal-btn ' + (st === "none" ? "" : st) + (s.flags[k] ? " flagged" : "") + (k === s.currentIndex ? " current" : "") +
-      '" data-idx="' + k + '" aria-label="Câu ' + (k + 1) + (s.flags[k] ? " (đã cắm cờ)" : "") + '">' + (k + 1) + "</button>";
+      '" data-idx="' + k + '" aria-label="C\u00e2u ' + (k + 1) + (s.flags[k] ? " (\u0111\u00e3 c\u1eafm c\u1edd)" : "") + '">' + (k + 1) + "</button>";
   }
-  if (shown === 0) html = '<span class="muted" style="grid-column:1/-1">Không có câu nào phù hợp bộ lọc.</span>';
+  if (shown === 0) html = '<span class="muted" style="grid-column:1/-1">Kh\u00f4ng c\u00f3 c\u00e2u n\u00e0o ph\u00f9 h\u1ee3p b\u1ed9 l\u1ecdc.</span>';
   setHTML("paletteGrid", html);
 }
 function goTo(i) { const s = state.session; if (!s) return; s.currentIndex = clamp(i, 0, s.questions.length - 1); saveProgress(); renderStudy(); }
@@ -1586,10 +1595,10 @@ function recordResult(s, i, ctx) {
     if (ok) {
       if (m) {
         m.streak = (Number(m.streak) || 0) + 1;
-        if (m.streak >= 2) { delete ctx.mistakes[key]; s.notes[i] = "Đã đúng 2 lần liên tiếp – câu này được loại khỏi sổ tay."; }
-        else s.notes[i] = "Chuỗi đúng: " + m.streak + "/2.";
+        if (m.streak >= 2) { delete ctx.mistakes[key]; s.notes[i] = "\u0110\u00e3 \u0111\u00fang 2 l\u1ea7n li\u00ean ti\u1ebfp – c\u00e2u n\u00e0y \u0111\u01b0\u1ee3c lo\u1ea1i kh\u1ecfi s\u1ed5 tay."; }
+        else s.notes[i] = "Chu\u1ed7i \u0111\u00fang: " + m.streak + "/2.";
       }
-    } else if (m) { m.streak = 0; s.notes[i] = "Chuỗi đúng đã được đặt lại về 0."; }
+    } else if (m) { m.streak = 0; s.notes[i] = "Chu\u1ed7i \u0111\u00fang \u0111\u00e3 \u0111\u01b0\u1ee3c \u0111\u1eb7t l\u1ea1i v\u1ec1 0."; }
   } else if (!ok) {
     const deck = getDeck(q.deckId);
     let orig = deck ? (deck.questions.filter(function (x) { return x.id === q.origId; })[0] || null) : null;
@@ -1603,7 +1612,7 @@ function submitCurrent() {
   if (!s || s.review || s.mode === "exam") return;
   const i = s.currentIndex;
   if (s.submitted[i]) return;
-  if (getAnswer(s, i).length === 0) { showToast("Vui lòng chọn ít nhất một đáp án.", "warning"); return; }
+  if (getAnswer(s, i).length === 0) { showToast("Vui l\u00f2ng ch\u1ecdn \u00edt nh\u1ea5t m\u1ed9t \u0111\u00e1p \u00e1n.", "warning"); return; }
   s.submitted[i] = true;
   const ctx = { stats: getStats(), mistakes: loadObj(KEYS.mistakes) };
   recordResult(s, i, ctx);
@@ -1612,7 +1621,7 @@ function submitCurrent() {
   saveProgress();
   renderStudy();
   updateChrome();
-  if (Object.keys(s.submitted).length === s.questions.length) showToast("Chúc mừng! Bạn đã hoàn thành tất cả câu hỏi.", "success");
+  if (Object.keys(s.submitted).length === s.questions.length) showToast("Ch\u00fac m\u1eebng! B\u1ea1n \u0111\u00e3 ho\u00e0n th\u00e0nh t\u1ea5t c\u1ea3 c\u00e2u h\u1ecfi.", "success");
 }
 function nextQuestion() { const s = state.session; if (s) goTo(s.currentIndex + 1); }
 function prevQuestion() { const s = state.session; if (s) goTo(s.currentIndex - 1); }
@@ -1633,7 +1642,7 @@ function tick() {
   if (!s || s.review) { stopTimer(); return; }
   if (s.mode === "exam" && remainingSeconds(s) <= 0) {
     stopTimer(); closeModal("confirmModal"); state.confirmCb = null;
-    showToast("Đã hết giờ! Bài thi được nộp tự động.", "warning");
+    showToast("\u0110\u00e3 h\u1ebft gi\u1edd! B\u00e0i thi \u0111\u01b0\u1ee3c n\u1ed9p t\u1ef1 \u0111\u1ed9ng.", "warning");
     finishExam();
     return;
   }
@@ -1648,13 +1657,13 @@ function updateTimerUI() {
   let frac = 1, warn = false;
   if (s.review) {
     const sc = s.result ? parseFloat(s.result.score) : 0;
-    txt.textContent = s.result ? s.result.score : "—"; lab.textContent = "Điểm hệ 10"; frac = clamp(sc / 10, 0, 1);
+    txt.textContent = s.result ? s.result.score : "—"; lab.textContent = "\u0110i\u1ec3m h\u1ec7 10"; frac = clamp(sc / 10, 0, 1);
   } else if (s.mode === "exam") {
     const rem = remainingSeconds(s);
-    txt.textContent = fmtClock(rem); lab.textContent = "Thời gian còn lại"; frac = s.minutes > 0 ? clamp(rem / (s.minutes * 60), 0, 1) : 0; warn = rem <= 60;
+    txt.textContent = fmtClock(rem); lab.textContent = "Th\u1eddi gian c\u00f2n l\u1ea1i"; frac = s.minutes > 0 ? clamp(rem / (s.minutes * 60), 0, 1) : 0; warn = rem <= 60;
   } else {
     txt.textContent = fmtClock(Math.max(0, Math.round((Date.now() - s.startedAt) / 1000)));
-    lab.textContent = "Thời gian phiên học"; frac = s.questions.length ? clamp(countDone(s) / s.questions.length, 0, 1) : 0;
+    lab.textContent = "Th\u1eddi gian phi\u00ean h\u1ecdc"; frac = s.questions.length ? clamp(countDone(s) / s.questions.length, 0, 1) : 0;
   }
   ring.style.strokeDashoffset = String(RING_C * (1 - frac));
   ring.classList.toggle("warn", warn);
@@ -1686,11 +1695,11 @@ function requestFinish() {
   if (s.mode === "exam") {
     let un = 0;
     for (let i = 0; i < s.questions.length; i++) if (getAnswer(s, i).length === 0) un++;
-    showConfirm("Nộp bài thi", un > 0 ? "Bạn còn " + un + " câu chưa trả lời. Bạn có chắc chắn muốn nộp bài?" : "Bạn có chắc chắn muốn nộp bài?", finishExam);
+    showConfirm("N\u1ed9p b\u00e0i thi", un > 0 ? "B\u1ea1n c\u00f2n " + un + " c\u00e2u ch\u01b0a tr\u1ea3 l\u1eddi. B\u1ea1n c\u00f3 ch\u1eafc ch\u1eafn mu\u1ed1n n\u1ed9p b\u00e0i?" : "B\u1ea1n c\u00f3 ch\u1eafc ch\u1eafn mu\u1ed1n n\u1ed9p b\u00e0i?", finishExam);
   } else {
     const done = countDone(s);
-    showConfirm("Hoàn thành phiên học", "Bạn đã hoàn thành " + done + "/" + s.questions.length + " câu. Kết thúc phiên học bây giờ?", function () {
-      showToast("Đã kết thúc phiên học: " + done + "/" + s.questions.length + " câu.", "success");
+    showConfirm("Ho\u00e0n th\u00e0nh phi\u00ean h\u1ecdc", "B\u1ea1n \u0111\u00e3 ho\u00e0n th\u00e0nh " + done + "/" + s.questions.length + " c\u00e2u. K\u1ebft th\u00fac phi\u00ean h\u1ecdc b\u00e2y gi\u1edd?", function () {
+      showToast("\u0110\u00e3 k\u1ebft th\u00fac phi\u00ean h\u1ecdc: " + done + "/" + s.questions.length + " c\u00e2u.", "success");
       leaveStudy();
     });
   }
@@ -1699,14 +1708,14 @@ function leaveStudy() { stopTimer(); state.session = null; navigateTo("/practice
 function requestExit() {
   const s = state.session;
   if (!s) return;
-  if (s.mode === "exam" && !s.review) showConfirm("Thoát bài thi", "Nếu thoát bây giờ, bài thi đang làm sẽ bị hủy và không được lưu điểm. Bạn có chắc chắn?", leaveStudy);
+  if (s.mode === "exam" && !s.review) showConfirm("Tho\u00e1t b\u00e0i thi", "N\u1ebfu tho\u00e1t b\u00e2y gi\u1edd, b\u00e0i thi \u0111ang l\u00e0m s\u1ebd b\u1ecb h\u1ee7y v\u00e0 kh\u00f4ng \u0111\u01b0\u1ee3c l\u01b0u \u0111i\u1ec3m. B\u1ea1n c\u00f3 ch\u1eafc ch\u1eafn?", leaveStudy);
   else leaveStudy();
 }
 function requestReset() {
   const s = state.session;
   if (!s || s.mode !== "practice") return;
   const deck = getDeck(s.deckId);
-  showConfirm("Làm lại từ đầu", "Toàn bộ tiến độ ôn tập của bộ đề này sẽ bị xóa. Bạn có chắc chắn muốn làm lại từ đầu?", function () {
+  showConfirm("L\u00e0m l\u1ea1i t\u1eeb \u0111\u1ea7u", "To\u00e0n b\u1ed9 ti\u1ebfn \u0111\u1ed9 \u00f4n t\u1eadp c\u1ee7a b\u1ed9 \u0111\u1ec1 n\u00e0y s\u1ebd b\u1ecb x\u00f3a. B\u1ea1n c\u00f3 ch\u1eafc ch\u1eafn mu\u1ed1n l\u00e0m l\u1ea1i t\u1eeb \u0111\u1ea7u?", function () {
     const prog = loadObj(KEYS.progress); delete prog[s.deckId]; saveJSON(KEYS.progress, prog);
     stopTimer(); state.session = null; renderTab();
     if (deck) openConfig("practice", deck);
@@ -1720,9 +1729,9 @@ function renderFlash() {
   const q = f.questions[f.index];
   if (!q) return;
   const card = $("flipCard"); if (card) card.classList.toggle("flipped", f.flipped);
-  setHTML("flashFront", '<div class="f-text">' + renderRich(q.text) + "</div>" + (q.image ? '<img src="' + esc(q.image) + '" alt="Hình minh họa" onerror="this.style.display=\'none\'">' : ""));
+  setHTML("flashFront", '<div class="f-text">' + renderRich(q.text) + "</div>" + (q.image ? '<img src="' + esc(q.image) + '" alt="H\u00ecnh minh h\u1ecda" onerror="this.style.display=\'none\'">' : ""));
   const answers = q.correct.map(function (c) { return "<li>" + LETTERS.charAt(c) + ". " + renderRich(q.options[c]) + "</li>"; }).join("");
-  setHTML("flashBack", "<strong>Đáp án đúng:</strong><ul>" + answers + "</ul>" + (q.explanation ? '<div class="f-expl"><strong>Giải thích:</strong> ' + renderRich(q.explanation) + "</div>" : ""));
+  setHTML("flashBack", "<strong>\u0110\u00e1p \u00e1n \u0111\u00fang:</strong><ul>" + answers + "</ul>" + (q.explanation ? '<div class="f-expl"><strong>Gi\u1ea3i th\u00edch:</strong> ' + renderRich(q.explanation) + "</div>" : ""));
   setText("flashCounter", (f.index + 1) + "/" + f.questions.length);
   const p = $("flashPrevBtn"); if (p) p.disabled = f.index === 0;
   const n = $("flashNextBtn"); if (n) n.disabled = f.index >= f.questions.length - 1;
@@ -1740,10 +1749,10 @@ function flashMove(d) {
 /* ------------------------------ Import / Export (Synced 11-Column) ------------------------------ */
 function parseWorkbookRows(rows) {
   const out = { questions: [], errors: [], valid: 0 };
-  if (!Array.isArray(rows) || rows.length === 0) { out.errors.push("File không có dữ liệu câu hỏi."); return out; }
+  if (!Array.isArray(rows) || rows.length === 0) { out.errors.push("File kh\u00f4ng c\u00f3 d\u1eef li\u1ec7u c\u00e2u h\u1ecfi."); return out; }
   const keys = Object.keys(rows[0]).map(function (k) { return k.trim(); });
   const missing = XLSX_HEADERS.filter(function (h) { return keys.indexOf(h) === -1; });
-  if (missing.length > 0) { out.errors.push("File thiếu các cột bắt buộc: " + missing.join(", ")); return out; }
+  if (missing.length > 0) { out.errors.push("File thi\u1ebfu c\u00e1c c\u1ed9t b\u1eaft bu\u1ed9c: " + missing.join(", ")); return out; }
   const ts = Date.now();
   rows.forEach(function (row, index) {
     const line = index + 2;
@@ -1758,14 +1767,14 @@ function parseWorkbookRows(rows) {
     if (XLSX_HEADERS.every(function (h) { return String(cell(h)).replace(/\u00A0/g, " ").trim() === ""; })) return;
     const errs = [];
     const text = String(cell("Question Text")).replace(/\u00A0/g, " ").trim();
-    if (!text) errs.push("Dòng " + line + ": Thiếu nội dung câu hỏi");
+    if (!text) errs.push("D\u00f2ng " + line + ": Thi\u1ebfu n\u1ed9i dung c\u00e2u h\u1ecfi");
     const rawOpts = [];
     const origToCompact = {};
     for (let n = 1; n <= 5; n++) {
       const v = String(cell("Option " + n)).replace(/\u00A0/g, " ").trim();
       if (v) { origToCompact[n - 1] = rawOpts.length; rawOpts.push(v); }
     }
-    if (rawOpts.length < 2) errs.push("Dòng " + line + ": Cần ít nhất 2 phương án trả lời");
+    if (rawOpts.length < 2) errs.push("D\u00f2ng " + line + ": C\u1ea7n \u00edt nh\u1ea5t 2 ph\u01b0\u01a1ng \u00e1n tr\u1ea3 l\u1eddi");
     const rawAns = String(cell("Correct Answer")).replace(/\u00A0/g, " ").trim();
     let tokens = rawAns.split(/[,;\/\s]+/).map(function (t) { return t.replace(/[.()]/g, "").trim(); }).filter(Boolean);
     let correct = tokens.map(function (t) {
@@ -1777,7 +1786,7 @@ function parseWorkbookRows(rows) {
     });
     correct = Array.from(new Set(correct)).sort(function (a, b) { return a - b; });
     if (correct.length === 0 || correct.some(function (c) { return c < 0 || c >= rawOpts.length; })) {
-      errs.push("Dòng " + line + ": Đáp án đúng không hợp lệ (\"" + rawAns + "\")");
+      errs.push("D\u00f2ng " + line + ": \u0110\u00e1p \u00e1n \u0111\u00fang kh\u00f4ng h\u1ee3p l\u1ec7 (\"" + rawAns + "\")");
     }
     if (errs.length > 0) { errs.forEach(function (e) { out.errors.push(e); }); return; }
     const rawType = String(cell("Question Type")).trim().toLowerCase();
@@ -1795,14 +1804,14 @@ function parseWorkbookRows(rows) {
     });
   });
   out.valid = out.questions.length;
-  if (out.valid === 0 && out.errors.length === 0) out.errors.push("File không có dòng câu hỏi nào.");
+  if (out.valid === 0 && out.errors.length === 0) out.errors.push("File kh\u00f4ng c\u00f3 d\u00f2ng c\u00e2u h\u1ecfi n\u00e0o.");
   return out;
 }
 
 function addOrMergeDeck(opts) {
   // opts: { mode: 'new'|'merge', title, tag, targetDeckId, questions }
   const qs = Array.isArray(opts.questions) ? opts.questions.map(normalizeQuestion).filter(Boolean) : [];
-  if (qs.length === 0) { showToast("Chưa có câu hỏi hợp lệ để nhập.", "warning"); return null; }
+  if (qs.length === 0) { showToast("Ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi h\u1ee3p l\u1ec7 \u0111\u1ec3 nh\u1eadp.", "warning"); return null; }
   const limits = effectiveLimits();
   const decks = loadArr(KEYS.decks);
   const ts = Date.now();
@@ -1811,9 +1820,9 @@ function addOrMergeDeck(opts) {
   if (opts.mode === "merge") {
     if (!requireFeature("merge")) return null;
     const target = decks.filter(function (d) { return d && String(d.id) === String(opts.targetDeckId); })[0];
-    if (!target || !Array.isArray(target.questions)) { showToast("Vui lòng chọn một bộ đề cá nhân để gộp.", "warning"); return null; }
+    if (!target || !Array.isArray(target.questions)) { showToast("Vui l\u00f2ng ch\u1ecdn m\u1ed9t b\u1ed9 \u0111\u1ec1 c\u00e1 nh\u00e2n \u0111\u1ec3 g\u1ed9p.", "warning"); return null; }
     if (target.questions.length + qs.length > limits.maxQ) {
-      promptUpgrade("Gói " + limits.name + " chỉ cho phép tối đa " + limits.maxQ + " câu mỗi bộ đề.");
+      promptUpgrade("G\u00f3i " + limits.name + " ch\u1ec9 cho ph\u00e9p t\u1ed1i \u0111a " + limits.maxQ + " c\u00e2u m\u1ed7i b\u1ed9 \u0111\u1ec1.");
       return null;
     }
     const offset = target.questions.length;
@@ -1822,19 +1831,19 @@ function addOrMergeDeck(opts) {
   } else {
     const title = String(opts.title || "").trim();
     const tag = String(opts.tag || "").trim();
-    if (!title) { showToast("Vui lòng nhập tên bộ đề.", "warning"); return null; }
+    if (!title) { showToast("Vui l\u00f2ng nh\u1eadp t\u00ean b\u1ed9 \u0111\u1ec1.", "warning"); return null; }
     if (getUserDecks().length >= limits.maxDecks) {
-      promptUpgrade("Gói " + limits.name + " chỉ cho phép tối đa " + limits.maxDecks + " bộ đề cá nhân.");
+      promptUpgrade("G\u00f3i " + limits.name + " ch\u1ec9 cho ph\u00e9p t\u1ed1i \u0111a " + limits.maxDecks + " b\u1ed9 \u0111\u1ec1 c\u00e1 nh\u00e2n.");
       return null;
     }
     if (qs.length > limits.maxQ) {
-      promptUpgrade("Gói " + limits.name + " chỉ cho phép tối đa " + limits.maxQ + " câu mỗi bộ đề.");
+      promptUpgrade("G\u00f3i " + limits.name + " ch\u1ec9 cho ph\u00e9p t\u1ed1i \u0111a " + limits.maxQ + " c\u00e2u m\u1ed7i b\u1ed9 \u0111\u1ec1.");
       return null;
     }
     savedDeck = {
       id: "user_" + ts,
       title: title,
-      tag: tag || "Chưa phân loại",
+      tag: tag || "Ch\u01b0a ph\u00e2n lo\u1ea1i",
       isBuiltIn: false,
       questions: qs.map(function (q, i) { return Object.assign({}, q, { id: "q_" + ts + "_" + i }); })
     };
@@ -1843,7 +1852,7 @@ function addOrMergeDeck(opts) {
   if (!saveJSON(KEYS.decks, decks)) return null;
   rebuildDecks();
   renderTab();
-  showToast("Đã nhập " + qs.length + " câu hỏi vào Kho đề thành công!", "success");
+  showToast("\u0110\u00e3 nh\u1eadp " + qs.length + " c\u00e2u h\u1ecfi v\u00e0o Kho \u0111\u1ec1 th\u00e0nh c\u00f4ng!", "success");
   return savedDeck;
 }
 
@@ -1865,8 +1874,8 @@ function openImport() {
   const sel = $("mergeSelect");
   if (sel) {
     sel.innerHTML = users.length
-      ? users.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.title) + " (" + d.questions.length + " câu)</option>"; }).join("")
-      : '<option value="">Chưa có bộ đề cá nhân nào</option>';
+      ? users.map(function (d) { return '<option value="' + esc(d.id) + '">' + esc(d.title) + " (" + d.questions.length + " c\u00e2u)</option>"; }).join("")
+      : '<option value="">Ch\u01b0a c\u00f3 b\u1ed9 \u0111\u1ec1 c\u00e1 nh\u00e2n n\u00e0o</option>';
   }
   openModal("importModal");
 }
@@ -1878,9 +1887,9 @@ function currentImportMode() {
 function renderImportPreview() {
   const r = state.importResult;
   if (!r) return;
-  let html = '<div class="ok-line">Hợp lệ: ' + r.valid + " câu hỏi</div>";
+  let html = '<div class="ok-line">H\u1ee3p l\u1ec7: ' + r.valid + " c\u00e2u h\u1ecfi</div>";
   if (r.errors.length > 0) {
-    html += '<div class="err-line">Lỗi: ' + r.errors.length + " mục (các dòng lỗi sẽ bị bỏ qua)</div><ul>" +
+    html += '<div class="err-line">L\u1ed7i: ' + r.errors.length + " m\u1ee5c (c\u00e1c d\u00f2ng l\u1ed7i s\u1ebd b\u1ecb b\u1ecf qua)</div><ul>" +
       r.errors.map(function (e) { return "<li>" + esc(e) + "</li>"; }).join("") + "</ul>";
   }
   setHTML("importPreview", html);
@@ -1892,9 +1901,9 @@ function onImportFile(e) {
   state.importResult = null;
   const c = $("importConfirm"); if (c) c.disabled = true;
   if (!file) { toggleEl("importPreview", false); return; }
-  if (typeof XLSX === "undefined") { showToast("Thư viện đọc Excel chưa tải xong. Vui lòng thử lại.", "error"); return; }
+  if (typeof XLSX === "undefined") { showToast("Th\u01b0 vi\u1ec7n \u0111\u1ecdc Excel ch\u01b0a t\u1ea3i xong. Vui l\u00f2ng th\u1eed l\u1ea1i.", "error"); return; }
   const reader = new FileReader();
-  reader.onerror = function () { showToast("Không thể đọc file đã chọn.", "error"); };
+  reader.onerror = function () { showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc file \u0111\u00e3 ch\u1ecdn.", "error"); };
   reader.onload = function (ev) {
     try {
       const wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
@@ -1908,15 +1917,15 @@ function onImportFile(e) {
       renderImportPreview();
     } catch (err) {
       state.importResult = null;
-      setHTML("importPreview", '<div class="err-line">Không thể đọc file Excel. Vui lòng kiểm tra lại định dạng.</div>');
+      setHTML("importPreview", '<div class="err-line">Kh\u00f4ng th\u1ec3 \u0111\u1ecdc file Excel. Vui l\u00f2ng ki\u1ec3m tra l\u1ea1i \u0111\u1ecbnh d\u1ea1ng.</div>');
       toggleEl("importPreview", true);
     }
   };
-  try { reader.readAsArrayBuffer(file); } catch (err) { showToast("Không thể đọc file đã chọn.", "error"); }
+  try { reader.readAsArrayBuffer(file); } catch (err) { showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc file \u0111\u00e3 ch\u1ecdn.", "error"); }
 }
 function confirmImport() {
   const r = state.importResult;
-  if (!r || r.valid === 0) { showToast("Chưa có câu hỏi hợp lệ để nhập.", "warning"); return; }
+  if (!r || r.valid === 0) { showToast("Ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi h\u1ee3p l\u1ec7 \u0111\u1ec3 nh\u1eadp.", "warning"); return; }
   const saved = addOrMergeDeck({
     mode: currentImportMode(),
     title: $("importName") ? $("importName").value.trim() : "",
@@ -1927,26 +1936,26 @@ function confirmImport() {
   if (saved) closeModal("importModal");
 }
 function downloadTemplate() {
-  if (typeof XLSX === "undefined") { showToast("Thư viện Excel chưa tải xong. Vui lòng thử lại.", "error"); return; }
+  if (typeof XLSX === "undefined") { showToast("Th\u01b0 vi\u1ec7n Excel ch\u01b0a t\u1ea3i xong. Vui l\u00f2ng th\u1eed l\u1ea1i.", "error"); return; }
   try {
     const rows = [
       XLSX_HEADERS,
-      ["Tính giới hạn $L = \\lim_{x \\to 0} \\frac{\\sin 3x}{x}$:", "Multiple Choice", "1", "3", "$\\frac{1}{3}$", "0", "", "2", 30, "", "Áp dụng $\\lim_{u \\to 0} \\frac{\\sin u}{u} = 1$, suy ra $L = 3$."],
-      ["Choose the word whose underlined part differs in pronunciation:", "Multiple Choice", "biom<u>a</u>ss", "a<u>c</u>tivity", "effi<u>c</u>ient", "<u>a</u>lthough", "", "1", 30, "", "Phần gạch chân ở <b>biomass</b> phát âm khác các phương án còn lại."],
-      ["Những số nào là số nguyên tố?", "Checkbox", "2", "4", "5", "9", "", "1,3", 45, "", "2 và 5 là số nguyên tố."]
+      ["T\u00ednh gi\u1edbi h\u1ea1n $L = \\lim_{x \\to 0} \\frac{\\sin 3x}{x}$:", "Multiple Choice", "1", "3", "$\\frac{1}{3}$", "0", "", "2", 30, "", "\u00c1p d\u1ee5ng $\\lim_{u \\to 0} \\frac{\\sin u}{u} = 1$, suy ra $L = 3$."],
+      ["Choose the word whose underlined part differs in pronunciation:", "Multiple Choice", "biom<u>a</u>ss", "a<u>c</u>tivity", "effi<u>c</u>ient", "<u>a</u>lthough", "", "1", 30, "", "Ph\u1ea7n g\u1ea1ch ch\u00e2n \u1edf <b>biomass</b> ph\u00e1t \u00e2m kh\u00e1c c\u00e1c ph\u01b0\u01a1ng \u00e1n c\u00f2n l\u1ea1i."],
+      ["Nh\u1eefng s\u1ed1 n\u00e0o l\u00e0 s\u1ed1 nguy\u00ean t\u1ed1?", "Checkbox", "2", "4", "5", "9", "", "1,3", 45, "", "2 v\u00e0 5 l\u00e0 s\u1ed1 nguy\u00ean t\u1ed1."]
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Questions");
     XLSX.writeFile(wb, "AI_Tutor.xlsx");
-  } catch (e) { showToast("Không thể tạo file mẫu.", "error"); }
+  } catch (e) { showToast("Kh\u00f4ng th\u1ec3 t\u1ea1o file m\u1eabu.", "error"); }
 }
 function exportJSON(deck) {
   try {
     downloadBlob(new Blob([JSON.stringify({ id: deck.id, title: deck.title, tag: deck.tag, questions: deck.questions }, null, 2)], { type: "application/json" }), fileSafe(deck.title) + ".json");
-  } catch (e) { showToast("Không thể xuất file .json.", "error"); }
+  } catch (e) { showToast("Kh\u00f4ng th\u1ec3 xu\u1ea5t file .json.", "error"); }
 }
 function exportXLSX(deck) {
-  if (typeof XLSX === "undefined") { showToast("Thư viện Excel chưa tải xong. Vui lòng thử lại.", "error"); return; }
+  if (typeof XLSX === "undefined") { showToast("Th\u01b0 vi\u1ec7n Excel ch\u01b0a t\u1ea3i xong. Vui l\u00f2ng th\u1eed l\u1ea1i.", "error"); return; }
   try {
     const rows = [XLSX_HEADERS];
     deck.questions.forEach(function (q) {
@@ -1958,7 +1967,7 @@ function exportXLSX(deck) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Questions");
     XLSX.writeFile(wb, fileSafe(deck.title) + ".xlsx");
-  } catch (e) { showToast("Không thể xuất file .xlsx.", "error"); }
+  } catch (e) { showToast("Kh\u00f4ng th\u1ec3 xu\u1ea5t file .xlsx.", "error"); }
 }
 
 /* ------------------------------ 5-Tier Pricing & Manual Approval Checkout ------------------------------ */
@@ -1980,26 +1989,26 @@ function getVouchers() {
 async function activateUnranked() {
   if (!state.user) return;
   const email = state.user.email.toLowerCase();
-  if (tierRank() >= 2) { showToast("Bạn đang sở hữu gói cao hơn Unranked.", "info"); return; }
+  if (tierRank() >= 2) { showToast("B\u1ea1n \u0111ang s\u1edf h\u1eefu g\u00f3i cao h\u01a1n Unranked.", "info"); return; }
   const subs = loadObj(KEYS.subs);
   subs[email] = { tier: "unranked", since: Date.now(), expires: Date.now() + 365 * DAY_MS };
   const r = await apiCall("/api/subscriptions/unranked", "POST", { email: email });
-  if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
+  if (r && r._err) { showToast("L\u1ed7i m\u00e1y ch\u1ee7: " + r._err, "error"); return; }
   saveJSON(KEYS.subs, subs);
   updateChrome();
   renderTab();
-  showToast("Đã kích hoạt ngay gói Unranked (0đ/năm) thành công!", "success");
+  showToast("\u0110\u00e3 k\u00edch ho\u1ea1t ngay g\u00f3i Unranked (0\u0111/n\u0103m) th\u00e0nh c\u00f4ng!", "success");
 }
 
 async function adminSwitchOwnTier(code) {
   if (!assertAdmin() || !state.user || !TIERS[code] || code === "none") return;
   const email = state.user.email.toLowerCase();
   const r = await apiCall("/api/admin/subscriptions", "POST", { email: email, tier: code });
-  if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
+  if (r && r._err) { showToast("L\u1ed7i m\u00e1y ch\u1ee7: " + r._err, "error"); return; }
   adminActivatePaidTier(email, code);
   updateChrome();
   renderTab();
-  showToast("Đã kích hoạt trực tiếp gói " + TIERS[code].name + " cho tài khoản Admin (không qua hàng chờ duyệt).", "success");
+  showToast("\u0110\u00e3 k\u00edch ho\u1ea1t tr\u1ef1c ti\u1ebfp g\u00f3i " + TIERS[code].name + " cho t\u00e0i kho\u1ea3n Admin (kh\u00f4ng qua h\u00e0ng ch\u1edd duy\u1ec7t).", "success");
 }
 
 function renderPricing() {
@@ -2012,17 +2021,17 @@ function renderPricing() {
   pendings.forEach(function (r) { pendingPlans[r.plan] = r; });
 
   setText("pricingNote", adm
-    ? "👑 Admin (Diamond): Bạn có mặc định toàn quyền Diamond VIP không giới hạn. Bạn có thể bấm \"Kích hoạt ngay (Admin)\" trên bất kỳ gói nào để chuyển đổi thử nghiệm trực tiếp."
+    ? "👑 Admin (Diamond): B\u1ea1n c\u00f3 m\u1eb7c \u0111\u1ecbnh to\u00e0n quy\u1ec1n Diamond VIP kh\u00f4ng gi\u1edbi h\u1ea1n. B\u1ea1n c\u00f3 th\u1ec3 b\u1ea5m \"K\u00edch ho\u1ea1t ngay (Admin)\" tr\u00ean b\u1ea5t k\u1ef3 g\u00f3i n\u00e0o \u0111\u1ec3 chuy\u1ec3n \u0111\u1ed5i th\u1eed nghi\u1ec7m tr\u1ef1c ti\u1ebfp."
     : (cur === "none"
-      ? "Đăng ký gói Unranked (0đ/năm) để kích hoạt ngay lập tức, hoặc chọn 1 trong 4 hạng gói trả phí (chờ Admin xác nhận)."
-      : "Gói hiện tại của bạn: " + TIERS[cur].icon + " " + TIERS[cur].full + (sub && cur !== "unranked" ? " • Hết hạn: " + fmtDate(sub.expires) : " • Miễn phí 0đ/năm")));
+      ? "\u0110\u0103ng k\u00fd g\u00f3i Unranked (0\u0111/n\u0103m) \u0111\u1ec3 k\u00edch ho\u1ea1t ngay l\u1eadp t\u1ee9c, ho\u1eb7c ch\u1ecdn 1 trong 4 h\u1ea1ng g\u00f3i tr\u1ea3 ph\u00ed (ch\u1edd Admin x\u00e1c nh\u1eadn)."
+      : "G\u00f3i hi\u1ec7n t\u1ea1i c\u1ee7a b\u1ea1n: " + TIERS[cur].icon + " " + TIERS[cur].full + (sub && cur !== "unranked" ? " • H\u1ebft h\u1ea1n: " + fmtDate(sub.expires) : " • Mi\u1ec5n ph\u00ed 0\u0111/n\u0103m")));
 
   // Pending box on Pricing
   const pBox = $("pricingPendingBox");
   if (pBox) {
     if (pendings.length > 0 && !adm) {
       pBox.innerHTML = pendings.map(function (r) {
-        return "<div>⏳ <strong>Đang chờ duyệt gói " + esc(TIERS[r.plan] ? TIERS[r.plan].name : r.plan) + "</strong> (" + esc(fmtMoney(r.amount)) + ") • Gửi lúc " + esc(fmtDateTime(r.createdAt)) + "</div>";
+        return "<div>⏳ <strong>\u0110ang ch\u1edd duy\u1ec7t g\u00f3i " + esc(TIERS[r.plan] ? TIERS[r.plan].name : r.plan) + "</strong> (" + esc(fmtMoney(r.amount)) + ") • G\u1eedi l\u00fac " + esc(fmtDateTime(r.createdAt)) + "</div>";
       }).join("");
       pBox.classList.remove("hidden");
     } else { pBox.classList.add("hidden"); pBox.innerHTML = ""; }
@@ -2030,18 +2039,18 @@ function renderPricing() {
 
   // Unranked Banner (Tier 1)
   const unBtn = adm
-    ? (cur === "unranked" ? '<span class="badge badge-ok">✓ Đang bật (Admin)</span>' : '<button type="button" class="btn btn-outline btn-sm" data-admin-switch="unranked">⚡ Kích hoạt ngay (Admin)</button>')
+    ? (cur === "unranked" ? '<span class="badge badge-ok">✓ \u0110ang b\u1eadt (Admin)</span>' : '<button type="button" class="btn btn-outline btn-sm" data-admin-switch="unranked">⚡ K\u00edch ho\u1ea1t ngay (Admin)</button>')
     : (cur === "unranked"
-      ? '<span class="badge badge-ok">✓ Gói hiện tại</span>'
+      ? '<span class="badge badge-ok">✓ G\u00f3i hi\u1ec7n t\u1ea1i</span>'
       : (curRank > 1
-        ? '<button type="button" class="btn btn-outline" disabled>Bạn đã có gói cao hơn</button>'
-        : '<button type="button" class="btn btn-emerald" data-activate-free="unranked">Đăng ký miễn phí (0đ)</button>'));
+        ? '<button type="button" class="btn btn-outline" disabled>B\u1ea1n \u0111\u00e3 c\u00f3 g\u00f3i cao h\u01a1n</button>'
+        : '<button type="button" class="btn btn-emerald" data-activate-free="unranked">\u0110\u0103ng k\u00fd mi\u1ec5n ph\u00ed (0\u0111)</button>'));
   setHTML("unrankedBanner",
     '<div class="unranked-banner' + (cur === "unranked" ? " current" : "") + '">' +
       '<div style="flex:1;min-width:260px">' +
         '<div class="rank-head"><span class="rank-crest crest-unranked">🛡️</span><div>' +
-          '<div class="price-name">Unranked <span class="muted" style="font-weight:500;font-size:.86rem">(Chưa xếp hạng)</span> • <strong style="color:var(--emerald)">0đ / năm</strong></div>' +
-          '<div class="price-sub">Đăng ký &amp; kích hoạt ngay lập tức – không cần thanh toán, không cần chờ Admin duyệt</div>' +
+          '<div class="price-name">Unranked <span class="muted" style="font-weight:500;font-size:.86rem">(Ch\u01b0a x\u1ebfp h\u1ea1ng)</span> • <strong style="color:var(--emerald)">0\u0111 / n\u0103m</strong></div>' +
+          '<div class="price-sub">\u0110\u0103ng k\u00fd &amp; k\u00edch ho\u1ea1t ngay l\u1eadp t\u1ee9c – kh\u00f4ng c\u1ea7n thanh to\u00e1n, kh\u00f4ng c\u1ea7n ch\u1edd Admin duy\u1ec7t</div>' +
         '</div></div>' +
         '<ul class="unranked-feats">' + PRICING_FEATURES.unranked.map(function (f) { return "<li>" + esc(f) + "</li>"; }).join("") + "</ul>" +
       "</div>" +
@@ -2057,21 +2066,21 @@ function renderPricing() {
     let btn;
     if (adm) {
       btn = cur === code
-        ? '<button type="button" class="btn btn-emerald" disabled>👑 Đang kích hoạt (Admin)</button>'
-        : '<button type="button" class="btn btn-primary" data-admin-switch="' + code + '">⚡ Kích hoạt ngay (Admin)</button>';
+        ? '<button type="button" class="btn btn-emerald" disabled>👑 \u0110ang k\u00edch ho\u1ea1t (Admin)</button>'
+        : '<button type="button" class="btn btn-primary" data-admin-switch="' + code + '">⚡ K\u00edch ho\u1ea1t ngay (Admin)</button>';
     }
-    else if (isPend) btn = '<button type="button" class="btn btn-amber" disabled>⏳ Đang chờ Admin duyệt</button>';
-    else if (cur === code) btn = '<button type="button" class="btn btn-outline" data-buy="' + code + '">✓ Gói hiện tại (Gia hạn)</button>';
-    else if (r < curRank) btn = '<button type="button" class="btn btn-outline" disabled>Bạn đã có gói cao hơn</button>';
-    else btn = '<button type="button" class="btn btn-primary" data-buy="' + code + '">Chọn gói ' + esc(t.name) + "</button>";
+    else if (isPend) btn = '<button type="button" class="btn btn-amber" disabled>⏳ \u0110ang ch\u1edd Admin duy\u1ec7t</button>';
+    else if (cur === code) btn = '<button type="button" class="btn btn-outline" data-buy="' + code + '">✓ G\u00f3i hi\u1ec7n t\u1ea1i (Gia h\u1ea1n)</button>';
+    else if (r < curRank) btn = '<button type="button" class="btn btn-outline" disabled>B\u1ea1n \u0111\u00e3 c\u00f3 g\u00f3i cao h\u01a1n</button>';
+    else btn = '<button type="button" class="btn btn-primary" data-buy="' + code + '">Ch\u1ecdn g\u00f3i ' + esc(t.name) + "</button>";
 
     html += '<article class="price-card ' + t.cls + (cur === code ? " current" : "") + '">' +
-      (code === "gold" ? '<span class="price-ribbon gold">Phổ biến</span>' : "") +
+      (code === "gold" ? '<span class="price-ribbon gold">Ph\u1ed5 bi\u1ebfn</span>' : "") +
       (code === "diamond" ? '<span class="price-ribbon diamond">Diamond VIP</span>' : "") +
       '<div class="rank-head"><span class="rank-crest crest-' + code + '">' + t.icon + '</span><div>' +
         '<div class="price-name">' + esc(t.name) + '</div><div class="price-sub">' + esc(t.sub) + "</div>" +
       "</div></div>" +
-      '<div class="price-amount">' + t.price.toLocaleString("vi-VN") + "đ <small>/ năm</small></div>" +
+      '<div class="price-amount">' + t.price.toLocaleString("vi-VN") + "\u0111 <small>/ n\u0103m</small></div>" +
       '<ul class="price-feats">' + PRICING_FEATURES[code].map(function (f) { return "<li>" + esc(f) + "</li>"; }).join("") + "</ul>" +
       btn + "</article>";
   });
@@ -2087,20 +2096,20 @@ function renderUserPaymentHistory() {
     return r && String(r.userEmail || "").toLowerCase() === email;
   }).slice().reverse();
   if (list.length === 0) {
-    setHTML("userPayHistoryBody", '<p class="muted" style="margin:0">Bạn chưa gửi yêu cầu thanh toán nào.</p>');
+    setHTML("userPayHistoryBody", '<p class="muted" style="margin:0">B\u1ea1n ch\u01b0a g\u1eedi y\u00eau c\u1ea7u thanh to\u00e1n n\u00e0o.</p>');
     return;
   }
   const stBadge = function (st) {
-    if (st === "approved") return '<span class="badge badge-ok">✅ Đã duyệt</span>';
-    if (st === "rejected") return '<span class="badge badge-bad">❌ Bị từ chối</span>';
-    return '<span class="badge badge-warn">⏳ Chờ duyệt</span>';
+    if (st === "approved") return '<span class="badge badge-ok">✅ \u0110\u00e3 duy\u1ec7t</span>';
+    if (st === "rejected") return '<span class="badge badge-bad">❌ B\u1ecb t\u1eeb ch\u1ed1i</span>';
+    return '<span class="badge badge-warn">⏳ Ch\u1edd duy\u1ec7t</span>';
   };
-  setHTML("userPayHistoryBody", '<table class="data-table"><thead><tr><th>Thời gian gửi</th><th>Gói</th><th>Số tiền</th><th>Ghi chú / Mã GD</th><th>Trạng thái</th><th>Phản hồi từ Admin</th></tr></thead><tbody>' +
+  setHTML("userPayHistoryBody", '<table class="data-table"><thead><tr><th>Th\u1eddi gian g\u1eedi</th><th>G\u00f3i</th><th>S\u1ed1 ti\u1ec1n</th><th>Ghi ch\u00fa / M\u00e3 GD</th><th>Tr\u1ea1ng th\u00e1i</th><th>Ph\u1ea3n h\u1ed3i t\u1eeb Admin</th></tr></thead><tbody>' +
     list.map(function (r) {
       let note = "—";
-      if (r.status === "approved") note = "Đã duyệt lúc " + fmtDateTime(r.reviewedAt);
-      else if (r.status === "rejected") note = '<span style="color:var(--rose);font-weight:600">' + esc(r.rejectReason || "Yêu cầu bị từ chối") + '</span> <button type="button" class="btn btn-outline btn-sm" data-buy="' + esc(r.plan) + '">Gửi lại</button>';
-      else note = "Đang chờ Quản trị viên xác nhận";
+      if (r.status === "approved") note = "\u0110\u00e3 duy\u1ec7t l\u00fac " + fmtDateTime(r.reviewedAt);
+      else if (r.status === "rejected") note = '<span style="color:var(--rose);font-weight:600">' + esc(r.rejectReason || "Y\u00eau c\u1ea7u b\u1ecb t\u1eeb ch\u1ed1i") + '</span> <button type="button" class="btn btn-outline btn-sm" data-buy="' + esc(r.plan) + '">G\u1eedi l\u1ea1i</button>';
+      else note = "\u0110ang ch\u1edd Qu\u1ea3n tr\u1ecb vi\u00ean x\u00e1c nh\u1eadn";
       return "<tr><td>" + esc(fmtDateTime(r.createdAt)) + "</td><td><strong>" + esc(TIERS[r.plan] ? TIERS[r.plan].name : r.plan) + "</strong></td><td>" +
         esc(fmtMoney(r.amount)) + "</td><td>" + esc(r.transferNote || r.memo || "—") + "</td><td>" + stBadge(r.status) + "</td><td>" + note + "</td></tr>";
     }).join("") + "</tbody></table>");
@@ -2122,7 +2131,7 @@ function openCheckout(code) {
   if (isAdmin()) { adminSwitchOwnTier(code); return; }
   const dup = getUserPendingReqs(state.user.email).some(function (r) { return r.plan === code; });
   if (dup) {
-    showToast("Bạn đã có yêu cầu đang chờ duyệt cho gói " + TIERS[code].name + ". Vui lòng chờ Quản trị viên xác nhận.", "warning");
+    showToast("B\u1ea1n \u0111\u00e3 c\u00f3 y\u00eau c\u1ea7u \u0111ang ch\u1edd duy\u1ec7t cho g\u00f3i " + TIERS[code].name + ". Vui l\u00f2ng ch\u1edd Qu\u1ea3n tr\u1ecb vi\u00ean x\u00e1c nh\u1eadn.", "warning");
     return;
   }
   state.checkout = { tier: code, voucher: null, receiptImage: "", busy: false };
@@ -2146,40 +2155,40 @@ function renderCheckout() {
   const amount = checkoutAmount();
   const memo = checkoutMemo();
   const pct = c.voucher ? c.voucher.discountPercent : 0;
-  setText("checkoutTitle", "Thanh toán – " + t.full);
-  setText("coTier", t.icon + " " + t.name + " (365 ngày sau khi duyệt)");
+  setText("checkoutTitle", "Thanh to\u00e1n – " + t.full);
+  setText("coTier", t.icon + " " + t.name + " (365 ng\u00e0y sau khi duy\u1ec7t)");
   setText("coBase", fmtMoney(t.price));
-  setText("coDiscount", pct > 0 ? "-" + pct + "% (" + c.voucher.code + ")" : "Không có");
+  setText("coDiscount", pct > 0 ? "-" + pct + "% (" + c.voucher.code + ")" : "Kh\u00f4ng c\u00f3");
   setText("coFinal", fmtMoney(amount));
-  setText("coBank", (cfg.bankName || "Chưa cấu hình") + (cfg.bankId ? " (" + cfg.bankId + ")" : ""));
-  setText("coAcc", cfg.accountNo || "Chưa cấu hình");
-  setText("coHolder", cfg.accountName || "Chưa cấu hình");
+  setText("coBank", (cfg.bankName || "Ch\u01b0a c\u1ea5u h\u00ecnh") + (cfg.bankId ? " (" + cfg.bankId + ")" : ""));
+  setText("coAcc", cfg.accountNo || "Ch\u01b0a c\u1ea5u h\u00ecnh");
+  setText("coHolder", cfg.accountName || "Ch\u01b0a c\u1ea5u h\u00ecnh");
   setText("coMemo", memo);
   const img = $("qrImg"), fb = $("qrFallback"), pay = $("payBtn");
   const configured = !!(cfg.bankId && cfg.accountNo);
   if (img) img.classList.add("hidden");
   if (fb) fb.classList.remove("hidden");
   if (amount === 0) {
-    if (fb) fb.textContent = "Mã giảm giá 100% – bạn không cần chuyển khoản. Bấm \"Tôi đã thanh toán\" để gửi Quản trị viên xác nhận.";
+    if (fb) fb.textContent = "M\u00e3 gi\u1ea3m gi\u00e1 100% – b\u1ea1n kh\u00f4ng c\u1ea7n chuy\u1ec3n kho\u1ea3n. B\u1ea5m \"T\u00f4i \u0111\u00e3 thanh to\u00e1n\" \u0111\u1ec3 g\u1eedi Qu\u1ea3n tr\u1ecb vi\u00ean x\u00e1c nh\u1eadn.";
   } else if (!configured) {
-    if (fb) fb.textContent = "Quản trị viên chưa cấu hình tài khoản VietQR.";
+    if (fb) fb.textContent = "Qu\u1ea3n tr\u1ecb vi\u00ean ch\u01b0a c\u1ea5u h\u00ecnh t\u00e0i kho\u1ea3n VietQR.";
   } else if (img) {
     const url = "https://img.vietqr.io/image/" + encodeURIComponent(cfg.bankId) + "-" + encodeURIComponent(cfg.accountNo) + "-compact2.png?amount=" + amount +
       "&addInfo=" + encodeURIComponent(memo) + (cfg.accountName ? "&accountName=" + encodeURIComponent(cfg.accountName) : "");
     img.onload = function () { img.classList.remove("hidden"); if (fb) fb.classList.add("hidden"); };
-    img.onerror = function () { img.classList.add("hidden"); if (fb) { fb.classList.remove("hidden"); fb.textContent = "Không tải được mã QR. Vui lòng chuyển khoản thủ công theo thông tin bên cạnh."; } };
-    if (fb) fb.textContent = "Đang tải mã QR...";
+    img.onerror = function () { img.classList.add("hidden"); if (fb) { fb.classList.remove("hidden"); fb.textContent = "Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c m\u00e3 QR. Vui l\u00f2ng chuy\u1ec3n kho\u1ea3n th\u1ee7 c\u00f4ng theo th\u00f4ng tin b\u00ean c\u1ea1nh."; } };
+    if (fb) fb.textContent = "\u0110ang t\u1ea3i m\u00e3 QR...";
     img.src = url;
   }
   if (pay) {
     pay.disabled = c.busy || (amount > 0 && !configured);
-    pay.innerHTML = c.busy ? '<span class="spinner"></span>Đang gửi yêu cầu...' : "Tôi đã thanh toán";
+    pay.innerHTML = c.busy ? '<span class="spinner"></span>\u0110ang g\u1eedi y\u00eau c\u1ea7u...' : "T\u00f4i \u0111\u00e3 thanh to\u00e1n";
   }
 }
 function onReceiptFile(e) {
   const f = e.target && e.target.files ? e.target.files[0] : null;
   if (!f || !state.checkout) return;
-  if (!/^image\//.test(f.type)) { showToast("Vui lòng chọn file ảnh biên lai.", "warning"); return; }
+  if (!/^image\//.test(f.type)) { showToast("Vui l\u00f2ng ch\u1ecdn file \u1ea3nh bi\u00ean lai.", "warning"); return; }
   const reader = new FileReader();
   reader.onload = function (ev) {
     const im = new Image();
@@ -2197,7 +2206,7 @@ function onReceiptFile(e) {
         const rp = $("coReceiptPreview");
         if (rp) { rp.src = state.checkout.receiptImage; rp.classList.remove("hidden"); }
         toggleEl("coReceiptClear", true);
-      } catch (err) { showToast("Không thể xử lý ảnh biên lai.", "error"); }
+      } catch (err) { showToast("Kh\u00f4ng th\u1ec3 x\u1eed l\u00fd \u1ea3nh bi\u00ean lai.", "error"); }
     };
     im.src = ev.target.result;
   };
@@ -2208,15 +2217,15 @@ async function applyVoucher() {
   if (!c || c.busy) return;
   const code = ($("voucherInput") ? $("voucherInput").value : "").trim().toUpperCase();
   const vm = $("voucherMsg");
-  if (!code) { if (vm) { vm.textContent = "Vui lòng nhập mã giảm giá."; vm.className = "voucher-msg bad"; } return; }
+  if (!code) { if (vm) { vm.textContent = "Vui l\u00f2ng nh\u1eadp m\u00e3 gi\u1ea3m gi\u00e1."; vm.className = "voucher-msg bad"; } return; }
   let v = getVouchers().filter(function (x) { return x.code.toUpperCase() === code; })[0];
   if (!v) {
     await syncWithBackend();
     v = getVouchers().filter(function (x) { return x.code.toUpperCase() === code; })[0];
   }
-  if (!v) { c.voucher = null; if (vm) { vm.textContent = "Mã giảm giá không hợp lệ hoặc đã bị xóa."; vm.className = "voucher-msg bad"; } renderCheckout(); return; }
+  if (!v) { c.voucher = null; if (vm) { vm.textContent = "M\u00e3 gi\u1ea3m gi\u00e1 kh\u00f4ng h\u1ee3p l\u1ec7 ho\u1eb7c \u0111\u00e3 b\u1ecb x\u00f3a."; vm.className = "voucher-msg bad"; } renderCheckout(); return; }
   c.voucher = { code: v.code.toUpperCase(), discountPercent: clamp(Number(v.discountPercent), 1, 100) };
-  if (vm) { vm.textContent = "Áp dụng thành công: giảm " + c.voucher.discountPercent + "%."; vm.className = "voucher-msg ok"; }
+  if (vm) { vm.textContent = "\u00c1p d\u1ee5ng th\u00e0nh c\u00f4ng: gi\u1ea3m " + c.voucher.discountPercent + "%."; vm.className = "voucher-msg ok"; }
   renderCheckout();
 }
 
@@ -2226,7 +2235,7 @@ async function submitPaymentRequest() {
   if (!c || c.busy || !state.user) return;
   const email = state.user.email.toLowerCase();
   if (getUserPendingReqs(email).some(function (r) { return r.plan === c.tier; })) {
-    showToast("Bạn đã có một đơn đang chờ duyệt cho gói " + TIERS[c.tier].name + ".", "warning");
+    showToast("B\u1ea1n \u0111\u00e3 c\u00f3 m\u1ed9t \u0111\u01a1n \u0111ang ch\u1edd duy\u1ec7t cho g\u00f3i " + TIERS[c.tier].name + ".", "warning");
     closeModal("checkoutModal");
     return;
   }
@@ -2252,7 +2261,7 @@ async function submitPaymentRequest() {
   };
   try {
     const res = await apiCall("/api/payment-requests", "POST", reqObj);
-    if (res && res._err) { showToast("Không thể gửi yêu cầu: " + res._err, "error"); c.busy = false; renderCheckout(); return; }
+    if (res && res._err) { showToast("Kh\u00f4ng th\u1ec3 g\u1eedi y\u00eau c\u1ea7u: " + res._err, "error"); c.busy = false; renderCheckout(); return; }
     const list = loadArr(KEYS.payReqs);
     list.push(reqObj);
     if (!saveJSON(KEYS.payReqs, list)) { c.busy = false; renderCheckout(); return; }
@@ -2260,11 +2269,11 @@ async function submitPaymentRequest() {
     state.checkout = null;
     closeModal("checkoutModal");
     renderTab();
-    showToast("Yêu cầu thanh toán gói " + planName + " đã được ghi nhận và đang chờ Quản trị viên xác nhận. Gói sẽ tự động kích hoạt ngay sau khi được duyệt.", "info");
+    showToast("Y\u00eau c\u1ea7u thanh to\u00e1n g\u00f3i " + planName + " \u0111\u00e3 \u0111\u01b0\u1ee3c ghi nh\u1eadn v\u00e0 \u0111ang ch\u1edd Qu\u1ea3n tr\u1ecb vi\u00ean x\u00e1c nh\u1eadn. G\u00f3i s\u1ebd t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t ngay sau khi \u0111\u01b0\u1ee3c duy\u1ec7t.", "info");
   } catch (e) {
     c.busy = false;
     renderCheckout();
-    showToast("Đã xảy ra lỗi khi gửi yêu cầu thanh toán.", "error");
+    showToast("\u0110\u00e3 x\u1ea3y ra l\u1ed7i khi g\u1eedi y\u00eau c\u1ea7u thanh to\u00e1n.", "error");
   }
 }
 
@@ -2287,17 +2296,17 @@ function renderAdmin() {
   const revenue = approvedList.reduce(function (acc, r) { return acc + (Number(r.amount) || 0); }, 0);
 
   const tabs = [
-    ["requests", "Duyệt thanh toán (" + pendingCnt + ")"],
-    ["members", "Thành viên & Cấp gói"],
-    ["cfg", "Cấu hình VietQR"],
-    ["voucher", "Mã giảm giá"],
-    ["backup", "Sao lưu hệ thống"]
+    ["requests", "Duy\u1ec7t thanh to\u00e1n (" + pendingCnt + ")"],
+    ["members", "Th\u00e0nh vi\u00ean & C\u1ea5p g\u00f3i"],
+    ["cfg", "C\u1ea5u h\u00ecnh VietQR"],
+    ["voucher", "M\u00e3 gi\u1ea3m gi\u00e1"],
+    ["backup", "Sao l\u01b0u h\u1ec7 th\u1ed1ng"]
   ];
-  let h = '<h2>Bảng điều khiển Quản trị (Admin Panel)</h2>' +
+  let h = '<h2>B\u1ea3ng \u0111i\u1ec1u khi\u1ec3n Qu\u1ea3n tr\u1ecb (Admin Panel)</h2>' +
     '<div class="admin-grid">' +
-      '<div class="kpi-card"><span class="kpi-label">Đơn đang chờ duyệt</span><span class="kpi-value" style="color:var(--amber)">' + pendingCnt + '</span></div>' +
-      '<div class="kpi-card"><span class="kpi-label">Đơn đã duyệt</span><span class="kpi-value" style="color:var(--emerald)">' + approvedList.length + '</span></div>' +
-      '<div class="kpi-card"><span class="kpi-label">Tổng doanh thu đã duyệt</span><span class="kpi-value">' + esc(fmtMoney(revenue)) + '</span></div>' +
+      '<div class="kpi-card"><span class="kpi-label">\u0110\u01a1n \u0111ang ch\u1edd duy\u1ec7t</span><span class="kpi-value" style="color:var(--amber)">' + pendingCnt + '</span></div>' +
+      '<div class="kpi-card"><span class="kpi-label">\u0110\u01a1n \u0111\u00e3 duy\u1ec7t</span><span class="kpi-value" style="color:var(--emerald)">' + approvedList.length + '</span></div>' +
+      '<div class="kpi-card"><span class="kpi-label">T\u1ed5ng doanh thu \u0111\u00e3 duy\u1ec7t</span><span class="kpi-value">' + esc(fmtMoney(revenue)) + '</span></div>' +
     '</div>' +
     '<div class="admin-tabs" role="tablist">' + tabs.map(function (t) {
       return '<button type="button" class="admin-tab' + (state.adminTab === t[0] ? " active" : "") + '" data-act="subtab" data-sub="' + t[0] + '">' + t[1] + "</button>";
@@ -2315,19 +2324,19 @@ function renderAdmin() {
 
 function adminRequestsHTML() {
   return '<div class="filter-bar">' +
-    '<select id="admStatusFilter" aria-label="Lọc trạng thái">' +
-      '<option value="all"' + (state.adminStatusFilter === "all" ? " selected" : "") + '>Tất cả trạng thái</option>' +
-      '<option value="pending"' + (state.adminStatusFilter === "pending" ? " selected" : "") + '>⏳ Chờ duyệt</option>' +
-      '<option value="approved"' + (state.adminStatusFilter === "approved" ? " selected" : "") + '>✅ Đã duyệt</option>' +
-      '<option value="rejected"' + (state.adminStatusFilter === "rejected" ? " selected" : "") + '>❌ Từ chối</option>' +
+    '<select id="admStatusFilter" aria-label="L\u1ecdc tr\u1ea1ng th\u00e1i">' +
+      '<option value="all"' + (state.adminStatusFilter === "all" ? " selected" : "") + '>T\u1ea5t c\u1ea3 tr\u1ea1ng th\u00e1i</option>' +
+      '<option value="pending"' + (state.adminStatusFilter === "pending" ? " selected" : "") + '>⏳ Ch\u1edd duy\u1ec7t</option>' +
+      '<option value="approved"' + (state.adminStatusFilter === "approved" ? " selected" : "") + '>✅ \u0110\u00e3 duy\u1ec7t</option>' +
+      '<option value="rejected"' + (state.adminStatusFilter === "rejected" ? " selected" : "") + '>❌ T\u1eeb ch\u1ed1i</option>' +
     '</select>' +
-    '<select id="admPlanFilter" aria-label="Lọc theo gói">' +
-      '<option value="all"' + (state.adminPlanFilter === "all" ? " selected" : "") + '>Tất cả gói</option>' +
+    '<select id="admPlanFilter" aria-label="L\u1ecdc theo g\u00f3i">' +
+      '<option value="all"' + (state.adminPlanFilter === "all" ? " selected" : "") + '>T\u1ea5t c\u1ea3 g\u00f3i</option>' +
       ["bronze", "silver", "gold", "diamond"].map(function (c) {
         return '<option value="' + c + '"' + (state.adminPlanFilter === c ? " selected" : "") + '>' + esc(TIERS[c].name) + '</option>';
       }).join("") +
     '</select>' +
-    '<input type="search" id="admQuery" placeholder="Tìm theo email, tên, mã đơn..." value="' + esc(state.adminQuery) + '" style="flex:1;min-width:200px">' +
+    '<input type="search" id="admQuery" placeholder="T\u00ecm theo email, t\u00ean, m\u00e3 \u0111\u01a1n..." value="' + esc(state.adminQuery) + '" style="flex:1;min-width:200px">' +
   '</div><div class="table-scroll" id="admReqTableWrap"></div>';
 }
 
@@ -2341,21 +2350,21 @@ function renderAdminRequestsTable() {
     if (q && [r.userEmail, r.userName, r.id, r.transferNote, r.memo].join(" ").toLowerCase().indexOf(q) === -1) return false;
     return true;
   });
-  if (list.length === 0) { wrap.innerHTML = '<div class="empty-state">Không có yêu cầu thanh toán nào phù hợp.</div>'; return; }
-  wrap.innerHTML = '<table class="data-table"><thead><tr><th>Thời gian gửi</th><th>Người dùng</th><th>Gói</th><th>Số tiền</th><th>Ghi chú / Mã GD</th><th>Biên lai</th><th>Trạng thái</th><th>Hành động</th></tr></thead><tbody>' +
+  if (list.length === 0) { wrap.innerHTML = '<div class="empty-state">Kh\u00f4ng c\u00f3 y\u00eau c\u1ea7u thanh to\u00e1n n\u00e0o ph\u00f9 h\u1ee3p.</div>'; return; }
+  wrap.innerHTML = '<table class="data-table"><thead><tr><th>Th\u1eddi gian g\u1eedi</th><th>Ng\u01b0\u1eddi d\u00f9ng</th><th>G\u00f3i</th><th>S\u1ed1 ti\u1ec1n</th><th>Ghi ch\u00fa / M\u00e3 GD</th><th>Bi\u00ean lai</th><th>Tr\u1ea1ng th\u00e1i</th><th>H\u00e0nh \u0111\u1ed9ng</th></tr></thead><tbody>' +
     list.map(function (r) {
-      const st = r.status === "approved" ? '<span class="badge badge-ok">✅ Đã duyệt</span>'
-        : (r.status === "rejected" ? '<span class="badge badge-bad">❌ Từ chối</span>' : '<span class="badge badge-warn">⏳ Chờ duyệt</span>');
-      const receiptBtn = r.receiptImage ? '<button type="button" class="btn btn-outline btn-sm" data-act="view-receipt" data-id="' + esc(r.id) + '">Xem ảnh</button>' : '<span class="muted">—</span>';
+      const st = r.status === "approved" ? '<span class="badge badge-ok">✅ \u0110\u00e3 duy\u1ec7t</span>'
+        : (r.status === "rejected" ? '<span class="badge badge-bad">❌ T\u1eeb ch\u1ed1i</span>' : '<span class="badge badge-warn">⏳ Ch\u1edd duy\u1ec7t</span>');
+      const receiptBtn = r.receiptImage ? '<button type="button" class="btn btn-outline btn-sm" data-act="view-receipt" data-id="' + esc(r.id) + '">Xem \u1ea3nh</button>' : '<span class="muted">—</span>';
       let actHtml = "";
       if (r.status === "pending") {
         actHtml = '<div class="deck-actions">' +
-          '<button type="button" class="btn btn-emerald btn-sm" data-act="approve-req" data-id="' + esc(r.id) + '">✅ Duyệt</button>' +
-          '<button type="button" class="btn btn-danger btn-sm" data-act="reject-req" data-id="' + esc(r.id) + '">❌ Từ chối</button></div>';
+          '<button type="button" class="btn btn-emerald btn-sm" data-act="approve-req" data-id="' + esc(r.id) + '">✅ Duy\u1ec7t</button>' +
+          '<button type="button" class="btn btn-danger btn-sm" data-act="reject-req" data-id="' + esc(r.id) + '">❌ T\u1eeb ch\u1ed1i</button></div>';
       } else if (r.status === "rejected" && r.rejectReason) {
-        actHtml = '<span class="muted" style="font-size:.76rem">Lý do: ' + esc(r.rejectReason) + "</span>";
+        actHtml = '<span class="muted" style="font-size:.76rem">L\u00fd do: ' + esc(r.rejectReason) + "</span>";
       } else if (r.reviewedAt) {
-        actHtml = '<span class="muted" style="font-size:.76rem">Duyệt: ' + esc(fmtDateTime(r.reviewedAt)) + "</span>";
+        actHtml = '<span class="muted" style="font-size:.76rem">Duy\u1ec7t: ' + esc(fmtDateTime(r.reviewedAt)) + "</span>";
       }
       return "<tr><td>" + esc(fmtDateTime(r.createdAt)) + "</td><td><strong>" + esc(r.userName || "") + '</strong><br><span class="muted">' + esc(r.userEmail) + "</span></td>" +
         "<td><strong>" + esc(TIERS[r.plan] ? TIERS[r.plan].name : r.plan) + "</strong></td><td>" + esc(fmtMoney(r.amount)) + "</td>" +
@@ -2378,13 +2387,13 @@ function adminMembersHTML() {
   const rows = members.length ? members.map(function (e) {
     const s = subs[e];
     const hasApi = !!(apis[e] && apis[e].apiKey);
-    return "<tr><td>" + esc(e) + (hasApi ? ' <span class="badge badge-ok" title="Đã gán Gemini API">🔑 Đã gán API</span>' : "") + "</td><td><strong>" + esc(TIERS[s.tier] ? TIERS[s.tier].name : s.tier) + "</strong></td><td>" +
-      (s.tier === "unranked" ? "Miễn phí" : esc(fmtDate(s.expires))) +
+    return "<tr><td>" + esc(e) + (hasApi ? ' <span class="badge badge-ok" title="\u0110\u00e3 g\u00e1n Gemini API">🔑 \u0110\u00e3 g\u00e1n API</span>' : "") + "</td><td><strong>" + esc(TIERS[s.tier] ? TIERS[s.tier].name : s.tier) + "</strong></td><td>" +
+      (s.tier === "unranked" ? "Mi\u1ec5n ph\u00ed" : esc(fmtDate(s.expires))) +
       '</td><td><div class="deck-actions">' +
-        '<button type="button" class="btn btn-outline btn-sm" data-act="prefill-api" data-email="' + esc(e) + '">🔑 Gán API</button>' +
-        '<button type="button" class="btn btn-outline btn-sm" data-act="revoke" data-email="' + esc(e) + '">Thu hồi gói</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-act="prefill-api" data-email="' + esc(e) + '">🔑 G\u00e1n API</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-act="revoke" data-email="' + esc(e) + '">Thu h\u1ed3i g\u00f3i</button>' +
       '</div></td></tr>';
-  }).join("") : '<tr><td colspan="4" class="muted">Chưa có thành viên nào kích hoạt gói.</td></tr>';
+  }).join("") : '<tr><td colspan="4" class="muted">Ch\u01b0a c\u00f3 th\u00e0nh vi\u00ean n\u00e0o k\u00edch ho\u1ea1t g\u00f3i.</td></tr>';
   const opts = ["unranked", "bronze", "silver", "gold", "diamond"].map(function (c) {
     return '<option value="' + c + '">' + esc(TIERS[c].name) + "</option>";
   }).join("");
@@ -2397,69 +2406,69 @@ function adminMembersHTML() {
       "<td>" + esc(item.model || "gemini-2.5-flash") + "</td>" +
       "<td>" + esc(item.updatedAt ? fmtDateTime(item.updatedAt) : "—") + "</td>" +
       '<td><div class="deck-actions">' +
-        '<button type="button" class="btn btn-outline btn-sm" data-act="prefill-api" data-email="' + esc(e) + '">Sửa</button>' +
-        '<button type="button" class="btn btn-danger btn-sm" data-act="revoke-user-api" data-email="' + esc(e) + '">Thu hồi API</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-act="prefill-api" data-email="' + esc(e) + '">S\u1eeda</button>' +
+        '<button type="button" class="btn btn-danger btn-sm" data-act="revoke-user-api" data-email="' + esc(e) + '">Thu h\u1ed3i API</button>' +
       '</div></td></tr>';
-  }).join("") : '<tr><td colspan="5" class="muted">Chưa có tài khoản nào được Admin gán Gemini API Key.</td></tr>';
+  }).join("") : '<tr><td colspan="5" class="muted">Ch\u01b0a c\u00f3 t\u00e0i kho\u1ea3n n\u00e0o \u0111\u01b0\u1ee3c Admin g\u00e1n Gemini API Key.</td></tr>';
 
-  return '<h3>1. Cấp / nâng cấp / thu hồi gói thủ công</h3><div class="admin-form">' +
-    '<label class="field">Email người dùng<input type="email" id="grantEmail" placeholder="email@example.com"></label>' +
-    '<label class="field">Hạng gói<select id="grantTier">' + opts + "</select></label>" +
-    '<button type="button" class="btn btn-primary" data-act="grant">Cấp / nâng cấp</button>' +
-    '<button type="button" class="btn btn-danger" data-act="revoke-form">Thu hồi gói</button></div>' +
-    '<h3>Danh sách thành viên đang hoạt động</h3><div class="table-scroll" style="margin-bottom:20px"><table class="data-table"><thead><tr><th>Email</th><th>Gói</th><th>Hết hạn</th><th>Hành động</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+  return '<h3>1. C\u1ea5p / n\u00e2ng c\u1ea5p / thu h\u1ed3i g\u00f3i th\u1ee7 c\u00f4ng</h3><div class="admin-form">' +
+    '<label class="field">Email ng\u01b0\u1eddi d\u00f9ng<input type="email" id="grantEmail" placeholder="email@example.com"></label>' +
+    '<label class="field">H\u1ea1ng g\u00f3i<select id="grantTier">' + opts + "</select></label>" +
+    '<button type="button" class="btn btn-primary" data-act="grant">C\u1ea5p / n\u00e2ng c\u1ea5p</button>' +
+    '<button type="button" class="btn btn-danger" data-act="revoke-form">Thu h\u1ed3i g\u00f3i</button></div>' +
+    '<h3>Danh s\u00e1ch th\u00e0nh vi\u00ean \u0111ang ho\u1ea1t \u0111\u1ed9ng</h3><div class="table-scroll" style="margin-bottom:20px"><table class="data-table"><thead><tr><th>Email</th><th>G\u00f3i</th><th>H\u1ebft h\u1ea1n</th><th>H\u00e0nh \u0111\u1ed9ng</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
 
     '<div style="padding-top:16px;border-top:2px dashed var(--border)">' +
-      '<h3>2. 🔑 Gán hộ Google Gemini API Key theo Email người dùng</h3>' +
-      '<p class="muted" style="font-size:.82rem;margin:0 0 10px">Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt Gemini API Key đó cho tài khoản của họ trong AI Converter.</p>' +
+      '<h3>2. 🔑 G\u00e1n h\u1ed9 Google Gemini API Key theo Email ng\u01b0\u1eddi d\u00f9ng</h3>' +
+      '<p class="muted" style="font-size:.82rem;margin:0 0 10px">Khi ng\u01b0\u1eddi d\u00f9ng \u0111\u0103ng nh\u1eadp b\u1eb1ng Email \u0111\u00e3 \u0111\u01b0\u1ee3c g\u00e1n, h\u1ec7 th\u1ed1ng s\u1ebd t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t Gemini API Key \u0111\u00f3 cho t\u00e0i kho\u1ea3n c\u1ee7a h\u1ecd trong AI Converter.</p>' +
       '<div class="admin-form">' +
-        '<label class="field">Email người dùng<input type="email" id="assignApiEmail" placeholder="email@example.com"></label>' +
+        '<label class="field">Email ng\u01b0\u1eddi d\u00f9ng<input type="email" id="assignApiEmail" placeholder="email@example.com"></label>' +
         '<label class="field" style="min-width:240px">Google Gemini API Key' +
           '<div class="key-input-wrap">' +
             '<input type="password" id="assignApiKey" autocomplete="off" spellcheck="false" placeholder="AIza...">' +
-            '<button type="button" class="eye-btn" data-act="toggle-assign-eye" title="Hiện / Ẩn API Key">👁️</button>' +
+            '<button type="button" class="eye-btn" data-act="toggle-assign-eye" title="Hi\u1ec7n / \u1ea8n API Key">👁️</button>' +
           '</div>' +
         '</label>' +
-        '<label class="field">Model mặc định<select id="assignApiModel">' +
+        '<label class="field">Model m\u1eb7c \u0111\u1ecbnh<select id="assignApiModel">' +
           '<option value="gemini-2.5-flash">Gemini 2.5 Flash (Nhanh)</option>' +
-          '<option value="gemini-2.5-pro">Gemini 2.5 Pro (Chính xác cao)</option>' +
+          '<option value="gemini-2.5-pro">Gemini 2.5 Pro (Ch\u00ednh x\u00e1c cao)</option>' +
           '<option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>' +
         '</select></label>' +
-        '<button type="button" class="btn btn-primary" data-act="assign-user-api">🔑 Gán API cho Email</button>' +
-        '<button type="button" class="btn btn-danger" data-act="revoke-user-api-form">Thu hồi API</button>' +
+        '<button type="button" class="btn btn-primary" data-act="assign-user-api">🔑 G\u00e1n API cho Email</button>' +
+        '<button type="button" class="btn btn-danger" data-act="revoke-user-api-form">Thu h\u1ed3i API</button>' +
       '</div>' +
-      '<h3>Danh sách tài khoản đã được Admin gán Gemini API (' + apiEmails.length + ')</h3>' +
-      '<div class="table-scroll"><table class="data-table"><thead><tr><th>Email người dùng</th><th>Gemini API Key</th><th>Model</th><th>Cập nhật</th><th>Hành động</th></tr></thead><tbody>' + apiRows + "</tbody></table></div>" +
+      '<h3>Danh s\u00e1ch t\u00e0i kho\u1ea3n \u0111\u00e3 \u0111\u01b0\u1ee3c Admin g\u00e1n Gemini API (' + apiEmails.length + ')</h3>' +
+      '<div class="table-scroll"><table class="data-table"><thead><tr><th>Email ng\u01b0\u1eddi d\u00f9ng</th><th>Gemini API Key</th><th>Model</th><th>C\u1eadp nh\u1eadt</th><th>H\u00e0nh \u0111\u1ed9ng</th></tr></thead><tbody>' + apiRows + "</tbody></table></div>" +
     '</div>';
 }
 
 function adminCfgHTML() {
   const c = getPayCfg();
-  return '<h3>Cấu hình tài khoản nhận tiền VietQR</h3><div class="admin-form" style="flex-direction:column;align-items:stretch;max-width:440px">' +
-    '<label class="field">Tên ngân hàng<input type="text" id="cfgBankName" value="' + esc(c.bankName) + '" maxlength="60"></label>' +
-    '<label class="field">Mã ngân hàng VietQR (BIN, ví dụ 970414, MB, VCB)<input type="text" id="cfgBankId" value="' + esc(c.bankId) + '" maxlength="20"></label>' +
-    '<label class="field">Số tài khoản<input type="text" id="cfgAccNo" value="' + esc(c.accountNo) + '" maxlength="30" inputmode="numeric"></label>' +
-    '<label class="field">Tên chủ tài khoản<input type="text" id="cfgAccName" value="' + esc(c.accountName) + '" maxlength="80"></label>' +
-    '<button type="button" class="btn btn-primary" data-act="save-cfg">Lưu cấu hình</button></div>';
+  return '<h3>C\u1ea5u h\u00ecnh t\u00e0i kho\u1ea3n nh\u1eadn ti\u1ec1n VietQR</h3><div class="admin-form" style="flex-direction:column;align-items:stretch;max-width:440px">' +
+    '<label class="field">T\u00ean ng\u00e2n h\u00e0ng<input type="text" id="cfgBankName" value="' + esc(c.bankName) + '" maxlength="60"></label>' +
+    '<label class="field">M\u00e3 ng\u00e2n h\u00e0ng VietQR (BIN, v\u00ed d\u1ee5 970414, MB, VCB)<input type="text" id="cfgBankId" value="' + esc(c.bankId) + '" maxlength="20"></label>' +
+    '<label class="field">S\u1ed1 t\u00e0i kho\u1ea3n<input type="text" id="cfgAccNo" value="' + esc(c.accountNo) + '" maxlength="30" inputmode="numeric"></label>' +
+    '<label class="field">T\u00ean ch\u1ee7 t\u00e0i kho\u1ea3n<input type="text" id="cfgAccName" value="' + esc(c.accountName) + '" maxlength="80"></label>' +
+    '<button type="button" class="btn btn-primary" data-act="save-cfg">L\u01b0u c\u1ea5u h\u00ecnh</button></div>';
 }
 
 function adminVoucherHTML() {
   const list = getVouchers();
   const rows = list.length ? list.map(function (v) {
-    return "<tr><td><strong>" + esc(v.code) + "</strong></td><td>" + esc(v.discountPercent) + '%</td><td><button type="button" class="btn btn-outline btn-sm" data-act="del-voucher" data-code="' + esc(v.code) + '">Xóa</button></td></tr>';
-  }).join("") : '<tr><td colspan="3" class="muted">Chưa có mã giảm giá nào.</td></tr>';
-  return '<h3>Tạo mã giảm giá</h3><div class="admin-form">' +
-    '<label class="field">Mã giảm giá<input type="text" id="vCode" maxlength="30" placeholder="AITUTOR20"></label>' +
-    '<label class="field">Phần trăm giảm (1–100)<input type="number" id="vPercent" min="1" max="100" value="10"></label>' +
-    '<button type="button" class="btn btn-primary" data-act="add-voucher">Thêm mã</button></div>' +
-    '<div class="table-scroll"><table class="data-table"><thead><tr><th>Mã</th><th>Giảm giá</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+    return "<tr><td><strong>" + esc(v.code) + "</strong></td><td>" + esc(v.discountPercent) + '%</td><td><button type="button" class="btn btn-outline btn-sm" data-act="del-voucher" data-code="' + esc(v.code) + '">X\u00f3a</button></td></tr>';
+  }).join("") : '<tr><td colspan="3" class="muted">Ch\u01b0a c\u00f3 m\u00e3 gi\u1ea3m gi\u00e1 n\u00e0o.</td></tr>';
+  return '<h3>T\u1ea1o m\u00e3 gi\u1ea3m gi\u00e1</h3><div class="admin-form">' +
+    '<label class="field">M\u00e3 gi\u1ea3m gi\u00e1<input type="text" id="vCode" maxlength="30" placeholder="AITUTOR20"></label>' +
+    '<label class="field">Ph\u1ea7n tr\u0103m gi\u1ea3m (1–100)<input type="number" id="vPercent" min="1" max="100" value="10"></label>' +
+    '<button type="button" class="btn btn-primary" data-act="add-voucher">Th\u00eam m\u00e3</button></div>' +
+    '<div class="table-scroll"><table class="data-table"><thead><tr><th>M\u00e3</th><th>Gi\u1ea3m gi\u00e1</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div>";
 }
 
 function adminBackupHTML() {
   const subs = loadObj(KEYS.subs);
   const paidActive = Object.keys(subs).filter(function (e) { const s = getActiveSub(e); return s && s.tier !== "unranked"; }).length;
-  return '<p class="muted">Thành viên trả phí đang hoạt động: <strong>' + paidActive + '</strong>. Xuất toàn bộ dữ liệu quản trị (thành viên, yêu cầu thanh toán, mã giảm giá, cấu hình VietQR) dưới dạng JSON.</p>' +
-    '<button type="button" class="btn btn-primary" data-act="export-backup">Xuất dữ liệu hệ thống (.json)</button>';
+  return '<p class="muted">Th\u00e0nh vi\u00ean tr\u1ea3 ph\u00ed \u0111ang ho\u1ea1t \u0111\u1ed9ng: <strong>' + paidActive + '</strong>. Xu\u1ea5t to\u00e0n b\u1ed9 d\u1eef li\u1ec7u qu\u1ea3n tr\u1ecb (th\u00e0nh vi\u00ean, y\u00eau c\u1ea7u thanh to\u00e1n, m\u00e3 gi\u1ea3m gi\u00e1, c\u1ea5u h\u00ecnh VietQR) d\u01b0\u1edbi d\u1ea1ng JSON.</p>' +
+    '<button type="button" class="btn btn-primary" data-act="export-backup">Xu\u1ea5t d\u1eef li\u1ec7u h\u1ec7 th\u1ed1ng (.json)</button>';
 }
 
 async function approvePaymentRequest(id) {
@@ -2469,14 +2478,14 @@ async function approvePaymentRequest(id) {
   if (!req || req.status !== "pending") return;
   const now = new Date().toISOString();
   const res = await apiCall("/api/admin/payment-requests/" + encodeURIComponent(id) + "/approve", "POST", { request: req });
-  if (res && res._err) { showToast("Lỗi máy chủ: " + res._err, "error"); return; }
+  if (res && res._err) { showToast("L\u1ed7i m\u00e1y ch\u1ee7: " + res._err, "error"); return; }
   if (!adminActivatePaidTier(req.userEmail, req.plan)) return;
   req.status = "approved";
   req.reviewedAt = now;
   req.reviewedBy = state.user.email.toLowerCase();
   req.rejectReason = "";
   saveJSON(KEYS.payReqs, list);
-  showToast("Đã duyệt đơn và kích hoạt gói " + TIERS[req.plan].name + " (365 ngày) cho " + req.userEmail + ".", "success");
+  showToast("\u0110\u00e3 duy\u1ec7t \u0111\u01a1n v\u00e0 k\u00edch ho\u1ea1t g\u00f3i " + TIERS[req.plan].name + " (365 ng\u00e0y) cho " + req.userEmail + ".", "success");
   updateChrome();
   renderAdmin();
 }
@@ -2485,12 +2494,12 @@ async function confirmRejectRequest() {
   if (!assertAdmin()) return;
   const id = state.rejectReqId;
   const reason = ($("rejectReasonInput") ? $("rejectReasonInput").value : "").trim();
-  if (!reason) { showToast("Vui lòng nhập lý do từ chối.", "warning"); return; }
+  if (!reason) { showToast("Vui l\u00f2ng nh\u1eadp l\u00fd do t\u1eeb ch\u1ed1i.", "warning"); return; }
   const list = loadArr(KEYS.payReqs);
   const req = list.filter(function (r) { return r && r.id === id; })[0];
   if (!req || req.status !== "pending") { closeModal("rejectModal"); return; }
   const res = await apiCall("/api/admin/payment-requests/" + encodeURIComponent(id) + "/reject", "POST", { request: req, rejectReason: reason });
-  if (res && res._err) { showToast("Lỗi máy chủ: " + res._err, "error"); return; }
+  if (res && res._err) { showToast("L\u1ed7i m\u00e1y ch\u1ee7: " + res._err, "error"); return; }
   req.status = "rejected";
   req.reviewedAt = new Date().toISOString();
   req.reviewedBy = state.user.email.toLowerCase();
@@ -2498,7 +2507,7 @@ async function confirmRejectRequest() {
   saveJSON(KEYS.payReqs, list);
   state.rejectReqId = null;
   closeModal("rejectModal");
-  showToast("Đã từ chối yêu cầu của " + req.userEmail + ".", "info");
+  showToast("\u0110\u00e3 t\u1eeb ch\u1ed1i y\u00eau c\u1ea7u c\u1ee7a " + req.userEmail + ".", "info");
   updateChrome();
   renderAdmin();
 }
@@ -2518,15 +2527,15 @@ async function onAdminClick(e) {
       const id = b.getAttribute("data-id");
       const req = loadArr(KEYS.payReqs).find(function (r) { return r && r.id === id; });
       if (!req) return;
-      showConfirm("Duyệt thanh toán", "Xác nhận duyệt đơn " + fmtMoney(req.amount) + " và kích hoạt gói " + TIERS[req.plan].name + " (+365 ngày) cho " + req.userEmail + "?", function () {
+      showConfirm("Duy\u1ec7t thanh to\u00e1n", "X\u00e1c nh\u1eadn duy\u1ec7t \u0111\u01a1n " + fmtMoney(req.amount) + " v\u00e0 k\u00edch ho\u1ea1t g\u00f3i " + TIERS[req.plan].name + " (+365 ng\u00e0y) cho " + req.userEmail + "?", function () {
         approvePaymentRequest(id);
-      }, "Duyệt ngay");
+      }, "Duy\u1ec7t ngay");
     } else if (act === "reject-req") {
       const id = b.getAttribute("data-id");
       const req = loadArr(KEYS.payReqs).find(function (r) { return r && r.id === id; });
       if (!req) return;
       state.rejectReqId = id;
-      setText("rejectMeta", "Người dùng: " + req.userEmail + " • Gói " + TIERS[req.plan].name + " (" + fmtMoney(req.amount) + ")");
+      setText("rejectMeta", "Ng\u01b0\u1eddi d\u00f9ng: " + req.userEmail + " • G\u00f3i " + TIERS[req.plan].name + " (" + fmtMoney(req.amount) + ")");
       const inp = $("rejectReasonInput"); if (inp) inp.value = "";
       openModal("rejectModal");
     } else if (act === "view-receipt") {
@@ -2534,26 +2543,26 @@ async function onAdminClick(e) {
       const req = loadArr(KEYS.payReqs).find(function (r) { return r && r.id === id; });
       if (!req || !req.receiptImage) return;
       const im = $("receiptModalImg"); if (im) im.src = req.receiptImage;
-      setText("receiptModalTitle", "Biên lai – " + req.userEmail + " (" + TIERS[req.plan].name + ")");
+      setText("receiptModalTitle", "Bi\u00ean lai – " + req.userEmail + " (" + TIERS[req.plan].name + ")");
       openModal("receiptModal");
     } else if (act === "grant") {
       const email = ($("grantEmail") ? $("grantEmail").value : "").trim().toLowerCase();
       const tier = $("grantTier") ? $("grantTier").value : "";
-      if (!isValidEmail(email)) { showToast("Vui lòng nhập một địa chỉ email hợp lệ.", "warning"); return; }
-      if (!TIERS[tier] || tier === "none") { showToast("Gói không hợp lệ.", "warning"); return; }
+      if (!isValidEmail(email)) { showToast("Vui l\u00f2ng nh\u1eadp m\u1ed9t \u0111\u1ecba ch\u1ec9 email h\u1ee3p l\u1ec7.", "warning"); return; }
+      if (!TIERS[tier] || tier === "none") { showToast("G\u00f3i kh\u00f4ng h\u1ee3p l\u1ec7.", "warning"); return; }
       const r = await apiCall("/api/admin/subscriptions", "POST", { email: email, tier: tier });
-      if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
+      if (r && r._err) { showToast("L\u1ed7i m\u00e1y ch\u1ee7: " + r._err, "error"); return; }
       if (!adminActivatePaidTier(email, tier)) return;
-      showToast("Đã cấp gói " + TIERS[tier].name + " cho " + email + ".", "success");
+      showToast("\u0110\u00e3 c\u1ea5p g\u00f3i " + TIERS[tier].name + " cho " + email + ".", "success");
       updateChrome(); renderAdmin();
     } else if (act === "revoke-form" || act === "revoke") {
       const email = act === "revoke" ? b.getAttribute("data-email") : ($("grantEmail") ? $("grantEmail").value : "").trim().toLowerCase();
-      if (!isValidEmail(email)) { showToast("Vui lòng nhập một địa chỉ email hợp lệ.", "warning"); return; }
-      showConfirm("Thu hồi gói", "Bạn có chắc muốn thu hồi gói của " + email + "?", async function () {
+      if (!isValidEmail(email)) { showToast("Vui l\u00f2ng nh\u1eadp m\u1ed9t \u0111\u1ecba ch\u1ec9 email h\u1ee3p l\u1ec7.", "warning"); return; }
+      showConfirm("Thu h\u1ed3i g\u00f3i", "B\u1ea1n c\u00f3 ch\u1eafc mu\u1ed1n thu h\u1ed3i g\u00f3i c\u1ee7a " + email + "?", async function () {
         const r = await apiCall("/api/admin/subscriptions/" + encodeURIComponent(email), "DELETE");
-        if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
+        if (r && r._err) { showToast("L\u1ed7i m\u00e1y ch\u1ee7: " + r._err, "error"); return; }
         const s2 = loadObj(KEYS.subs); delete s2[email]; saveJSON(KEYS.subs, s2);
-        showToast("Đã thu hồi gói của " + email + ".", "success");
+        showToast("\u0110\u00e3 thu h\u1ed3i g\u00f3i c\u1ee7a " + email + ".", "success");
         updateChrome(); renderTab();
       });
     } else if (act === "save-cfg") {
@@ -2562,29 +2571,29 @@ async function onAdminClick(e) {
       const acc = ($("cfgAccNo") ? $("cfgAccNo").value : "").trim();
       const name = ($("cfgAccName") ? $("cfgAccName").value : "").trim().toUpperCase();
       if (!bankName || !/^[A-Z0-9]{2,20}$/.test(bankId) || !/^[0-9]{6,20}$/.test(acc) || !name) {
-        showToast("Thông tin ngân hàng/STK chưa hợp lệ.", "warning"); return;
+        showToast("Th\u00f4ng tin ng\u00e2n h\u00e0ng/STK ch\u01b0a h\u1ee3p l\u1ec7.", "warning"); return;
       }
       const cfg = { bankName: bankName, bankId: bankId, accountNo: acc, accountName: name };
       const r = await apiCall("/api/admin/payment-config", "PUT", cfg);
-      if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
-      if (saveJSON(KEYS.payCfg, cfg)) showToast("Đã lưu cấu hình VietQR.", "success");
+      if (r && r._err) { showToast("L\u1ed7i m\u00e1y ch\u1ee7: " + r._err, "error"); return; }
+      if (saveJSON(KEYS.payCfg, cfg)) showToast("\u0110\u00e3 l\u01b0u c\u1ea5u h\u00ecnh VietQR.", "success");
     } else if (act === "add-voucher") {
       const code = ($("vCode") ? $("vCode").value : "").trim().toUpperCase();
       const pct = parseInt($("vPercent") ? $("vPercent").value : "", 10);
-      if (!/^[A-Z0-9_-]{2,30}$/.test(code) || !(pct >= 1 && pct <= 100)) { showToast("Mã giảm giá hoặc phần trăm không hợp lệ.", "warning"); return; }
+      if (!/^[A-Z0-9_-]{2,30}$/.test(code) || !(pct >= 1 && pct <= 100)) { showToast("M\u00e3 gi\u1ea3m gi\u00e1 ho\u1eb7c ph\u1ea7n tr\u0103m kh\u00f4ng h\u1ee3p l\u1ec7.", "warning"); return; }
       const list = getVouchers();
-      if (list.some(function (v) { return v.code.toUpperCase() === code; })) { showToast("Mã giảm giá đã tồn tại.", "warning"); return; }
+      if (list.some(function (v) { return v.code.toUpperCase() === code; })) { showToast("M\u00e3 gi\u1ea3m gi\u00e1 \u0111\u00e3 t\u1ed3n t\u1ea1i.", "warning"); return; }
       list.push({ code: code, discountPercent: pct });
       const r = await apiCall("/api/admin/vouchers", "PUT", { vouchers: list });
-      if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
-      if (saveJSON(KEYS.vouchers, list)) { showToast("Đã thêm mã giảm giá " + code + " (-" + pct + "%).", "success"); renderAdmin(); }
+      if (r && r._err) { showToast("L\u1ed7i m\u00e1y ch\u1ee7: " + r._err, "error"); return; }
+      if (saveJSON(KEYS.vouchers, list)) { showToast("\u0110\u00e3 th\u00eam m\u00e3 gi\u1ea3m gi\u00e1 " + code + " (-" + pct + "%).", "success"); renderAdmin(); }
     } else if (act === "del-voucher") {
       const code = b.getAttribute("data-code");
       const list = getVouchers().filter(function (v) { return v.code !== code; });
       const r = await apiCall("/api/admin/vouchers", "PUT", { vouchers: list });
-      if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
+      if (r && r._err) { showToast("L\u1ed7i m\u00e1y ch\u1ee7: " + r._err, "error"); return; }
       saveJSON(KEYS.vouchers, list);
-      showToast("Đã xóa mã giảm giá.", "success");
+      showToast("\u0110\u00e3 x\u00f3a m\u00e3 gi\u1ea3m gi\u00e1.", "success");
       renderAdmin();
     } else if (act === "toggle-assign-eye") {
       const inp = $("assignApiKey");
@@ -2601,15 +2610,15 @@ async function onAdminClick(e) {
       if (emInp) emInp.value = em;
       if (keyInp) { keyInp.value = cur ? cur.apiKey : ""; keyInp.type = "password"; keyInp.focus(); }
       if (modSel && cur && cur.model) modSel.value = cur.model;
-      showToast("Đã chọn email " + em + " để gán Gemini API Key.", "info");
+      showToast("\u0110\u00e3 ch\u1ecdn email " + em + " \u0111\u1ec3 g\u00e1n Gemini API Key.", "info");
     } else if (act === "assign-user-api") {
       const email = ($("assignApiEmail") ? $("assignApiEmail").value : "").trim().toLowerCase();
       const apiKey = ($("assignApiKey") ? $("assignApiKey").value : "").trim();
       const model = ($("assignApiModel") ? $("assignApiModel").value : "gemini-2.5-flash").trim();
-      if (!isValidEmail(email)) { showToast("Vui lòng nhập địa chỉ email người dùng hợp lệ.", "warning"); return; }
-      if (!apiKey) { showToast("Vui lòng dán Google Gemini API Key để gán cho người dùng.", "warning"); return; }
+      if (!isValidEmail(email)) { showToast("Vui l\u00f2ng nh\u1eadp \u0111\u1ecba ch\u1ec9 email ng\u01b0\u1eddi d\u00f9ng h\u1ee3p l\u1ec7.", "warning"); return; }
+      if (!apiKey) { showToast("Vui l\u00f2ng d\u00e1n Google Gemini API Key \u0111\u1ec3 g\u00e1n cho ng\u01b0\u1eddi d\u00f9ng.", "warning"); return; }
       const r = await apiCall("/api/admin/user-apis", "POST", { email: email, apiKey: apiKey, model: model });
-      if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
+      if (r && r._err) { showToast("L\u1ed7i m\u00e1y ch\u1ee7: " + r._err, "error"); return; }
       const now = Date.now();
       const all = loadObj(KEYS.userApis);
       all[email] = {
@@ -2621,21 +2630,21 @@ async function onAdminClick(e) {
         ts: now
       };
       saveJSON(KEYS.userApis, all);
-      showToast("Đã gán Google Gemini API Key cho tài khoản " + email + " thành công!", "success");
+      showToast("\u0110\u00e3 g\u00e1n Google Gemini API Key cho t\u00e0i kho\u1ea3n " + email + " th\u00e0nh c\u00f4ng!", "success");
       updateChrome();
       renderAdmin();
     } else if (act === "revoke-user-api" || act === "revoke-user-api-form") {
       const email = act === "revoke-user-api"
         ? String(b.getAttribute("data-email") || "").trim().toLowerCase()
         : ($("assignApiEmail") ? $("assignApiEmail").value : "").trim().toLowerCase();
-      if (!isValidEmail(email)) { showToast("Vui lòng nhập hoặc chọn email cần thu hồi API Key.", "warning"); return; }
-      showConfirm("Thu hồi Gemini API Key", "Bạn có chắc muốn thu hồi Gemini API Key đã gán cho " + email + "?", async function () {
+      if (!isValidEmail(email)) { showToast("Vui l\u00f2ng nh\u1eadp ho\u1eb7c ch\u1ecdn email c\u1ea7n thu h\u1ed3i API Key.", "warning"); return; }
+      showConfirm("Thu h\u1ed3i Gemini API Key", "B\u1ea1n c\u00f3 ch\u1eafc mu\u1ed1n thu h\u1ed3i Gemini API Key \u0111\u00e3 g\u00e1n cho " + email + "?", async function () {
         const r = await apiCall("/api/admin/user-apis/" + encodeURIComponent(email), "DELETE");
-        if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
+        if (r && r._err) { showToast("L\u1ed7i m\u00e1y ch\u1ee7: " + r._err, "error"); return; }
         const all = loadObj(KEYS.userApis);
         delete all[email];
         saveJSON(KEYS.userApis, all);
-        showToast("Đã thu hồi Gemini API Key của " + email + ".", "info");
+        showToast("\u0110\u00e3 thu h\u1ed3i Gemini API Key c\u1ee7a " + email + ".", "info");
         updateChrome();
         renderAdmin();
       });
@@ -2650,7 +2659,7 @@ async function onAdminClick(e) {
       };
       downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), "ai_tutor_backup_" + new Date().toISOString().slice(0, 10) + ".json");
     }
-  } catch (err) { showToast("Đã xảy ra lỗi khi thực hiện thao tác quản trị.", "error"); }
+  } catch (err) { showToast("\u0110\u00e3 x\u1ea3y ra l\u1ed7i khi th\u1ef1c hi\u1ec7n thao t\u00e1c qu\u1ea3n tr\u1ecb.", "error"); }
 }
 function onAdminChange(e) {
   if (!isAdmin() || !e.target) return;
@@ -2706,11 +2715,11 @@ function renderGreeting() {
   if (!el || !u) return;
   let meta = "";
   if (u.studentId) meta += '<span class="badge">MSSV: ' + esc(u.studentId) + "</span>";
-  if (u.className) meta += '<span class="badge">Lớp/Khoa: ' + esc(u.className) + "</span>";
+  if (u.className) meta += '<span class="badge">L\u1edbp/Khoa: ' + esc(u.className) + "</span>";
   if (u.targetGoal) meta += '<span class="badge badge-ok">🎯 ' + esc(u.targetGoal) + "</span>";
-  if (!meta) meta = '<span class="muted">Hãy cập nhật hồ sơ để cá nhân hóa trải nghiệm học tập.</span>';
-  el.innerHTML = '<img class="avatar avatar-lg" id="greetAvatar" alt="Ảnh đại diện"><div class="greet-text"><h2>Xin chào, ' + esc(u.name) + ' 👋</h2><div class="greet-meta">' + meta +
-    '</div></div><button type="button" class="btn btn-outline btn-sm" data-action="edit-profile">Sửa hồ sơ</button>';
+  if (!meta) meta = '<span class="muted">H\u00e3y c\u1eadp nh\u1eadt h\u1ed3 s\u01a1 \u0111\u1ec3 c\u00e1 nh\u00e2n h\u00f3a tr\u1ea3i nghi\u1ec7m h\u1ecdc t\u1eadp.</span>';
+  el.innerHTML = '<img class="avatar avatar-lg" id="greetAvatar" alt="\u1ea2nh \u0111\u1ea1i di\u1ec7n"><div class="greet-text"><h2>Xin ch\u00e0o, ' + esc(u.name) + ' 👋</h2><div class="greet-meta">' + meta +
+    '</div></div><button type="button" class="btn btn-outline btn-sm" data-action="edit-profile">S\u1eeda h\u1ed3 s\u01a1</button>';
   setAvatar($("greetAvatar"), u.picture, u.name);
 }
 function profVal(id) { const el = $(id); return el ? el.value : ""; }
@@ -2736,16 +2745,16 @@ function openProfile() {
 function applyAvatarUrl() {
   if (!state.profDraft) return;
   const v = profVal("profAvatarUrl").trim();
-  if (!/^https?:\/\/\S+$/i.test(v)) { showToast("Vui lòng nhập đường dẫn ảnh hợp lệ.", "warning"); return; }
+  if (!/^https?:\/\/\S+$/i.test(v)) { showToast("Vui l\u00f2ng nh\u1eadp \u0111\u01b0\u1eddng d\u1eabn \u1ea3nh h\u1ee3p l\u1ec7.", "warning"); return; }
   const im = new Image();
   im.onload = function () { state.profDraft.customAvatar = v; updateProfPreview(); };
-  im.onerror = function () { showToast("Không tải được ảnh từ đường dẫn này.", "error"); };
+  im.onerror = function () { showToast("Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c \u1ea3nh t\u1eeb \u0111\u01b0\u1eddng d\u1eabn n\u00e0y.", "error"); };
   im.src = v;
 }
 function onAvatarFile(e) {
   const f = e.target && e.target.files ? e.target.files[0] : null;
   if (!f || !state.profDraft) return;
-  if (!/^image\//.test(f.type)) { showToast("Vui lòng chọn một file ảnh.", "warning"); return; }
+  if (!/^image\//.test(f.type)) { showToast("Vui l\u00f2ng ch\u1ecdn m\u1ed9t file \u1ea3nh.", "warning"); return; }
   const reader = new FileReader();
   reader.onload = function (ev) {
     const im = new Image();
@@ -2759,7 +2768,7 @@ function onAvatarFile(e) {
         ctx.drawImage(im, (im.width - side) / 2, (im.height - side) / 2, side, side, 0, 0, 160, 160);
         state.profDraft.customAvatar = c.toDataURL("image/jpeg", 0.8);
         updateProfPreview();
-      } catch (err) { showToast("Không thể xử lý ảnh đã chọn.", "error"); }
+      } catch (err) { showToast("Kh\u00f4ng th\u1ec3 x\u1eed l\u00fd \u1ea3nh \u0111\u00e3 ch\u1ecdn.", "error"); }
     };
     im.src = ev.target.result;
   };
@@ -2771,7 +2780,7 @@ function resetAvatar() {
   const u = $("profAvatarUrl"); if (u) u.value = "";
   const f = $("profAvatarFile"); if (f) f.value = "";
   updateProfPreview();
-  showToast("Đã khôi phục ảnh Google gốc (nhấn Lưu để áp dụng).", "info");
+  showToast("\u0110\u00e3 kh\u00f4i ph\u1ee5c \u1ea3nh Google g\u1ed1c (nh\u1ea5n L\u01b0u \u0111\u1ec3 \u00e1p d\u1ee5ng).", "info");
 }
 function renderProfilePage() {
   const root = $("profilePageRoot");
@@ -2783,39 +2792,39 @@ function renderProfilePage() {
   const assignedApi = getActiveUserAssignedApi();
   const curLang = getLang();
   const badgeText = isAdmin() ? "👑 Admin (Diamond)" : (info.icon + " " + info.name);
-  const expText = isAdmin() ? "Toàn quyền không giới hạn" : (sub && tier !== "unranked" ? ("Hết hạn: " + fmtDate(sub.expires)) : (tier === "unranked" ? "Miễn phí 0đ/năm" : "Chưa đăng ký gói"));
+  const expText = isAdmin() ? "To\u00e0n quy\u1ec1n kh\u00f4ng gi\u1edbi h\u1ea1n" : (sub && tier !== "unranked" ? ("H\u1ebft h\u1ea1n: " + fmtDate(sub.expires)) : (tier === "unranked" ? "Mi\u1ec5n ph\u00ed 0\u0111/n\u0103m" : "Ch\u01b0a \u0111\u0103ng k\u00fd g\u00f3i"));
 
   root.innerHTML =
     '<div class="api-wrap">' +
       '<section class="panel">' +
-        '<div class="panel-head"><div><h2>👤 Hồ sơ cá nhân</h2><p class="muted" style="margin:0;font-size:.84rem">' + esc(state.user.email) + '</p></div>' +
+        '<div class="panel-head"><div><h2>👤 H\u1ed3 s\u01a1 c\u00e1 nh\u00e2n</h2><p class="muted" style="margin:0;font-size:.84rem">' + esc(state.user.email) + '</p></div>' +
         '<span class="tier-badge ' + (isAdmin() ? "rank-diamond" : info.cls) + '">' + esc(badgeText) + '</span></div>' +
         '<div class="avatar-edit" style="margin:12px 0 16px">' +
-          '<img id="profPageAvatar" class="avatar avatar-xl" alt="Ảnh đại diện" referrerpolicy="no-referrer">' +
+          '<img id="profPageAvatar" class="avatar avatar-xl" alt="\u1ea2nh \u0111\u1ea1i di\u1ec7n" referrerpolicy="no-referrer">' +
           '<div class="avatar-tools">' +
             '<div><strong>' + esc(u.name) + '</strong></div>' +
             '<div class="muted" style="font-size:.82rem">' + esc(expText) + '</div>' +
             '<div class="deck-actions">' +
-              '<button type="button" class="btn btn-primary btn-sm" id="profPageOpenEdit">✏️ Chỉnh sửa hồ sơ &amp; Ảnh đại diện</button>' +
-              '<button type="button" class="btn btn-outline btn-sm" id="profPageGoPricing">🏆 Gói nâng cấp</button>' +
-              '<button type="button" class="btn btn-outline btn-sm" id="profPageGoBackup">☁️ Sao lưu dữ liệu</button>' +
+              '<button type="button" class="btn btn-primary btn-sm" id="profPageOpenEdit">✏️ Ch\u1ec9nh s\u1eeda h\u1ed3 s\u01a1 &amp; \u1ea2nh \u0111\u1ea1i di\u1ec7n</button>' +
+              '<button type="button" class="btn btn-outline btn-sm" id="profPageGoPricing">🏆 G\u00f3i n\u00e2ng c\u1ea5p</button>' +
+              '<button type="button" class="btn btn-outline btn-sm" id="profPageGoBackup">☁️ Sao l\u01b0u d\u1eef li\u1ec7u</button>' +
             '</div>' +
           '</div>' +
         '</div>' +
         '<dl class="pay-info">' +
-          '<dt>Tên hiển thị</dt><dd>' + esc(u.name) + '</dd>' +
+          '<dt>T\u00ean hi\u1ec3n th\u1ecb</dt><dd>' + esc(u.name) + '</dd>' +
           '<dt>Email Google</dt><dd>' + esc(state.user.email) + '</dd>' +
-          '<dt>Gemini API</dt><dd>' + (assignedApi ? ('<span class="badge badge-ok">🔑 Đã được Admin gán API (' + esc(assignedApi.model || "gemini-2.5-flash") + ')</span>') : ((localStorage.getItem(KEYS.apiKey) || "").trim() ? '<span class="badge badge-ok">Đã lưu Key cá nhân</span>' : '<span class="muted">Chưa cấu hình</span>')) + '</dd>' +
-          '<dt>Mã sinh viên</dt><dd>' + esc(u.studentId || "Chưa cập nhật") + '</dd>' +
-          '<dt>Lớp / Khoa</dt><dd>' + esc(u.className || "Chưa cập nhật") + '</dd>' +
-          '<dt>Mục tiêu học tập</dt><dd>' + esc(u.targetGoal || "Chưa cập nhật") + '</dd>' +
+          '<dt>Gemini API</dt><dd>' + (assignedApi ? ('<span class="badge badge-ok">🔑 \u0110\u00e3 \u0111\u01b0\u1ee3c Admin g\u00e1n API (' + esc(assignedApi.model || "gemini-2.5-flash") + ')</span>') : ((localStorage.getItem(KEYS.apiKey) || "").trim() ? '<span class="badge badge-ok">\u0110\u00e3 l\u01b0u Key c\u00e1 nh\u00e2n</span>' : '<span class="muted">Ch\u01b0a c\u1ea5u h\u00ecnh</span>')) + '</dd>' +
+          '<dt>M\u00e3 sinh vi\u00ean</dt><dd>' + esc(u.studentId || "Ch\u01b0a c\u1eadp nh\u1eadt") + '</dd>' +
+          '<dt>L\u1edbp / Khoa</dt><dd>' + esc(u.className || "Ch\u01b0a c\u1eadp nh\u1eadt") + '</dd>' +
+          '<dt>M\u1ee5c ti\u00eau h\u1ecdc t\u1eadp</dt><dd>' + esc(u.targetGoal || "Ch\u01b0a c\u1eadp nh\u1eadt") + '</dd>' +
         '</dl>' +
         '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">' +
-          '<div class="panel-head" style="margin-bottom:8px"><div><h3 style="margin:0;font-size:1rem">🌐 Ngôn ngữ giao diện (Language / 表示言語)</h3><p class="muted" style="margin:2px 0 0;font-size:.8rem">Chuyển đổi qua lại giữa Tiếng Việt, Tiếng Anh và Tiếng Nhật (giữ nguyên phông chữ).</p></div></div>' +
-          '<div class="seg" role="group" aria-label="Chọn ngôn ngữ">' +
-            '<button type="button" class="seg-btn' + (curLang === "vi" ? " active" : "") + '" data-lang="vi">🇻🇳 Tiếng Việt</button>' +
-            '<button type="button" class="seg-btn' + (curLang === "en" ? " active" : "") + '" data-lang="en">🇬🇧 English</button>' +
-            '<button type="button" class="seg-btn' + (curLang === "ja" ? " active" : "") + '" data-lang="ja">🇯🇵 日本語</button>' +
+          '<div class="panel-head" style="margin-bottom:8px"><div><h3 style="margin:0;font-size:1rem">🌐 Ng\u00f4n ng\u1eef giao di\u1ec7n (Language / 表示言語)</h3><p class="muted" style="margin:2px 0 0;font-size:.8rem">Chuy\u1ec3n \u0111\u1ed5i qua l\u1ea1i gi\u1eefa Ti\u1ebfng Vi\u1ec7t, Ti\u1ebfng Anh v\u00e0 Ti\u1ebfng Nh\u1eadt (gi\u1eef nguy\u00ean ph\u00f4ng ch\u1eef).</p></div></div>' +
+          '<div class="seg" role="group" aria-label="Ch\u1ecdn ng\u00f4n ng\u1eef">' +
+            '<button type="button" class="seg-btn' + (curLang === "vi" ? " active" : "") + '" data-lang="vi">VI</button>' +
+            '<button type="button" class="seg-btn' + (curLang === "en" ? " active" : "") + '" data-lang="en">EN</button>' +
+            '<button type="button" class="seg-btn' + (curLang === "ja" ? " active" : "") + '" data-lang="ja">JA</button>' +
           '</div>' +
         '</div>' +
       '</section>' +
@@ -2842,10 +2851,10 @@ function saveProfile() {
   closeModal("profileModal");
   renderUserChrome();
   if (state.tab === "profile") renderProfilePage();
-  showToast("Đã lưu hồ sơ của bạn.", "success");
+  showToast("\u0110\u00e3 l\u01b0u h\u1ed3 s\u01a1 c\u1ee7a b\u1ea1n.", "success");
 }
 function copyText(text, label) {
-  const msg = "Đã sao chép " + (label || "nội dung") + ".";
+  const msg = "\u0110\u00e3 sao ch\u00e9p " + (label || "n\u1ed9i dung") + ".";
   const fallback = function () {
     try {
       const ta = document.createElement("textarea");
@@ -2853,8 +2862,8 @@ function copyText(text, label) {
       document.body.appendChild(ta); ta.select();
       const ok = document.execCommand("copy");
       document.body.removeChild(ta);
-      showToast(ok ? msg : "Không thể sao chép.", ok ? "success" : "warning");
-    } catch (e) { showToast("Không thể sao chép.", "warning"); }
+      showToast(ok ? msg : "Kh\u00f4ng th\u1ec3 sao ch\u00e9p.", ok ? "success" : "warning");
+    } catch (e) { showToast("Kh\u00f4ng th\u1ec3 sao ch\u00e9p.", "warning"); }
   };
   try {
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { showToast(msg, "success"); }, fallback);
@@ -2914,230 +2923,1878 @@ function onKeyDown(e) {
 }
 
 /* ------------------------------ Multi-Language Engine (VI / EN / JA - Zero Font Change) ------------------------------ */
+/* BEGIN_VI_TRANSLATION_DICTIONARY */
+/* BEGIN_VI_TRANSLATION_DICTIONARY */
+/* BEGIN_VI_TRANSLATION_DICTIONARY */
 const I18N_MAP = {
-  "Tổng quan": { en: "Dashboard", ja: "ダッシュボード" },
-  "🏠 Tổng quan": { en: "🏠 Dashboard", ja: "🏠 ダッシュボード" },
-  "Ôn tập & Thi": { en: "Practice & Exam", ja: "練習・試験" },
-  "📝 Ôn tập & Thi": { en: "📝 Practice & Exam", ja: "📝 練習・試験" },
-  "Creator Studio": { en: "Creator Studio", ja: "Creator Studio" },
-  "🎮 Creator Studio": { en: "🎮 Creator Studio", ja: "🎮 Creator Studio" },
-  "AI Converter": { en: "AI Converter", ja: "AI Converter" },
-  "✨ AI Converter": { en: "✨ AI Converter", ja: "✨ AI Converter" },
-  "✨ Mở AI Converter": { en: "✨ Open AI Converter", ja: "✨ AI Converter を開く" },
-  "Lật thẻ": { en: "Flashcards", ja: "フラッシュカード" },
-  "🃏 Lật thẻ": { en: "🃏 Flashcards", ja: "🃏 フラッシュカード" },
-  "Sổ tay sai": { en: "Mistakes", ja: "弱点ノート" },
-  "📕 Sổ tay sai": { en: "📕 Mistakes", ja: "📕 弱点ノート" },
-  "Sổ tay câu hay sai": { en: "Mistake Notebook", ja: "弱点ノート（間違い復習）" },
-  "👤 Hồ sơ cá nhân": { en: "👤 Profile", ja: "👤 プロフィール" },
-  "🏆 Gói nâng cấp": { en: "🏆 Upgrade Plans", ja: "🏆 プランアップグレード" },
-  "🔑 Cài đặt API & Ngôn ngữ": { en: "🔑 API & Language Settings", ja: "🔑 API・言語設定" },
-  "🔑 Cài đặt API (Gemini)": { en: "🔑 API Settings (Gemini)", ja: "🔑 API設定 (Gemini)" },
-  "☁️ Sao lưu & Khôi phục dữ liệu": { en: "☁️ Backup & Restore Data", ja: "☁️ バックアップと復元" },
-  "☁️ Sao lưu & Khôi phục": { en: "☁️ Backup & Restore", ja: "☁️ バックアップと復元" },
-  "☁️ Sao lưu dữ liệu": { en: "☁️ Data Backup", ja: "☁️ データバックアップ" },
-  "🛡️ Quản trị duyệt đơn (Admin Panel)": { en: "🛡️ Admin Panel", ja: "🛡️ 管理パネル (Admin)" },
-  "🛡️ Quản trị duyệt đơn": { en: "🛡️ Admin Panel", ja: "🛡️ 管理パネル" },
-  "🚪 Đăng xuất": { en: "🚪 Sign Out", ja: "🚪 ログアウト" },
-  "🌐 Ngôn ngữ": { en: "🌐 Language", ja: "🌐 言語" },
-  "☁️ Đã đồng bộ": { en: "☁️ Synced", ja: "☁️ 同期済み" },
-  "🔄 Đang đồng bộ...": { en: "🔄 Syncing...", ja: "🔄 同期中..." },
-  "Chưa xếp hạng": { en: "Unranked", ja: "未ランク" },
-  "Nền tảng ôn tập, thi thử trực tuyến được phát triển bởi Phạm Đức Hiếu.": {
-    en: "Online practice & exam platform developed by Pham Duc Hieu.",
-    ja: "Pham Duc Hieu によって開発されたオンライン学習・模擬試験プラットフォーム。"
-  },
-  "Vui lòng đăng nhập bằng tài khoản Google của bạn để tiếp tục.": {
-    en: "Please sign in with your Google account to continue.",
-    ja: "続行するには Google アカウントでログインしてください。"
-  },
-  "Vào làm bài": { en: "Join Quiz", ja: "参加する" },
-  "🔗 Tham gia bộ đề bằng Mã đề": { en: "🔗 Join Deck via Share Code", ja: "🔗 共有コードで問題集に参加" },
-  "Đề đã luyện": { en: "Decks Practiced", ja: "学習済みセット" },
-  "Câu hỏi đã làm": { en: "Questions Answered", ja: "回答済み問題数" },
-  "Trả lời đúng": { en: "Correct Answers", ja: "正解数" },
-  "Tỷ lệ chính xác (%)": { en: "Accuracy Rate (%)", ja: "正答率 (%)" },
-  "Kho đề của bạn": { en: "Your Question Decks", ja: "マイ問題集" },
-  "+ Nhập đề từ Excel": { en: "+ Import from Excel", ja: "+ Excel からインポート" },
-  "Gói kích hoạt & Lịch sử thi": { en: "Active Plan & Exam History", ja: "有効プランと試験履歴" },
-  "Biểu đồ & Phân tích kết quả": { en: "Performance Chart & Analytics", ja: "成績グラフと分析" },
-  "Tuần": { en: "Week", ja: "週間" },
-  "Tháng": { en: "Month", ja: "月間" },
-  "Tất cả": { en: "All", ja: "すべて" },
-  "Ôn tập": { en: "Practice", ja: "練習" },
-  "Tiếp tục ôn tập": { en: "Resume Practice", ja: "練習を再開" },
-  "Thi thử": { en: "Mock Exam", ja: "模擬試験" },
-  "🔒 Thi thử": { en: "🔒 Mock Exam", ja: "🔒 模擬試験" },
-  "Quiz Studio": { en: "Quiz Studio", ja: "Quiz Studio" },
-  "🔗 Chia sẻ": { en: "🔗 Share", ja: "🔗 共有" },
-  "🖨️ Xuất PDF": { en: "🖨️ Export PDF", ja: "🖨️ PDF出力" },
-  "Xuất .json": { en: "Export .json", ja: ".json 出力" },
-  "🔒 Xuất .json": { en: "🔒 Export .json", ja: "🔒 .json 出力" },
-  "Xuất .xlsx": { en: "Export .xlsx", ja: ".xlsx 出力" },
-  "🔒 Xuất .xlsx": { en: "🔒 Export .xlsx", ja: "🔒 .xlsx 出力" },
-  "Xuất CSV": { en: "Export CSV", ja: "CSV 出力" },
-  "Xóa": { en: "Delete", ja: "削除" },
-  "Sửa": { en: "Edit", ja: "編集" },
-  "Sửa hồ sơ": { en: "Edit Profile", ja: "プロフィール編集" },
-  "Lưu": { en: "Save", ja: "保存" },
-  "Lưu hồ sơ": { en: "Save Profile", ja: "プロフィールを保存" },
-  "Hủy": { en: "Cancel", ja: "キャンセル" },
-  "Đóng": { en: "Close", ja: "閉じる" },
-  "Áp dụng": { en: "Apply", ja: "適用" },
-  "Sao chép": { en: "Copy", ja: "コピー" },
-  "Tôi đã thanh toán": { en: "I Have Paid", ja: "支払い完了を通知" },
-  "Chọn một bộ đề để bắt đầu Ôn tập hoặc Thi thử.": {
-    en: "Select a question deck to start Practice or Mock Exam.",
-    ja: "問題集を選択して練習または模擬試験を開始してください。"
-  },
-  "Chế độ": { en: "Mode", ja: "モード" },
-  "Bộ đề": { en: "Deck", ja: "問題集" },
-  "Làm lại từ đầu": { en: "Restart", ja: "最初からやり直す" },
-  "Thoát": { en: "Exit", ja: "終了" },
-  "Nộp bài / Hoàn thành": { en: "Submit / Finish", ja: "提出・完了" },
-  "Kiểm tra đáp án": { en: "Check Answer", ja: "解答を確認" },
-  "Đầu": { en: "First", ja: "最初" },
-  "Trước": { en: "Prev", ja: "前へ" },
-  "Tiếp": { en: "Next", ja: "次へ" },
-  "Cuối": { en: "Last", ja: "最後" },
-  "1. Tải đề thi thông minh": { en: "1. Smart Exam Uploader", ja: "1. スマート試験ファイルアップロード" },
-  "Tự động nhận diện": { en: "Auto-Detect", ja: "自動判別" },
-  "📂 Chọn, kéo thả hoặc Ctrl+V tệp đề thi": {
-    en: "📂 Select, drag & drop, or Ctrl+V exam files",
-    ja: "📂 ファイルを選択・ドラッグ＆ドロップ・Ctrl+V貼付"
-  },
-  "✍️ Hoặc dán nhanh văn bản / Markdown trực tiếp": {
-    en: "✍️ Or paste raw text / Markdown directly",
-    ja: "✍️ またはテキスト / Markdown を直接貼り付け"
-  },
-  "✨ Bắt đầu chuyển đổi thông minh": { en: "✨ Start Smart Conversion", ja: "✨ スマート変換を開始" },
-  "Dừng": { en: "Stop", ja: "停止" },
-  "Xóa hết": { en: "Clear All", ja: "すべてクリア" },
-  "2. File mẫu & Kiểm duyệt AI": { en: "2. Template & AI Verification", ja: "2. テンプレートとAI検証" },
-  "👁️ Xem file mẫu": { en: "👁️ View Template", ja: "👁️ サンプルを表示" },
-  "⬇ Tải file mẫu (.xlsx)": { en: "⬇ Download Template (.xlsx)", ja: "⬇ テンプレート (.xlsx)" },
-  "Áp dụng đáp án": { en: "Apply Answer Key", ja: "解答キーを適用" },
-  "3. Chuẩn hóa & Xuất file": { en: "3. Normalize & Export", ja: "3. 正規化とエクスポート" },
-  "Kiểm duyệt & Chỉnh sửa câu hỏi": { en: "Review & Edit Questions", ja: "問題の確認と編集" },
-  "Bảng nhanh": { en: "Quick Table", ja: "クイック表" },
-  "Đối chiếu song song (Split-Screen)": { en: "Split-Screen Review", ja: "並列レビュー (Split-Screen)" },
-  "🔒 Đối chiếu song song (Split-Screen)": { en: "🔒 Split-Screen Review", ja: "🔒 並列レビュー (Split-Screen)" },
-  "✓ Duyệt tất cả": { en: "✓ Verify All", ja: "✓ すべて承認" },
-  "Xóa bảng": { en: "Clear Table", ja: "表をクリア" },
-  "🎮 Mở trong Creator Studio": { en: "🎮 Open in Creator Studio", ja: "🎮 Creator Studio で開く" },
-  "🎮 Creator Studio / Quiz Studio": { en: "🎮 Creator Studio / Quiz Studio", ja: "🎮 Creator Studio / Quiz Studio" },
-  "✍️ Tạo Quiz thủ công": { en: "✍️ Create Quiz Manually", ja: "✍️ 手動でクイズ作成" },
-  "Tạo Quiz mới": { en: "Create New Quiz", ja: "新規クイズ作成" },
-  "📚 Lấy từ Kho đề AI Tutor": { en: "📚 Load from AI Tutor Decks", ja: "📚 AI Tutor 問題集から読み込む" },
-  "✨ Nhập từ AI Converter": { en: "✨ Import from AI Converter", ja: "✨ AI Converter から取り込む" },
-  "Mở": { en: "Open", ja: "開く" },
-  "▶ Bắt đầu làm bài (Play)": { en: "▶ Start Quiz (Play)", ja: "▶ クイズ開始 (Play)" },
-  "Cài đặt Google Gemini API": { en: "Google Gemini API Settings", ja: "Google Gemini API 設定" },
-  "🌐 Ngôn ngữ giao diện (Language / 表示言語)": { en: "🌐 Interface Language (Ngôn ngữ / 表示言語)", ja: "🌐 表示言語 (Language / Ngôn ngữ)" },
-  "Chuyển đổi tức thì giữa Tiếng Việt, Tiếng Anh và Tiếng Nhật (giữ nguyên phông chữ hệ thống).": {
-    en: "Switch instantly between Vietnamese, English, and Japanese (keeping the system font intact).",
-    ja: "ベトナム語・英語・日本語を即座に切り替えます（システムフォントは維持されます）。"
-  },
-  "Chuyển đổi qua lại giữa Tiếng Việt, Tiếng Anh và Tiếng Nhật (giữ nguyên phông chữ).": {
-    en: "Switch between Vietnamese, English, and Japanese (preserving the current font).",
-    ja: "ベトナム語・英語・日本語を切り替えます（現在のフォントを維持）。"
-  },
-  "Lưu Key": { en: "Save Key", ja: "キーを保存" },
-  "Kiểm tra kết nối (Test API)": { en: "Test Connection (Test API)", ja: "接続テスト (Test API)" },
-  "Xóa Key cá nhân": { en: "Delete Personal Key", ja: "個人キーを削除" },
-  "Hướng dẫn lấy Gemini API Key": { en: "How to Get a Gemini API Key", ja: "Gemini API キーの取得方法" },
-  "Mở Google AI Studio ↗": { en: "Open Google AI Studio ↗", ja: "Google AI Studio を開く ↗" },
-  "✏️ Chỉnh sửa hồ sơ & Ảnh đại diện": { en: "✏️ Edit Profile & Avatar", ja: "✏️ プロフィールとアバターを編集" },
-  "Tên hiển thị": { en: "Display Name", ja: "表示名" },
-  "Email Google": { en: "Google Email", ja: "Google メール" },
-  "Mã sinh viên": { en: "Student ID", ja: "学籍番号" },
-  "Lớp / Khoa": { en: "Class / Faculty", ja: "クラス・学部" },
-  "Mục tiêu học tập": { en: "Learning Goal", ja: "学習目標" },
-  "Chưa cập nhật": { en: "Not set", ja: "未設定" },
-  "Chưa cấu hình": { en: "Not configured", ja: "未設定" },
-  "Đã lưu Key": { en: "Key Saved", ja: "キー保存済み" },
-  "Đã lưu Key cá nhân": { en: "Personal Key Saved", ja: "個人キー保存済み" },
-  "✅ Đã gán bởi Admin": { en: "✅ Assigned by Admin", ja: "✅ 管理者により割当済" },
-  "✅ Kết nối thành công": { en: "✅ Connected", ja: "✅ 接続成功" },
-  "❌ Key không hợp lệ": { en: "❌ Invalid Key", ja: "❌ 無効なキー" },
-  "Bảng điều khiển Quản trị (Admin Panel)": { en: "Admin Control Panel", ja: "管理者コントロールパネル (Admin Panel)" },
-  "Đơn đang chờ duyệt": { en: "Pending Requests", ja: "承認待ちリクエスト" },
-  "Đơn đã duyệt": { en: "Approved Requests", ja: "承認済みリクエスト" },
-  "Tổng doanh thu đã duyệt": { en: "Total Approved Revenue", ja: "承認済み総売上" },
-  "Thành viên & Cấp gói": { en: "Members & Plans", ja: "メンバー・プラン・API割当" },
-  "Cấu hình VietQR": { en: "VietQR Config", ja: "VietQR 設定" },
-  "Mã giảm giá": { en: "Discount Codes", ja: "割引クーポン" },
-  "Sao lưu hệ thống": { en: "System Backup", ja: "システムバックアップ" },
-  "1. Cấp / nâng cấp / thu hồi gói thủ công": { en: "1. Grant / Upgrade / Revoke User Plan", ja: "1. プランの手動付与・アップグレード・取消" },
-  "2. 🔑 Gán hộ Google Gemini API Key theo Email người dùng": {
-    en: "2. 🔑 Assign Google Gemini API Key by User Email",
-    ja: "2. 🔑 ユーザーメール宛に Google Gemini API キーを割り当て"
-  },
-  "Danh sách thành viên đang hoạt động": { en: "Active Members", ja: "有効メンバー一覧" },
-  "Cấp / nâng cấp": { en: "Grant / Upgrade", ja: "付与・アップグレード" },
-  "Thu hồi gói": { en: "Revoke Plan", ja: "プラン取消" },
-  "🔑 Gán API cho Email": { en: "🔑 Assign API to Email", ja: "🔑 メールにAPIを割当" },
-  "🔑 Gán API": { en: "🔑 Assign API", ja: "🔑 API割当" },
-  "🔑 Đã gán API": { en: "🔑 API Assigned", ja: "🔑 API割当済" },
-  "Thu hồi API": { en: "Revoke API", ja: "API取消" },
-  "Lưu cấu hình": { en: "Save Config", ja: "設定を保存" },
-  "Thêm mã": { en: "Add Code", ja: "コード追加" },
-  "Xuất dữ liệu hệ thống (.json)": { en: "Export System Data (.json)", ja: "システムデータを出力 (.json)" }
+  "AI Tutor – Nền tảng Ôn luyện, Creator Studio & AI Converter": { vi: "AI Tutor – Nền tảng Ôn luyện, Creator Studio & AI Converter", en: "AI Tutor – Practice Platform, Creator Studio & AI Converter", ja: "AI Tutor – オンライン学習・Creator Studio・AI Converter" },
+  "AI Tutor by Phạm Đức Hiếu: Nền tảng ôn luyện, thi thử trực tuyến.": { vi: "AI Tutor by Phạm Đức Hiếu: Nền tảng ôn luyện, thi thử trực tuyến.", en: "AI Tutor by Pham Duc Hieu: Online practice & mock exam platform.", ja: "AI Tutor by Pham Duc Hieu: オンライン学習・模擬試験プラットフォーム。" },
+  "Đăng nhập | AI Tutor": { vi: "Đăng nhập | AI Tutor", en: "Sign In | AI Tutor", ja: "ログイン | AI Tutor" },
+  "Tổng quan | AI Tutor": { vi: "Tổng quan | AI Tutor", en: "Dashboard | AI Tutor", ja: "ダッシュボード | AI Tutor" },
+  "Ôn tập & Thi | AI Tutor": { vi: "Ôn tập & Thi | AI Tutor", en: "Practice & Exam | AI Tutor", ja: "練習・試験 | AI Tutor" },
+  "Đang làm bài | AI Tutor": { vi: "Đang làm bài | AI Tutor", en: "In Session | AI Tutor", ja: "演習中 | AI Tutor" },
+  "Creator Studio | AI Tutor": { vi: "Creator Studio | AI Tutor", en: "Creator Studio | AI Tutor", ja: "Creator Studio | AI Tutor" },
+  "Trình soạn thảo Quiz | AI Tutor": { vi: "Trình soạn thảo Quiz | AI Tutor", en: "Quiz Editor | AI Tutor", ja: "クイズエディター | AI Tutor" },
+  "Cài đặt Quiz | AI Tutor": { vi: "Cài đặt Quiz | AI Tutor", en: "Quiz Lobby | AI Tutor", ja: "クイズ設定 | AI Tutor" },
+  "Đang chơi Quiz | AI Tutor": { vi: "Đang chơi Quiz | AI Tutor", en: "Playing Quiz | AI Tutor", ja: "クイズプレイ中 | AI Tutor" },
+  "Tổng kết Quiz | AI Tutor": { vi: "Tổng kết Quiz | AI Tutor", en: "Quiz Summary | AI Tutor", ja: "クイズ結果 | AI Tutor" },
+  "AI Converter | AI Tutor": { vi: "AI Converter | AI Tutor", en: "AI Converter | AI Tutor", ja: "AI Converter | AI Tutor" },
+  "Kiểm duyệt song song | AI Tutor": { vi: "Kiểm duyệt song song | AI Tutor", en: "Split-Screen Review | AI Tutor", ja: "並列レビュー | AI Tutor" },
+  "Lật thẻ | AI Tutor": { vi: "Lật thẻ | AI Tutor", en: "Flashcards | AI Tutor", ja: "フラッシュカード | AI Tutor" },
+  "Đang học Lật thẻ | AI Tutor": { vi: "Đang học Lật thẻ | AI Tutor", en: "Studying Flashcards | AI Tutor", ja: "フラッシュカード学習中 | AI Tutor" },
+  "Sổ tay câu hay sai | AI Tutor": { vi: "Sổ tay câu hay sai | AI Tutor", en: "Mistake Notebook | AI Tutor", ja: "弱点ノート | AI Tutor" },
+  "Hồ sơ cá nhân | AI Tutor": { vi: "Hồ sơ cá nhân | AI Tutor", en: "Profile | AI Tutor", ja: "プロフィール | AI Tutor" },
+  "Gói nâng cấp | AI Tutor": { vi: "Gói nâng cấp | AI Tutor", en: "Upgrade Plans | AI Tutor", ja: "プランアップグレード | AI Tutor" },
+  "Cài đặt Gemini API | AI Tutor": { vi: "Cài đặt Gemini API | AI Tutor", en: "Gemini API Settings | AI Tutor", ja: "Gemini API 設定 | AI Tutor" },
+  "Sao lưu & Khôi phục | AI Tutor": { vi: "Sao lưu & Khôi phục | AI Tutor", en: "Backup & Restore | AI Tutor", ja: "バックアップと復元 | AI Tutor" },
+  "Quản trị duyệt đơn | AI Tutor": { vi: "Quản trị duyệt đơn | AI Tutor", en: "Admin Panel | AI Tutor", ja: "管理パネル | AI Tutor" },
+  "Quản trị – Duyệt thanh toán | AI Tutor": { vi: "Quản trị – Duyệt thanh toán | AI Tutor", en: "Admin – Payment Approvals | AI Tutor", ja: "管理 – 支払い承認 | AI Tutor" },
+  "Quản trị – Thành viên | AI Tutor": { vi: "Quản trị – Thành viên | AI Tutor", en: "Admin – Members | AI Tutor", ja: "管理 – メンバー管理 | AI Tutor" },
+  "Quản trị – Cấu hình VietQR | AI Tutor": { vi: "Quản trị – Cấu hình VietQR | AI Tutor", en: "Admin – VietQR Config | AI Tutor", ja: "管理 – VietQR設定 | AI Tutor" },
+  "Quản trị – Mã giảm giá | AI Tutor": { vi: "Quản trị – Mã giảm giá | AI Tutor", en: "Admin – Discount Codes | AI Tutor", ja: "管理 – 割引クーポン | AI Tutor" },
+  "Quản trị – Sao lưu hệ thống | AI Tutor": { vi: "Quản trị – Sao lưu hệ thống | AI Tutor", en: "Admin – System Backup | AI Tutor", ja: "管理 – システムバックアップ | AI Tutor" },
+  "Làm bài chia sẻ | AI Tutor": { vi: "Làm bài chia sẻ | AI Tutor", en: "Shared Quiz | AI Tutor", ja: "共有クイズ | AI Tutor" },
+  "Tổng quan": { vi: "Tổng quan", en: "Dashboard", ja: "ダッシュボード" },
+  "🏠 Tổng quan": { vi: "🏠 Tổng quan", en: "🏠 Dashboard", ja: "🏠 ダッシュボード" },
+  "Ôn tập & Thi": { vi: "Ôn tập & Thi", en: "Practice & Exam", ja: "練習・試験" },
+  "📝 Ôn tập & Thi": { vi: "📝 Ôn tập & Thi", en: "📝 Practice & Exam", ja: "📝 練習・試験" },
+  "Creator Studio": { vi: "Creator Studio", en: "Creator Studio", ja: "Creator Studio" },
+  "🎮 Creator Studio": { vi: "🎮 Creator Studio", en: "🎮 Creator Studio", ja: "🎮 Creator Studio" },
+  "AI Converter": { vi: "AI Converter", en: "AI Converter", ja: "AI Converter" },
+  "✨ AI Converter": { vi: "✨ AI Converter", en: "✨ AI Converter", ja: "✨ AI Converter" },
+  "✨ Mở AI Converter": { vi: "✨ Mở AI Converter", en: "✨ Open AI Converter", ja: "✨ AI Converter を開く" },
+  "Lật thẻ": { vi: "Lật thẻ", en: "Flashcards", ja: "フラッシュカード" },
+  "🃏 Lật thẻ": { vi: "🃏 Lật thẻ", en: "🃏 Flashcards", ja: "🃏 フラッシュカード" },
+  "Sổ tay sai": { vi: "Sổ tay sai", en: "Mistakes", ja: "弱点ノート" },
+  "📕 Sổ tay sai": { vi: "📕 Sổ tay sai", en: "📕 Mistakes", ja: "📕 弱点ノート" },
+  "Sổ tay câu hay sai": { vi: "Sổ tay câu hay sai", en: "Mistake Notebook", ja: "弱点ノート" },
+  "👤 Hồ sơ cá nhân": { vi: "👤 Hồ sơ cá nhân", en: "👤 Profile", ja: "👤 プロフィール" },
+  "Hồ sơ cá nhân": { vi: "Hồ sơ cá nhân", en: "Profile", ja: "プロフィール" },
+  "🏆 Gói nâng cấp": { vi: "🏆 Gói nâng cấp", en: "🏆 Upgrade Plans", ja: "🏆 プランアップグレード" },
+  "Gói nâng cấp": { vi: "Gói nâng cấp", en: "Upgrade Plans", ja: "プランアップグレード" },
+  "🔑 Cài đặt API & Ngôn ngữ": { vi: "🔑 Cài đặt API & Ngôn ngữ", en: "🔑 API & Language Settings", ja: "🔑 API・言語設定" },
+  "🔑 Cài đặt API (Gemini)": { vi: "🔑 Cài đặt API (Gemini)", en: "🔑 API Settings (Gemini)", ja: "🔑 API設定 (Gemini)" },
+  "☁️ Sao lưu & Khôi phục dữ liệu": { vi: "☁️ Sao lưu & Khôi phục dữ liệu", en: "☁️ Backup & Restore Data", ja: "☁️ バックアップと復元" },
+  "☁️ Sao lưu & Khôi phục": { vi: "☁️ Sao lưu & Khôi phục", en: "☁️ Backup & Restore", ja: "☁️ バックアップと復元" },
+  "Sao lưu & Khôi phục": { vi: "Sao lưu & Khôi phục", en: "Backup & Restore", ja: "バックアップと復元" },
+  "☁️ Sao lưu dữ liệu": { vi: "☁️ Sao lưu dữ liệu", en: "☁️ Data Backup", ja: "☁️ データバックアップ" },
+  "🛡️ Quản trị duyệt đơn (Admin Panel)": { vi: "🛡️ Quản trị duyệt đơn (Admin Panel)", en: "🛡️ Admin Panel", ja: "🛡️ 管理パネル (Admin Panel)" },
+  "🛡️ Quản trị duyệt đơn": { vi: "🛡️ Quản trị duyệt đơn", en: "🛡️ Admin Panel", ja: "🛡️ 管理パネル" },
+  "🚪 Đăng xuất": { vi: "🚪 Đăng xuất", en: "🚪 Sign Out", ja: "🚪 ログアウト" },
+  "🌐 Ngôn ngữ": { vi: "🌐 Ngôn ngữ", en: "🌐 Language", ja: "🌐 言語" },
+  "Ngôn ngữ": { vi: "Ngôn ngữ", en: "Language", ja: "言語" },
+  "Chọn ngôn ngữ": { vi: "Chọn ngôn ngữ", en: "Select language", ja: "言語を選択" },
+  "☁️ Đã đồng bộ": { vi: "☁️ Đã đồng bộ", en: "☁️ Synced", ja: "☁️ 同期済み" },
+  "🔄 Đang đồng bộ...": { vi: "🔄 Đang đồng bộ...", en: "🔄 Syncing...", ja: "🔄 同期中..." },
+  "🔄 Đang lưu...": { vi: "🔄 Đang lưu...", en: "🔄 Saving...", ja: "🔄 保存中..." },
+  "Đang lưu": { vi: "Đang lưu", en: "Saving", ja: "保存中" },
+  "Mở menu điều hướng": { vi: "Mở menu điều hướng", en: "Open navigation menu", ja: "ナビゲーションメニューを開く" },
+  "Về trang Tổng quan": { vi: "Về trang Tổng quan", en: "Go to Dashboard", ja: "ダッシュボードへ戻る" },
+  "Điều hướng học tập chính": { vi: "Điều hướng học tập chính", en: "Main learning navigation", ja: "メイン学習ナビゲーション" },
+  "Trạng thái đồng bộ dữ liệu": { vi: "Trạng thái đồng bộ dữ liệu", en: "Data sync status", ja: "データ同期ステータス" },
+  "Cỡ chữ câu hỏi": { vi: "Cỡ chữ câu hỏi", en: "Question font size", ja: "問題の文字サイズ" },
+  "Giảm cỡ chữ câu hỏi": { vi: "Giảm cỡ chữ câu hỏi", en: "Decrease question font size", ja: "問題の文字サイズを縮小" },
+  "Giảm cỡ chữ": { vi: "Giảm cỡ chữ", en: "Decrease font size", ja: "文字サイズを縮小" },
+  "Tăng cỡ chữ câu hỏi": { vi: "Tăng cỡ chữ câu hỏi", en: "Increase question font size", ja: "問題の文字サイズを拡大" },
+  "Tăng cỡ chữ": { vi: "Tăng cỡ chữ", en: "Increase font size", ja: "文字サイズを拡大" },
+  "Chuyển chế độ Sáng/Tối": { vi: "Chuyển chế độ Sáng/Tối", en: "Toggle Light/Dark mode", ja: "ライト/ダークモード切替" },
+  "Mở menu tài khoản": { vi: "Mở menu tài khoản", en: "Open account menu", ja: "アカウントメニューを開く" },
+  "Ảnh đại diện": { vi: "Ảnh đại diện", en: "Avatar", ja: "アバター" },
+  "Có đơn chờ duyệt": { vi: "Có đơn chờ duyệt", en: "Pending requests awaiting approval", ja: "承認待ちのリクエストがあります" },
+  "Menu di động": { vi: "Menu di động", en: "Mobile menu", ja: "モバイルメニュー" },
+  "Đóng menu": { vi: "Đóng menu", en: "Close menu", ja: "メニューを閉じる" },
+  "Hỗ trợ trực tiếp qua Messenger": { vi: "Hỗ trợ trực tiếp qua Messenger", en: "Live Support via Messenger", ja: "Messenger でライブサポート" },
+  "Hỗ trợ trực tiếp": { vi: "Hỗ trợ trực tiếp", en: "Live Support", ja: "ライブサポート" },
+  "Đã cấu hình Gemini API Key": { vi: "Đã cấu hình Gemini API Key", en: "Gemini API Key configured", ja: "Gemini API Key 設定済み" },
+  "Chưa cấu hình Gemini API Key": { vi: "Chưa cấu hình Gemini API Key", en: "Gemini API Key not configured", ja: "Gemini API Key 未設定" },
+  "Nền tảng ôn tập, thi thử trực tuyến được phát triển bởi Phạm Đức Hiếu.": { vi: "Nền tảng ôn tập, thi thử trực tuyến được phát triển bởi Phạm Đức Hiếu.", en: "Online practice & mock exam platform developed by Pham Duc Hieu.", ja: "Pham Duc Hieu によって開発されたオンライン学習・模擬試験プラットフォーム。" },
+  "Vui lòng đăng nhập bằng tài khoản Google của bạn để tiếp tục.": { vi: "Vui lòng đăng nhập bằng tài khoản Google của bạn để tiếp tục.", en: "Please sign in with your Google account to continue.", ja: "続行するには Google アカウントでログインしてください。" },
+  "Hoặc có": { vi: "Hoặc có", en: "Or have a", ja: "または" },
+  "Mã đề chia sẻ": { vi: "Mã đề chia sẻ", en: "Shared Quiz Code", ja: "共有クイズコード" },
+  "? Vào làm bài ngay:": { vi: "? Vào làm bài ngay:", en: "? Join immediately:", ja: "をお持ちですか？今すぐ参加:" },
+  "Nhập mã đề (VD: AIT-8392)": { vi: "Nhập mã đề (VD: AIT-8392)", en: "Enter code (e.g. AIT-8392)", ja: "コードを入力 (例: AIT-8392)" },
+  "Nhập mã đề (AIT-...)": { vi: "Nhập mã đề (AIT-...)", en: "Enter code (AIT-...)", ja: "コードを入力 (AIT-...)" },
+  "Nhập mã đề chia sẻ": { vi: "Nhập mã đề chia sẻ", en: "Enter shared quiz code", ja: "共有クイズコードを入力" },
+  "Vào làm bài": { vi: "Vào làm bài", en: "Join Quiz", ja: "クイズに参加" },
+  "Lưu ý quan trọng:": { vi: "Lưu ý quan trọng:", en: "Important Notice:", ja: "重要なお知らせ:" },
+  "Dữ liệu bộ đề cá nhân, tiến độ làm bài (Auto-save) và Sổ tay câu hay sai được lưu trực tiếp trên trình duyệt này và hỗ trợ sao lưu Google Drive / JSON. Vui lòng không xóa cache trình duyệt hoặc hãy sao lưu định kỳ trong mục": { vi: "Dữ liệu bộ đề cá nhân, tiến độ làm bài (Auto-save) và Sổ tay câu hay sai được lưu trực tiếp trên trình duyệt này và hỗ trợ sao lưu Google Drive / JSON. Vui lòng không xóa cache trình duyệt hoặc hãy sao lưu định kỳ trong mục", en: "Your personal decks, study progress (Auto-save), and Mistake Notebook are saved locally in this browser with Google Drive / JSON backup support. Please avoid clearing browser cache or back up regularly in", ja: "個人の問題集、学習進捗（自動保存）、弱点ノートはこのブラウザに保存され、Google Drive / JSON バックアップに対応しています。ブラウザのキャッシュを削除しないか、定期的に次のメニューでバックアップしてください：" },
+  "Đăng nhập thất bại! Tài khoản Google chưa được xác minh email. Vui lòng thử lại bằng tài khoản khác.": { vi: "Đăng nhập thất bại! Tài khoản Google chưa được xác minh email. Vui lòng thử lại bằng tài khoản khác.", en: "Sign-in failed! Your Google account email is not verified. Please try another account.", ja: "ログインに失敗しました。Google アカウントのメールが未確認です。別のアカウントでお試しください。" },
+  "Đăng nhập thất bại. Vui lòng thử lại.": { vi: "Đăng nhập thất bại. Vui lòng thử lại.", en: "Sign-in failed. Please try again.", ja: "ログインに失敗しました。もう一度お試しください。" },
+  "Không thể khởi tạo đăng nhập Google. Vui lòng tải lại trang.": { vi: "Không thể khởi tạo đăng nhập Google. Vui lòng tải lại trang.", en: "Could not initialize Google Sign-In. Please reload the page.", ja: "Google ログインを初期化できませんでした。ページを再読み込みしてください。" },
+  "Không tải được dịch vụ đăng nhập Google. Vui lòng kiểm tra kết nối mạng và tải lại trang.": { vi: "Không tải được dịch vụ đăng nhập Google. Vui lòng kiểm tra kết nối mạng và tải lại trang.", en: "Failed to load Google Sign-In service. Please check your network and reload.", ja: "Google ログインサービスを読み込めませんでした。通信環境を確認して再読み込みしてください。" },
+  "🔗 Tham gia bộ đề bằng Mã đề": { vi: "🔗 Tham gia bộ đề bằng Mã đề", en: "🔗 Join Deck via Share Code", ja: "🔗 共有コードで問題集に参加" },
+  "Nhập mã chia sẻ (VD:": { vi: "Nhập mã chia sẻ (VD:", en: "Enter share code (e.g.", ja: "共有コード (例:" },
+  ") để vào thẳng Quiz Lobby làm bài ngay.": { vi: ") để vào thẳng Quiz Lobby làm bài ngay.", en: ") to enter Quiz Lobby and start immediately.", ja: ") を入力してすぐにクイズロビーへ参加できます。" },
+  "Đề đã luyện": { vi: "Đề đã luyện", en: "Decks Practiced", ja: "学習済みセット" },
+  "Câu hỏi đã làm": { vi: "Câu hỏi đã làm", en: "Questions Answered", ja: "回答済み問題数" },
+  "Trả lời đúng": { vi: "Trả lời đúng", en: "Correct Answers", ja: "正解数" },
+  "Tỷ lệ chính xác (%)": { vi: "Tỷ lệ chính xác (%)", en: "Accuracy Rate (%)", ja: "正答率 (%)" },
+  "Kho đề của bạn": { vi: "Kho đề của bạn", en: "Your Question Decks", ja: "マイ問題集" },
+  "+ Nhập đề từ Excel": { vi: "+ Nhập đề từ Excel", en: "+ Import from Excel", ja: "+ Excel からインポート" },
+  "Tìm kiếm bộ đề...": { vi: "Tìm kiếm bộ đề...", en: "Search decks...", ja: "問題集を検索..." },
+  "Tìm kiếm bộ đề": { vi: "Tìm kiếm bộ đề", en: "Search decks", ja: "問題集を検索" },
+  "Gói kích hoạt & Lịch sử thi": { vi: "Gói kích hoạt & Lịch sử thi", en: "Active Plan & Exam History", ja: "有効プランと試験履歴" },
+  "Tìm kiếm lịch sử thi...": { vi: "Tìm kiếm lịch sử thi...", en: "Search exam history...", ja: "試験履歴を検索..." },
+  "Tìm kiếm lịch sử thi": { vi: "Tìm kiếm lịch sử thi", en: "Search exam history", ja: "試験履歴を検索" },
+  "Biểu đồ & Phân tích kết quả": { vi: "Biểu đồ & Phân tích kết quả", en: "Performance Chart & Analytics", ja: "成績グラフと分析" },
+  "Khoảng thời gian": { vi: "Khoảng thời gian", en: "Time range", ja: "期間" },
+  "Tuần": { vi: "Tuần", en: "Week", ja: "週間" },
+  "Tháng": { vi: "Tháng", en: "Month", ja: "月間" },
+  "Tất cả": { vi: "Tất cả", en: "All", ja: "すべて" },
+  "Bạn chưa có bộ đề nào. Nhập từ Excel hoặc chuyển đề thi ngay bằng AI Converter!": { vi: "Bạn chưa có bộ đề nào. Nhập từ Excel hoặc chuyển đề thi ngay bằng AI Converter!", en: "You don't have any question decks yet. Import from Excel or convert exam files now with AI Converter!", ja: "問題集がまだありません。Excel からインポートするか、AI Converter で試験ファイルを変換しましょう！" },
+  "Không tìm thấy bộ đề phù hợp.": { vi: "Không tìm thấy bộ đề phù hợp.", en: "No matching question decks found.", ja: "一致する問題集が見つかりませんでした。" },
+  "Xem chi tiết": { vi: "Xem chi tiết", en: "View Details", ja: "詳細を見る" },
+  "Ôn tập": { vi: "Ôn tập", en: "Practice", ja: "練習" },
+  "Tiếp tục ôn tập": { vi: "Tiếp tục ôn tập", en: "Resume Practice", ja: "練習を再開" },
+  "Thi thử": { vi: "Thi thử", en: "Mock Exam", ja: "模擬試験" },
+  "🔒 Thi thử": { vi: "🔒 Thi thử", en: "🔒 Mock Exam", ja: "🔒 模擬試験" },
+  "Quiz Studio": { vi: "Quiz Studio", en: "Quiz Studio", ja: "Quiz Studio" },
+  "🔗 Chia sẻ": { vi: "🔗 Chia sẻ", en: "🔗 Share", ja: "🔗 共有" },
+  "Chia sẻ bằng Link, Mã đề & QR": { vi: "Chia sẻ bằng Link, Mã đề & QR", en: "Share via Link, Code & QR", ja: "リンク・コード・QRで共有" },
+  "🖨️ Xuất PDF": { vi: "🖨️ Xuất PDF", en: "🖨️ Export PDF", ja: "🖨️ PDF出力" },
+  "Xuất PDF để in chuẩn A4": { vi: "Xuất PDF để in chuẩn A4", en: "Export A4 print-ready PDF", ja: "A4印刷用PDFとして出力" },
+  "Xuất .json": { vi: "Xuất .json", en: "Export .json", ja: ".json 出力" },
+  "🔒 Xuất .json": { vi: "🔒 Xuất .json", en: "🔒 Export .json", ja: "🔒 .json 出力" },
+  "Xuất bộ đề ra file .json": { vi: "Xuất bộ đề ra file .json", en: "Export deck to .json file", ja: "問題集を .json に出力" },
+  "Xuất .xlsx": { vi: "Xuất .xlsx", en: "Export .xlsx", ja: ".xlsx 出力" },
+  "🔒 Xuất .xlsx": { vi: "🔒 Xuất .xlsx", en: "🔒 Export .xlsx", ja: "🔒 .xlsx 出力" },
+  "Xuất bộ đề ra file .xlsx": { vi: "Xuất bộ đề ra file .xlsx", en: "Export deck to .xlsx file", ja: "問題集を .xlsx に出力" },
+  "Xuất CSV": { vi: "Xuất CSV", en: "Export CSV", ja: "CSV 出力" },
+  "Xóa": { vi: "Xóa", en: "Delete", ja: "削除" },
+  "Xóa bộ đề này": { vi: "Xóa bộ đề này", en: "Delete this deck", ja: "この問題集を削除" },
+  "Bỏ ghim bộ đề": { vi: "Bỏ ghim bộ đề", en: "Unpin deck", ja: "ピン留め解除" },
+  "Ghim bộ đề lên đầu": { vi: "Ghim bộ đề lên đầu", en: "Pin deck to top", ja: "上部にピン留め" },
+  "· Toàn quyền không giới hạn": { vi: "· Toàn quyền không giới hạn", en: "· Full Unlimited Access", ja: "· 全機能無制限アクセス" },
+  "Toàn quyền không giới hạn": { vi: "Toàn quyền không giới hạn", en: "Full Unlimited Access", ja: "全機能無制限アクセス" },
+  "· Gói miễn phí 0đ/năm": { vi: "· Gói miễn phí 0đ/năm", en: "· Free Plan (0 VND/year)", ja: "· 無料プラン (0 VND/年)" },
+  "Miễn phí 0đ/năm": { vi: "Miễn phí 0đ/năm", en: "Free Plan (0 VND/year)", ja: "無料プラン (0 VND/年)" },
+  "• Miễn phí 0đ/năm": { vi: "• Miễn phí 0đ/năm", en: "• Free Plan (0 VND/year)", ja: "• 無料プラン (0 VND/年)" },
+  "· Chưa đăng ký gói (Đăng ký Unranked 0đ miễn phí)": { vi: "· Chưa đăng ký gói (Đăng ký Unranked 0đ miễn phí)", en: "· No active plan (Register Free Unranked 0 VND)", ja: "· プラン未登録（無料 Unranked プランに登録可能）" },
+  "Chưa đăng ký gói": { vi: "Chưa đăng ký gói", en: "No active plan", ja: "プラン未登録" },
+  "Chưa có lịch sử thi thử.": { vi: "Chưa có lịch sử thi thử.", en: "No mock exam history yet.", ja: "模擬試験の履歴はまだありません。" },
+  "Biểu đồ điểm thi gần đây": { vi: "Biểu đồ điểm thi gần đây", en: "Recent Exam Score Chart", ja: "最近の試験スコアグラフ" },
+  "Hãy cập nhật hồ sơ để cá nhân hóa trải nghiệm học tập.": { vi: "Hãy cập nhật hồ sơ để cá nhân hóa trải nghiệm học tập.", en: "Update your profile to personalize your learning experience.", ja: "プロフィールを更新して学習体験をカスタマイズしましょう。" },
+  "Sửa hồ sơ": { vi: "Sửa hồ sơ", en: "Edit Profile", ja: "プロフィール編集" },
+  "Bộ đề không tên": { vi: "Bộ đề không tên", en: "Untitled Deck", ja: "無題の問題集" },
+  "Chưa phân loại": { vi: "Chưa phân loại", en: "Uncategorized", ja: "未分類" },
+  "Bộ đề đã bị xóa": { vi: "Bộ đề đã bị xóa", en: "Deleted Deck", ja: "削除された問題集" },
+  "Xóa bộ đề": { vi: "Xóa bộ đề", en: "Delete Deck", ja: "問題集を削除" },
+  "Đã xóa bộ đề.": { vi: "Đã xóa bộ đề.", en: "Deck deleted.", ja: "問題集を削除しました。" },
+  "Bạn chưa có bộ đề nào để học.": { vi: "Bạn chưa có bộ đề nào để học.", en: "You have no decks to study yet.", ja: "学習できる問題集がまだありません。" },
+  "Chọn một bộ đề để bắt đầu Ôn tập hoặc Thi thử.": { vi: "Chọn một bộ đề để bắt đầu Ôn tập hoặc Thi thử.", en: "Select a question deck to start Practice or Mock Exam.", ja: "問題集を選択して練習または模擬試験を開始してください。" },
+  "Chế độ": { vi: "Chế độ", en: "Mode", ja: "モード" },
+  "Bộ đề": { vi: "Bộ đề", en: "Deck", ja: "問題集" },
+  "Tiến độ (": { vi: "Tiến độ (", en: "Progress (", ja: "進捗 (" },
+  "Làm lại từ đầu": { vi: "Làm lại từ đầu", en: "Restart", ja: "最初からやり直す" },
+  "Thoát": { vi: "Thoát", en: "Exit", ja: "終了" },
+  "Nộp bài / Hoàn thành": { vi: "Nộp bài / Hoàn thành", en: "Submit / Finish", ja: "提出・完了" },
+  "Nộp bài": { vi: "Nộp bài", en: "Submit Exam", ja: "提出する" },
+  "Hoàn thành": { vi: "Hoàn thành", en: "Finish", ja: "完了" },
+  "Kiểm tra đáp án": { vi: "Kiểm tra đáp án", en: "Check Answer", ja: "解答を確認" },
+  "Đầu": { vi: "Đầu", en: "First", ja: "最初" },
+  "Trước": { vi: "Trước", en: "Prev", ja: "前へ" },
+  "Tiếp": { vi: "Tiếp", en: "Next", ja: "次へ" },
+  "Cuối": { vi: "Cuối", en: "Last", ja: "最後" },
+  "Trang trước": { vi: "Trang trước", en: "Previous page", ja: "前のページ" },
+  "Trang sau": { vi: "Trang sau", en: "Next page", ja: "次のページ" },
+  "Phím tắt: 1–5 hoặc A–E chọn đáp án · Enter / → tiếp tục · ← quay lại · F đánh dấu": { vi: "Phím tắt: 1–5 hoặc A–E chọn đáp án · Enter / → tiếp tục · ← quay lại · F đánh dấu", en: "Shortcuts: 1–5 or A–E select option · Enter / → next · ← prev · F flag", ja: "ショートカット: 1–5 または A–E で選択 · Enter / → 次へ · ← 前へ · F フラグ" },
+  "Thời gian": { vi: "Thời gian", en: "Time", ja: "時間" },
+  "Thời gian còn lại": { vi: "Thời gian còn lại", en: "Time Remaining", ja: "残り時間" },
+  "Thời gian phiên học": { vi: "Thời gian phiên học", en: "Session Duration", ja: "学習時間" },
+  "Điểm hệ 10": { vi: "Điểm hệ 10", en: "Score (10-pt scale)", ja: "10点満点スコア" },
+  "Bảng câu hỏi": { vi: "Bảng câu hỏi", en: "Question Palette", ja: "問題パレット" },
+  "Đã đánh dấu": { vi: "Đã đánh dấu", en: "Answered", ja: "回答済み" },
+  "Các câu bạn đã chọn đáp án": { vi: "Các câu bạn đã chọn đáp án", en: "Questions you have answered", ja: "回答を選択した問題" },
+  "Chưa làm": { vi: "Chưa làm", en: "Unanswered", ja: "未回答" },
+  "Các câu chưa làm": { vi: "Các câu chưa làm", en: "Unanswered questions", ja: "未回答の問題" },
+  "Cắm cờ": { vi: "Cắm cờ", en: "Flagged", ja: "フラグ付き" },
+  "Các câu đã cắm cờ": { vi: "Các câu đã cắm cờ", en: "Flagged questions", ja: "フラグを付けた問題" },
+  "Đánh dấu câu hỏi (phím F)": { vi: "Đánh dấu câu hỏi (phím F)", en: "Flag question (F key)", ja: "問題にフラグを付ける (Fキー)" },
+  "Bỏ đánh dấu (phím F)": { vi: "Bỏ đánh dấu (phím F)", en: "Unflag question (F key)", ja: "フラグを解除 (Fキー)" },
+  "Đánh dấu câu hỏi": { vi: "Đánh dấu câu hỏi", en: "Flag question", ja: "問題にフラグを付ける" },
+  "Hình minh họa câu hỏi": { vi: "Hình minh họa câu hỏi", en: "Question illustration", ja: "問題イラスト" },
+  "Hình minh họa": { vi: "Hình minh họa", en: "Illustration", ja: "イラスト" },
+  "(Chọn nhiều đáp án)": { vi: "(Chọn nhiều đáp án)", en: "(Select all that apply)", ja: "(複数選択)" },
+  "(Chọn một đáp án)": { vi: "(Chọn một đáp án)", en: "(Select one answer)", ja: "(単一選択)" },
+  "(Xem lại)": { vi: "(Xem lại)", en: "(Review)", ja: "(見直し)" },
+  "Xem lại bài thi": { vi: "Xem lại bài thi", en: "Review Exam", ja: "試験を見直す" },
+  "Đang làm bài": { vi: "Đang làm bài", en: "In Progress", ja: "演習中" },
+  "Chính xác!": { vi: "Chính xác!", en: "Correct!", ja: "正解！" },
+  "Chưa chính xác.": { vi: "Chưa chính xác.", en: "Incorrect.", ja: "不正解。" },
+  "Giải thích:": { vi: "Giải thích:", en: "Explanation:", ja: "解説:" },
+  "Giải thích": { vi: "Giải thích", en: "Explanation", ja: "解説" },
+  "Đúng": { vi: "Đúng", en: "Correct", ja: "正解" },
+  "Đã chọn": { vi: "Đã chọn", en: "Selected", ja: "選択済み" },
+  "Đáp án đúng:": { vi: "Đáp án đúng:", en: "Correct Answer:", ja: "正解:" },
+  "Đáp án đúng": { vi: "Đáp án đúng", en: "Correct Answer", ja: "正解" },
+  "Không có câu nào phù hợp bộ lọc.": { vi: "Không có câu nào phù hợp bộ lọc.", en: "No questions match the current filter.", ja: "フィルターに一致する問題がありません。" },
+  "Đã đúng 2 lần liên tiếp – câu này được loại khỏi sổ tay.": { vi: "Đã đúng 2 lần liên tiếp – câu này được loại khỏi sổ tay.", en: "Answered correctly 2 times in a row – removed from Mistake Notebook.", ja: "2回連続で正解したため、弱点ノートから除外されました。" },
+  "Chuỗi đúng đã được đặt lại về 0.": { vi: "Chuỗi đúng đã được đặt lại về 0.", en: "Correct streak reset to 0.", ja: "連続正解数が 0 にリセットされました。" },
+  "Vui lòng chọn ít nhất một đáp án.": { vi: "Vui lòng chọn ít nhất một đáp án.", en: "Please select at least one option.", ja: "少なくとも1つの選択肢を選んでください。" },
+  "Chúc mừng! Bạn đã hoàn thành tất cả câu hỏi.": { vi: "Chúc mừng! Bạn đã hoàn thành tất cả câu hỏi.", en: "Congratulations! You have completed all questions.", ja: "おめでとうございます！すべての問題を完了しました。" },
+  "Đã hết giờ! Bài thi được nộp tự động.": { vi: "Đã hết giờ! Bài thi được nộp tự động.", en: "Time is up! Your exam has been submitted automatically.", ja: "時間切れです！試験は自動的に提出されました。" },
+  "Nộp bài thi": { vi: "Nộp bài thi", en: "Submit Exam", ja: "試験を提出" },
+  "Bạn có chắc chắn muốn nộp bài?": { vi: "Bạn có chắc chắn muốn nộp bài?", en: "Are you sure you want to submit your exam?", ja: "本当に試験を提出しますか？" },
+  "Hoàn thành phiên học": { vi: "Hoàn thành phiên học", en: "Finish Study Session", ja: "学習セッションを完了" },
+  "Thoát bài thi": { vi: "Thoát bài thi", en: "Exit Exam", ja: "試験を終了" },
+  "Nếu thoát bây giờ, bài thi đang làm sẽ bị hủy và không được lưu điểm. Bạn có chắc chắn?": { vi: "Nếu thoát bây giờ, bài thi đang làm sẽ bị hủy và không được lưu điểm. Bạn có chắc chắn?", en: "If you exit now, your current exam will be discarded and not scored. Are you sure?", ja: "今終了すると、進行中の試験は破棄されスコアは保存されません。よろしいですか？" },
+  "Toàn bộ tiến độ ôn tập của bộ đề này sẽ bị xóa. Bạn có chắc chắn muốn làm lại từ đầu?": { vi: "Toàn bộ tiến độ ôn tập của bộ đề này sẽ bị xóa. Bạn có chắc chắn muốn làm lại từ đầu?", en: "All practice progress for this deck will be cleared. Are you sure you want to restart?", ja: "この問題集の練習進捗がすべてリセットされます。最初からやり直しますか？" },
+  "Chọn một bộ đề để ôn bằng thẻ ghi nhớ.": { vi: "Chọn một bộ đề để ôn bằng thẻ ghi nhớ.", en: "Select a question deck to study with flashcards.", ja: "フラッシュカードで学習する問題集を選択してください。" },
+  "← Thẻ trước": { vi: "← Thẻ trước", en: "← Prev Card", ja: "← 前のカード" },
+  "Lật thẻ (Space)": { vi: "Lật thẻ (Space)", en: "Flip Card (Space)", ja: "カードをめくる (Space)" },
+  "Thẻ sau →": { vi: "Thẻ sau →", en: "Next Card →", ja: "次のカード →" },
+  "Sổ tay đang trống. Những câu bạn làm sai sẽ xuất hiện ở đây.": { vi: "Sổ tay đang trống. Những câu bạn làm sai sẽ xuất hiện ở đây.", en: "Your Mistake Notebook is empty. Questions you answer incorrectly will appear here.", ja: "弱点ノートは空です。間違えた問題がここに自動的に追加されます。" },
+  "Sổ tay hiện đang trống.": { vi: "Sổ tay hiện đang trống.", en: "Mistake Notebook is currently empty.", ja: "弱点ノートは現在空です。" },
+  "Sổ tay câu hay sai (Mistake Bank)": { vi: "Sổ tay câu hay sai (Mistake Bank)", en: "Mistake Notebook (Mistake Bank)", ja: "弱点ノート (Mistake Bank)" },
+  "Trả lời đúng liên tiếp 2 lần để loại câu khỏi sổ tay.": { vi: "Trả lời đúng liên tiếp 2 lần để loại câu khỏi sổ tay.", en: "Answer correctly 2 times in a row to remove a question from the notebook.", ja: "2回連続で正解すると、その問題は弱点ノートから除外されます。" },
+  "Luyện tập sổ tay": { vi: "Luyện tập sổ tay", en: "Practice Mistakes", ja: "弱点ノートを練習" },
+  "Luyện tập Sổ tay câu hay sai": { vi: "Luyện tập Sổ tay câu hay sai", en: "Practice Mistake Notebook", ja: "弱点ノートを練習" },
+  "Xóa toàn bộ sổ tay": { vi: "Xóa toàn bộ sổ tay", en: "Clear Mistake Notebook", ja: "弱点ノートをすべてクリア" },
+  "Xóa sổ tay": { vi: "Xóa sổ tay", en: "Clear Mistake Notebook", ja: "弱点ノートをクリア" },
+  "Bạn có chắc muốn xóa toàn bộ câu trong Sổ tay câu hay sai?": { vi: "Bạn có chắc muốn xóa toàn bộ câu trong Sổ tay câu hay sai?", en: "Are you sure you want to clear all questions from your Mistake Notebook?", ja: "弱点ノート内のすべての問題を削除してもよろしいですか？" },
+  "Đã xóa toàn bộ sổ tay.": { vi: "Đã xóa toàn bộ sổ tay.", en: "Mistake Notebook cleared.", ja: "弱点ノートをすべてクリアしました。" },
+  "Không có câu hỏi nào để bắt đầu.": { vi: "Không có câu hỏi nào để bắt đầu.", en: "No questions available to start.", ja: "開始できる問題がありません。" },
+  "Không tìm thấy bộ đề.": { vi: "Không tìm thấy bộ đề.", en: "Question deck not found.", ja: "問題集が見つかりません。" },
+  "Không thể bắt đầu phiên làm bài. Vui lòng thử lại.": { vi: "Không thể bắt đầu phiên làm bài. Vui lòng thử lại.", en: "Could not start session. Please try again.", ja: "セッションを開始できませんでした。もう一度お試しください。" },
+  "Đã khôi phục tiến độ làm bài trước đó.": { vi: "Đã khôi phục tiến độ làm bài trước đó.", en: "Restored your previous study progress.", ja: "前回の学習進捗を復元しました。" },
+  "Thiết lập": { vi: "Thiết lập", en: "Session Setup", ja: "セッション設定" },
+  "Thiết lập chế độ Ôn tập": { vi: "Thiết lập chế độ Ôn tập", en: "Practice Mode Setup", ja: "練習モード設定" },
+  "Thiết lập chế độ Thi thử (Kiểm tra)": { vi: "Thiết lập chế độ Thi thử (Kiểm tra)", en: "Mock Exam Mode Setup", ja: "模擬試験モード設定" },
+  "Thiết lập chế độ Lật thẻ": { vi: "Thiết lập chế độ Lật thẻ", en: "Flashcard Mode Setup", ja: "フラッシュカード設定" },
+  "🔒 Đảo câu hỏi/đáp án yêu cầu Gói Silver trở lên.": { vi: "🔒 Đảo câu hỏi/đáp án yêu cầu Gói Silver trở lên.", en: "🔒 Shuffling questions/options requires Silver plan or higher.", ja: "🔒 問題・選択肢のシャッフルには Silver プラン以上が必要です。" },
+  "Đảo câu hỏi": { vi: "Đảo câu hỏi", en: "Shuffle questions", ja: "問題をシャッフル" },
+  "Đảo đáp án": { vi: "Đảo đáp án", en: "Shuffle answer options", ja: "選択肢をシャッフル" },
+  "Cách chọn câu hỏi kiểm tra": { vi: "Cách chọn câu hỏi kiểm tra", en: "Question Selection Mode", ja: "出題方式の選択" },
+  "Chia thành nhiều phiên (VD: 50 câu/phiên)": { vi: "Chia thành nhiều phiên (VD: 50 câu/phiên)", en: "Split into sessions (e.g. 50 Qs/session)", ja: "複数セッションに分割 (例: 50問/回)" },
+  "Chọn ngẫu nhiên N câu": { vi: "Chọn ngẫu nhiên N câu", en: "Pick N random questions", ja: "ランダムに N 問抽出" },
+  "Chia nhỏ thành nhiều phiên làm bài": { vi: "Chia nhỏ thành nhiều phiên làm bài", en: "Split into multiple study sessions", ja: "複数セッションに分割して学習" },
+  "Số câu mỗi phiên (tùy chọn)": { vi: "Số câu mỗi phiên (tùy chọn)", en: "Questions per session (custom)", ja: "1セッションあたりの問題数" },
+  "Chọn phiên muốn làm": { vi: "Chọn phiên muốn làm", en: "Select session to start", ja: "開始するセッションを選択" },
+  "Số câu ngẫu nhiên": { vi: "Số câu ngẫu nhiên", en: "Number of random questions", ja: "ランダム出題数" },
+  "Thời gian làm bài (phút)": { vi: "Thời gian làm bài (phút)", en: "Time limit (minutes)", ja: "制限時間 (分)" },
+  "Bắt đầu": { vi: "Bắt đầu", en: "Start", ja: "開始" },
+  "Nhập đề từ file Excel": { vi: "Nhập đề từ file Excel", en: "Import Deck from Excel", ja: "Excel ファイルから問題集をインポート" },
+  "Tải file mẫu (.xlsx)": { vi: "Tải file mẫu (.xlsx)", en: "Download Template (.xlsx)", ja: "テンプレートをダウンロード (.xlsx)" },
+  "Cột": { vi: "Cột", en: "Column", ja: "列" },
+  "Tiêu đề (bắt buộc đúng)": { vi: "Tiêu đề (bắt buộc đúng)", en: "Header (exact match required)", ja: "列名 (完全一致必須)" },
+  "Mô tả": { vi: "Mô tả", en: "Description", ja: "説明" },
+  "Nội dung câu hỏi": { vi: "Nội dung câu hỏi", en: "Question text", ja: "問題文" },
+  "Multiple Choice hoặc Checkbox": { vi: "Multiple Choice hoặc Checkbox", en: "Multiple Choice or Checkbox", ja: "Multiple Choice または Checkbox" },
+  "Các phương án (tối thiểu 2)": { vi: "Các phương án (tối thiểu 2)", en: "Answer options (minimum 2)", ja: "選択肢 (最低2つ)" },
+  "Đáp án đúng: 1,3 hoặc A,C": { vi: "Đáp án đúng: 1,3 hoặc A,C", en: "Correct answer: 1,3 or A,C", ja: "正解: 1,3 または A,C" },
+  "Thời gian (giây), mặc định 30": { vi: "Thời gian (giây), mặc định 30", en: "Time (seconds), default 30", ja: "時間 (秒)、デフォルト 30" },
+  "Liên kết ảnh (tùy chọn)": { vi: "Liên kết ảnh (tùy chọn)", en: "Image URL (optional)", ja: "画像リンク (任意)" },
+  "Giải thích đáp án (tùy chọn)": { vi: "Giải thích đáp án (tùy chọn)", en: "Answer explanation (optional)", ja: "解答の解説 (任意)" },
+  "Chọn file Excel": { vi: "Chọn file Excel", en: "Select Excel file", ja: "Excel ファイルを選択" },
+  "Cách nhập": { vi: "Cách nhập", en: "Import mode", ja: "インポート方法" },
+  "Tạo thành bộ đề mới": { vi: "Tạo thành bộ đề mới", en: "Create as a new deck", ja: "新しい問題集として作成" },
+  "Tên bộ đề": { vi: "Tên bộ đề", en: "Deck title", ja: "問題集のタイトル" },
+  "Ví dụ: Giải tích 1 – Giữa kỳ": { vi: "Ví dụ: Giải tích 1 – Giữa kỳ", en: "e.g. Calculus 1 – Midterm", ja: "例: 微積分学1 – 中間試験" },
+  "Thẻ môn học/Tag": { vi: "Thẻ môn học/Tag", en: "Subject / Tag", ja: "科目・タグ" },
+  "Ví dụ: Giải tích": { vi: "Ví dụ: Giải tích", en: "e.g. Calculus", ja: "例: 微積分" },
+  "Gộp thêm vào bộ đề có sẵn": { vi: "Gộp thêm vào bộ đề có sẵn", en: "Merge into an existing deck", ja: "既存の問題集に追加統合" },
+  "🔒 Gói Gold trở lên": { vi: "🔒 Gói Gold trở lên", en: "🔒 Gold plan or higher", ja: "🔒 Gold プラン以上" },
+  "Chọn bộ đề cá nhân": { vi: "Chọn bộ đề cá nhân", en: "Select personal deck", ja: "個人の問題集を選択" },
+  "Chưa có bộ đề cá nhân nào": { vi: "Chưa có bộ đề cá nhân nào", en: "No personal decks available", ja: "個人の問題集がありません" },
+  "Xác nhận nhập đề": { vi: "Xác nhận nhập đề", en: "Confirm Import", ja: "インポートを確定" },
+  "File không có dữ liệu câu hỏi.": { vi: "File không có dữ liệu câu hỏi.", en: "File contains no question data.", ja: "ファイルに問題データがありません。" },
+  "File không có dòng câu hỏi nào.": { vi: "File không có dòng câu hỏi nào.", en: "File contains no question rows.", ja: "ファイルに問題行がありません。" },
+  "Chưa có câu hỏi hợp lệ để nhập.": { vi: "Chưa có câu hỏi hợp lệ để nhập.", en: "No valid questions to import.", ja: "インポートできる有効な問題がありません。" },
+  "Vui lòng chọn một bộ đề cá nhân để gộp.": { vi: "Vui lòng chọn một bộ đề cá nhân để gộp.", en: "Please select a personal deck to merge into.", ja: "統合先の個人問題集を選択してください。" },
+  "Vui lòng nhập tên bộ đề.": { vi: "Vui lòng nhập tên bộ đề.", en: "Please enter a deck title.", ja: "問題集のタイトルを入力してください。" },
+  "Thư viện đọc Excel chưa tải xong. Vui lòng thử lại.": { vi: "Thư viện đọc Excel chưa tải xong. Vui lòng thử lại.", en: "Excel library is still loading. Please try again.", ja: "Excel ライブラリの読み込み中です。もう一度お試しください。" },
+  "Thư viện Excel chưa tải xong. Vui lòng thử lại.": { vi: "Thư viện Excel chưa tải xong. Vui lòng thử lại.", en: "Excel library is still loading. Please try again.", ja: "Excel ライブラリの読み込み中です。もう一度お試しください。" },
+  "Thư viện SheetJS chưa tải xong.": { vi: "Thư viện SheetJS chưa tải xong.", en: "SheetJS library is still loading.", ja: "SheetJS ライブラリがまだ読み込まれていません。" },
+  "Không thể đọc file đã chọn.": { vi: "Không thể đọc file đã chọn.", en: "Could not read the selected file.", ja: "選択したファイルを読み込めませんでした。" },
+  "Không thể đọc file Excel. Vui lòng kiểm tra lại định dạng.": { vi: "Không thể đọc file Excel. Vui lòng kiểm tra lại định dạng.", en: "Could not read Excel file. Please check the file format.", ja: "Excel ファイルを読み込めませんでした。形式を確認してください。" },
+  "Không thể đọc file Excel.": { vi: "Không thể đọc file Excel.", en: "Could not read Excel file.", ja: "Excel ファイルを読み込めませんでした。" },
+  "Không thể tạo file mẫu.": { vi: "Không thể tạo file mẫu.", en: "Could not generate template file.", ja: "テンプレートファイルを生成できませんでした。" },
+  "Không thể xuất file .json.": { vi: "Không thể xuất file .json.", en: "Could not export .json file.", ja: ".json ファイルを出力できませんでした。" },
+  "Không thể xuất file .xlsx.": { vi: "Không thể xuất file .xlsx.", en: "Could not export .xlsx file.", ja: ".xlsx ファイルを出力できませんでした。" },
+  "Hệ thống 5 Hạng gói AI Tutor": { vi: "Hệ thống 5 Hạng gói AI Tutor", en: "AI Tutor 5-Tier Plan System", ja: "AI Tutor 5段階ランクプラン" },
+  "Lịch sử yêu cầu thanh toán của bạn": { vi: "Lịch sử yêu cầu thanh toán của bạn", en: "Your Payment Request History", ja: "支払いリクエスト履歴" },
+  "Chưa xếp hạng": { vi: "Chưa xếp hạng", en: "Unranked", ja: "Unranked (未ランク)" },
+  "(Chưa xếp hạng)": { vi: "(Chưa xếp hạng)", en: "(Unranked)", ja: "(未ランク)" },
+  "Chưa đăng ký": { vi: "Chưa đăng ký", en: "Not Registered", ja: "未登録" },
+  "Đăng ký Unranked 0đ để bắt đầu": { vi: "Đăng ký Unranked 0đ để bắt đầu", en: "Register Unranked (0 VND) to start", ja: "無料 Unranked (0 VND) に登録して開始" },
+  "Unranked (Chưa xếp hạng)": { vi: "Unranked (Chưa xếp hạng)", en: "Unranked (Free Starter)", ja: "Unranked (無料スターター)" },
+  "Miễn phí trọn đời • Kích hoạt ngay": { vi: "Miễn phí trọn đời • Kích hoạt ngay", en: "Free Forever • Instant Activation", ja: "永久無料 • 即時有効化" },
+  "Bronze (Đồng)": { vi: "Bronze (Đồng)", en: "Bronze", ja: "Bronze (ブロンズ)" },
+  "Silver (Bạc)": { vi: "Silver (Bạc)", en: "Silver", ja: "Silver (シルバー)" },
+  "Gold (Vàng)": { vi: "Gold (Vàng)", en: "Gold", ja: "Gold (ゴールド)" },
+  "Diamond (Kim Cương)": { vi: "Diamond (Kim Cương)", en: "Diamond", ja: "Diamond (ダイヤモンド)" },
+  "Thanh toán → Chờ Admin duyệt": { vi: "Thanh toán → Chờ Admin duyệt", en: "Payment → Manual Admin Approval", ja: "支払い → 管理者承認待ち" },
+  "Phổ biến nhất • Chờ Admin duyệt": { vi: "Phổ biến nhất • Chờ Admin duyệt", en: "Most Popular • Manual Admin Approval", ja: "一番人気 • 管理者承認待ち" },
+  "Toàn quyền VIP • Chờ Admin duyệt": { vi: "Toàn quyền VIP • Chờ Admin duyệt", en: "Full VIP Access • Manual Admin Approval", ja: "全機能VIP • 管理者承認待ち" },
+  "Phổ biến": { vi: "Phổ biến", en: "Popular", ja: "人気" },
+  "0đ / năm": { vi: "0đ / năm", en: "0 VND / year", ja: "0 VND / 年" },
+  "/ năm": { vi: "/ năm", en: "/ year", ja: "/ 年" },
+  "Đăng ký & kích hoạt ngay lập tức – không cần thanh toán, không cần chờ Admin duyệt": { vi: "Đăng ký & kích hoạt ngay lập tức – không cần thanh toán, không cần chờ Admin duyệt", en: "Register & activate immediately – no payment required, no Admin wait", ja: "即時登録・有効化 – 支払い不要、管理者承認待ちなし" },
+  "Đăng ký miễn phí (0đ)": { vi: "Đăng ký miễn phí (0đ)", en: "Register Free (0 VND)", ja: "無料登録 (0 VND)" },
+  "✓ Gói hiện tại": { vi: "✓ Gói hiện tại", en: "✓ Current Plan", ja: "✓ 現在のプラン" },
+  "✓ Gói hiện tại (Gia hạn)": { vi: "✓ Gói hiện tại (Gia hạn)", en: "✓ Current Plan (Renew)", ja: "✓ 現在のプラン (更新)" },
+  "Bạn đã có gói cao hơn": { vi: "Bạn đã có gói cao hơn", en: "You already have a higher plan", ja: "より上位のプランを利用中です" },
+  "Bạn đang sở hữu gói cao hơn Unranked.": { vi: "Bạn đang sở hữu gói cao hơn Unranked.", en: "You already have a higher plan than Unranked.", ja: "すでに Unranked より上位のプランを利用中です。" },
+  "👑 Đang kích hoạt (Admin)": { vi: "👑 Đang kích hoạt (Admin)", en: "👑 Active (Admin)", ja: "👑 有効中 (Admin)" },
+  "✓ Đang bật (Admin)": { vi: "✓ Đang bật (Admin)", en: "✓ Active (Admin)", ja: "✓ 有効中 (Admin)" },
+  "⚡ Kích hoạt ngay (Admin)": { vi: "⚡ Kích hoạt ngay (Admin)", en: "⚡ Instant Activate (Admin)", ja: "⚡ 即時有効化 (Admin)" },
+  "⏳ Đang chờ Admin duyệt": { vi: "⏳ Đang chờ Admin duyệt", en: "⏳ Awaiting Admin Approval", ja: "⏳ 管理者承認待ち" },
+  "👑 Admin (Diamond): Bạn có mặc định toàn quyền Diamond VIP không giới hạn. Bạn có thể bấm \"Kích hoạt ngay (Admin)\" trên bất kỳ gói nào để chuyển đổi thử nghiệm trực tiếp.": { vi: "👑 Admin (Diamond): Bạn có mặc định toàn quyền Diamond VIP không giới hạn. Bạn có thể bấm \"Kích hoạt ngay (Admin)\" trên bất kỳ gói nào để chuyển đổi thử nghiệm trực tiếp.", en: "👑 Admin (Diamond): You have full unlimited Diamond VIP access by default. Click \"Instant Activate (Admin)\" on any plan to test switching directly.", ja: "👑 Admin (Diamond): デフォルトで無制限の Diamond VIP 全権限が有効です。任意のプランで「即時有効化 (Admin)」を押して直接切り替えテストが可能です。" },
+  "Đăng ký gói Unranked (0đ/năm) để kích hoạt ngay lập tức, hoặc chọn 1 trong 4 hạng gói trả phí (chờ Admin xác nhận).": { vi: "Đăng ký gói Unranked (0đ/năm) để kích hoạt ngay lập tức, hoặc chọn 1 trong 4 hạng gói trả phí (chờ Admin xác nhận).", en: "Register the Unranked plan (0 VND/year) for instant activation, or choose one of the 4 paid plans (activated upon Admin approval).", ja: "Unranked プラン（0 VND/年）で即時有効化するか、4つの有料ランクプラン（管理者承認後に有効化）から選択してください。" },
+  "Gói hiện tại của bạn:": { vi: "Gói hiện tại của bạn:", en: "Your current plan:", ja: "現在のプラン:" },
+  "Bạn chưa gửi yêu cầu thanh toán nào.": { vi: "Bạn chưa gửi yêu cầu thanh toán nào.", en: "You have not submitted any payment requests yet.", ja: "支払いリクエストの送信履歴はまだありません。" },
+  "Sổ tay câu hay sai (Làm lại câu sai)": { vi: "Sổ tay câu hay sai (Làm lại câu sai)", en: "Mistake Notebook (Retry wrong questions)", ja: "弱点ノート（間違えた問題の復習）" },
+  "Thi thử chuẩn phòng thi & Lịch sử luyện đề": { vi: "Thi thử chuẩn phòng thi & Lịch sử luyện đề", en: "Mock Exam Mode & Exam History", ja: "本番形式の模擬試験と試験履歴" },
+  "Xuất bộ đề .json / .xlsx không giới hạn": { vi: "Xuất bộ đề .json / .xlsx không giới hạn", en: "Unlimited .json / .xlsx deck export", ja: ".json / .xlsx 問題集の無制限エクスポート" },
+  "Creator Studio nâng cao (Streak, Redemption, thời gian từng câu, đảo đề)": { vi: "Creator Studio nâng cao (Streak, Redemption, thời gian từng câu, đảo đề)", en: "Advanced Creator Studio (Streak, Redemption, per-question timer, shuffle)", ja: "高度な Creator Studio (Streak、Redemption、問題別タイマー、シャッフル)" },
+  "Đảo thứ tự câu hỏi / đáp án": { vi: "Đảo thứ tự câu hỏi / đáp án", en: "Shuffle questions / answer options", ja: "問題・選択肢の順序シャッフル" },
+  "AI giải thích đáp án": { vi: "AI giải thích đáp án", en: "AI Answer Explanations", ja: "AI 解答解説" },
+  "Chế độ kiểm duyệt song song (Split-Screen Review)": { vi: "Chế độ kiểm duyệt song song (Split-Screen Review)", en: "Split-Screen Review Mode", ja: "並列レビューモード (Split-Screen Review)" },
+  "Chế độ Kiểm duyệt song song (Split-Screen Review)": { vi: "Chế độ Kiểm duyệt song song (Split-Screen Review)", en: "Split-Screen Review Mode", ja: "並列レビューモード (Split-Screen Review)" },
+  "Gộp thêm vào bộ đề có sẵn khi Import": { vi: "Gộp thêm vào bộ đề có sẵn khi Import", en: "Merge into existing decks on Import", ja: "インポート時に既存問題集へ統合" },
+  "AI Kiểm tra chéo đáp án (Double-Check) hàng loạt": { vi: "AI Kiểm tra chéo đáp án (Double-Check) hàng loạt", en: "Batch AI Answer Double-Check", ja: "一括 AI 解答ダブルチェック" },
+  "Chia nhỏ chặng học": { vi: "Chia nhỏ chặng học", en: "Split study sessions", ja: "学習セッション分割" },
+  "Chế độ AI Chính xác cao ưu tiên (Gemini Pro)": { vi: "Chế độ AI Chính xác cao ưu tiên (Gemini Pro)", en: "Priority High-Accuracy AI Mode (Gemini Pro)", ja: "高精度 AI 優先モード (Gemini Pro)" },
+  "Xuất báo cáo thống kê chi tiết & Sao lưu Kho đề": { vi: "Xuất báo cáo thống kê chi tiết & Sao lưu Kho đề", en: "Detailed analytics export & Deck backup", ja: "詳細統計レポート出力と問題集バックアップ" },
+  "Lưu tối đa 3 bộ đề trong Kho đề, tối đa 50 câu/bộ đề": { vi: "Lưu tối đa 3 bộ đề trong Kho đề, tối đa 50 câu/bộ đề", en: "Save up to 3 decks in your library, up to 50 questions/deck", ja: "問題集を最大3セット、1セットあたり最大50問まで保存" },
+  "Làm bài luyện tập cơ bản & xem thống kê điểm số": { vi: "Làm bài luyện tập cơ bản & xem thống kê điểm số", en: "Basic practice mode & score statistics", ja: "基本練習モードとスコア統計の閲覧" },
+  "Dùng Creator/Quiz Studio cơ bản (tạo & làm bài)": { vi: "Dùng Creator/Quiz Studio cơ bản (tạo & làm bài)", en: "Basic Creator/Quiz Studio (create & play quizzes)", ja: "基本 Creator/Quiz Studio（クイズ作成・プレイ）" },
+  "Dùng AI Converter (tối đa 5 ảnh/lần, dùng Gemini API Key cá nhân)": { vi: "Dùng AI Converter (tối đa 5 ảnh/lần, dùng Gemini API Key cá nhân)", en: "Use AI Converter (up to 5 images/batch with personal Gemini API Key)", ja: "AI Converter 利用（1回最大5画像、個人 Gemini API Key 使用）" },
+  "Toàn bộ quyền lợi gói Unranked": { vi: "Toàn bộ quyền lợi gói Unranked", en: "All benefits of the Unranked plan", ja: "Unranked プランのすべての特典" },
+  "Lưu tối đa 15 bộ đề, tối đa 200 câu/bộ đề": { vi: "Lưu tối đa 15 bộ đề, tối đa 200 câu/bộ đề", en: "Save up to 15 decks, up to 200 questions/deck", ja: "問題集を最大15セット、1セットあたり最大200問まで保存" },
+  "AI Converter tối đa 20 ảnh/lần + xuất file Excel chuẩn không giới hạn": { vi: "AI Converter tối đa 20 ảnh/lần + xuất file Excel chuẩn không giới hạn", en: "AI Converter up to 20 images/batch + unlimited standard Excel export", ja: "AI Converter 1回最大20画像 + 標準 Excel 無制限エクスポート" },
+  "Mở khóa Làm lại câu sai (Sổ tay sai), Thi thử & Lịch sử luyện đề": { vi: "Mở khóa Làm lại câu sai (Sổ tay sai), Thi thử & Lịch sử luyện đề", en: "Unlock Mistake Notebook retry, Mock Exam & Exam History", ja: "弱点ノート復習・模擬試験・試験履歴をアンロック" },
+  "Toàn bộ quyền lợi gói Bronze": { vi: "Toàn bộ quyền lợi gói Bronze", en: "All benefits of the Bronze plan", ja: "Bronze プランのすべての特典" },
+  "Lưu tối đa 50 bộ đề, tối đa 500 câu/bộ đề": { vi: "Lưu tối đa 50 bộ đề, tối đa 500 câu/bộ đề", en: "Save up to 50 decks, up to 500 questions/deck", ja: "問題集を最大50セット、1セットあたり最大500問まで保存" },
+  "Mở khóa Creator/Quiz Studio nâng cao (Streak, Redemption, thời gian từng câu, đảo đề)": { vi: "Mở khóa Creator/Quiz Studio nâng cao (Streak, Redemption, thời gian từng câu, đảo đề)", en: "Unlock advanced Creator/Quiz Studio (Streak, Redemption, per-question time, shuffle)", ja: "高度な Creator/Quiz Studio（Streak、Redemption、問題別時間、シャッフル）をアンロック" },
+  "Hỗ trợ AI giải thích đáp án & Chế độ kiểm duyệt song song (Split-Screen Review)": { vi: "Hỗ trợ AI giải thích đáp án & Chế độ kiểm duyệt song song (Split-Screen Review)", en: "AI answer explanations & Split-Screen Review mode", ja: "AI 解答解説と並列レビューモード (Split-Screen Review)" },
+  "Toàn bộ quyền lợi gói Silver": { vi: "Toàn bộ quyền lợi gói Silver", en: "All benefits of the Silver plan", ja: "Silver プランのすべての特典" },
+  "Không giới hạn số lượng bộ đề & số câu hỏi": { vi: "Không giới hạn số lượng bộ đề & số câu hỏi", en: "Unlimited question decks & questions per deck", ja: "問題集数・問題数が無制限" },
+  "Mở khóa Gộp thêm vào bộ đề có sẵn khi Import": { vi: "Mở khóa Gộp thêm vào bộ đề có sẵn khi Import", en: "Unlock merging into existing decks during Import", ja: "インポート時の既存問題集への追加統合をアンロック" },
+  "Mở khóa AI Kiểm tra chéo đáp án (Double-Check) hàng loạt & lọc câu nghi ngờ sai": { vi: "Mở khóa AI Kiểm tra chéo đáp án (Double-Check) hàng loạt & lọc câu nghi ngờ sai", en: "Unlock batch AI Double-Check & suspect answer filtering", ja: "一括 AI ダブルチェックと要確認問題のフィルタリングをアンロック" },
+  "Toàn bộ quyền lợi gói Gold (không giới hạn mọi tính năng)": { vi: "Toàn bộ quyền lợi gói Gold (không giới hạn mọi tính năng)", en: "All benefits of the Gold plan (all features unlimited)", ja: "Gold プランのすべての特典（全機能無制限）" },
+  "Ưu tiên chế độ AI Chính xác cao cho đề Toán/Lý/Hóa/Tiếng Anh phức tạp": { vi: "Ưu tiên chế độ AI Chính xác cao cho đề Toán/Lý/Hóa/Tiếng Anh phức tạp", en: "Priority High-Accuracy AI mode for complex Math/Physics/Chemistry/English exams", ja: "複雑な数学・物理・化学・英語試験向けの高精度 AI 優先モード" },
+  "Xuất báo cáo thống kê học tập chi tiết & sao lưu/đồng bộ Kho đề": { vi: "Xuất báo cáo thống kê học tập chi tiết & sao lưu/đồng bộ Kho đề", en: "Detailed learning analytics export & deck backup/sync", ja: "詳細な学習統計レポート出力と問題集のバックアップ・同期" },
+  "Huy hiệu Diamond VIP nổi bật trên hồ sơ & hỗ trợ ưu tiên 1-1": { vi: "Huy hiệu Diamond VIP nổi bật trên hồ sơ & hỗ trợ ưu tiên 1-1", en: "Exclusive Diamond VIP profile badge & 1-on-1 priority support", ja: "プロフィール上の Diamond VIP バッジと 1対1 優先サポート" },
+  "Nâng cấp hạng gói": { vi: "Nâng cấp hạng gói", en: "Upgrade Plan", ja: "プランをアップグレード" },
+  "Bạn có muốn xem các gói nâng cấp không?": { vi: "Bạn có muốn xem các gói nâng cấp không?", en: "Would you like to view the upgrade plans?", ja: "アップグレードプラン一覧を表示しますか？" },
+  "Xem gói nâng cấp": { vi: "Xem gói nâng cấp", en: "View Upgrade Plans", ja: "プランを見る" },
+  "Tính năng này mở khóa từ Gói Bronze (100.000đ/năm) trở lên.": { vi: "Tính năng này mở khóa từ Gói Bronze (100.000đ/năm) trở lên.", en: "This feature unlocks from the Bronze plan (100,000 VND/year) or higher.", ja: "この機能は Bronze プラン（100,000 VND/年）以上で利用可能です。" },
+  "Đã kích hoạt ngay gói Unranked (0đ/năm) thành công!": { vi: "Đã kích hoạt ngay gói Unranked (0đ/năm) thành công!", en: "Successfully activated the Unranked plan (0 VND/year)!", ja: "Unranked プラン（0 VND/年）を即時有効化しました！" },
+  "Thanh toán nâng cấp gói": { vi: "Thanh toán nâng cấp gói", en: "Plan Upgrade Checkout", ja: "プランアップグレードのお支払い" },
+  "Sau khi chuyển khoản, bấm": { vi: "Sau khi chuyển khoản, bấm", en: "After transferring, click", ja: "振込完了後、" },
+  "\"Tôi đã thanh toán\"": { vi: "\"Tôi đã thanh toán\"", en: "\"I Have Paid\"", ja: "「支払い完了を通知」" },
+  "để gửi yêu cầu. Quản trị viên sẽ kiểm tra và kích hoạt gói (hạn 365 ngày) ngay sau khi xác nhận.": { vi: "để gửi yêu cầu. Quản trị viên sẽ kiểm tra và kích hoạt gói (hạn 365 ngày) ngay sau khi xác nhận.", en: "to submit your request. The Administrator will verify and activate your plan (valid for 365 days).", ja: "を押してリクエストを送信してください。管理者が確認次第、プラン（365日間有効）を有効化します。" },
+  "Gói đăng ký": { vi: "Gói đăng ký", en: "Selected Plan", ja: "申込プラン" },
+  "Giá gốc": { vi: "Giá gốc", en: "Original Price", ja: "基本価格" },
+  "Giảm giá": { vi: "Giảm giá", en: "Discount", ja: "割引" },
+  "Không có": { vi: "Không có", en: "None", ja: "なし" },
+  "Số tiền cần chuyển": { vi: "Số tiền cần chuyển", en: "Amount Due", ja: "振込金額" },
+  "Ngân hàng": { vi: "Ngân hàng", en: "Bank", ja: "銀行名" },
+  "Số tài khoản": { vi: "Số tài khoản", en: "Account Number", ja: "口座番号" },
+  "Chủ tài khoản": { vi: "Chủ tài khoản", en: "Account Holder", ja: "口座名義" },
+  "Nội dung chuyển khoản": { vi: "Nội dung chuyển khoản", en: "Transfer Memo", ja: "振込メモ (摘要)" },
+  "Nhập mã giảm giá": { vi: "Nhập mã giảm giá", en: "Enter discount code", ja: "割引コードを入力" },
+  "Mã giao dịch / Ghi chú (tùy chọn)": { vi: "Mã giao dịch / Ghi chú (tùy chọn)", en: "Transaction ID / Note (optional)", ja: "取引ID / メモ (任意)" },
+  "Ví dụ: FT26325... hoặc ghi chú cho Admin": { vi: "Ví dụ: FT26325... hoặc ghi chú cho Admin", en: "e.g. FT26325... or note for Admin", ja: "例: FT26325... または管理者へのメモ" },
+  "Tải ảnh biên lai chuyển khoản (tùy chọn)": { vi: "Tải ảnh biên lai chuyển khoản (tùy chọn)", en: "Upload transfer receipt image (optional)", ja: "振込明細の画像をアップロード (任意)" },
+  "Chọn ảnh biên lai": { vi: "Chọn ảnh biên lai", en: "Select Receipt Image", ja: "明細画像を選択" },
+  "Xóa ảnh": { vi: "Xóa ảnh", en: "Remove Image", ja: "画像を削除" },
+  "Xem trước ảnh biên lai": { vi: "Xem trước ảnh biên lai", en: "Receipt image preview", ja: "明細画像プレビュー" },
+  "Mã VietQR thanh toán": { vi: "Mã VietQR thanh toán", en: "VietQR Payment Code", ja: "VietQR 決済コード" },
+  "Tôi đã thanh toán": { vi: "Tôi đã thanh toán", en: "I Have Paid", ja: "支払い完了を通知" },
+  "Đang gửi yêu cầu...": { vi: "Đang gửi yêu cầu...", en: "Submitting request...", ja: "リクエスト送信中..." },
+  "Mã giảm giá 100% – bạn không cần chuyển khoản. Bấm \"Tôi đã thanh toán\" để gửi Quản trị viên xác nhận.": { vi: "Mã giảm giá 100% – bạn không cần chuyển khoản. Bấm \"Tôi đã thanh toán\" để gửi Quản trị viên xác nhận.", en: "100% discount applied – no bank transfer needed. Click \"I Have Paid\" to send for Admin confirmation.", ja: "100%割引適用済み – 振込は不要です。「支払い完了を通知」を押して管理者へ承認リクエストを送信してください。" },
+  "Quản trị viên chưa cấu hình tài khoản VietQR.": { vi: "Quản trị viên chưa cấu hình tài khoản VietQR.", en: "Administrator has not configured a VietQR account yet.", ja: "管理者がまだ VietQR 口座を設定していません。" },
+  "Không tải được mã QR. Vui lòng chuyển khoản thủ công theo thông tin bên cạnh.": { vi: "Không tải được mã QR. Vui lòng chuyển khoản thủ công theo thông tin bên cạnh.", en: "Could not load QR image. Please transfer manually using the bank details shown.", ja: "QRコードを読み込めませんでした。横の口座情報を使って手動でお振込みください。" },
+  "Đang tải mã QR...": { vi: "Đang tải mã QR...", en: "Loading QR code...", ja: "QRコードを読み込み中..." },
+  "Vui lòng chọn file ảnh biên lai.": { vi: "Vui lòng chọn file ảnh biên lai.", en: "Please select an image file for the receipt.", ja: "明細の画像ファイルを選択してください。" },
+  "Không thể xử lý ảnh biên lai.": { vi: "Không thể xử lý ảnh biên lai.", en: "Could not process receipt image.", ja: "明細画像を処理できませんでした。" },
+  "Vui lòng nhập mã giảm giá.": { vi: "Vui lòng nhập mã giảm giá.", en: "Please enter a discount code.", ja: "割引コードを入力してください。" },
+  "Mã giảm giá không hợp lệ hoặc đã bị xóa.": { vi: "Mã giảm giá không hợp lệ hoặc đã bị xóa.", en: "Invalid or expired discount code.", ja: "割引コードが無効か、削除されています。" },
+  "Đã xảy ra lỗi khi gửi yêu cầu thanh toán.": { vi: "Đã xảy ra lỗi khi gửi yêu cầu thanh toán.", en: "An error occurred while submitting the payment request.", ja: "支払いリクエストの送信中にエラーが発生しました。" },
+  "Bảng điều khiển Quản trị (Admin Panel)": { vi: "Bảng điều khiển Quản trị (Admin Panel)", en: "Admin Control Panel", ja: "管理者コントロールパネル (Admin Panel)" },
+  "Đơn đang chờ duyệt": { vi: "Đơn đang chờ duyệt", en: "Pending Requests", ja: "承認待ちリクエスト" },
+  "Đơn đã duyệt": { vi: "Đơn đã duyệt", en: "Approved Requests", ja: "承認済みリクエスト" },
+  "Tổng doanh thu đã duyệt": { vi: "Tổng doanh thu đã duyệt", en: "Total Approved Revenue", ja: "承認済み総売上" },
+  "Thành viên & Cấp gói": { vi: "Thành viên & Cấp gói", en: "Members & Plans", ja: "メンバー・プラン・API割当" },
+  "Cấu hình VietQR": { vi: "Cấu hình VietQR", en: "VietQR Config", ja: "VietQR 設定" },
+  "Mã giảm giá": { vi: "Mã giảm giá", en: "Discount Codes", ja: "割引クーポン" },
+  "Sao lưu hệ thống": { vi: "Sao lưu hệ thống", en: "System Backup", ja: "システムバックアップ" },
+  "Lọc trạng thái": { vi: "Lọc trạng thái", en: "Filter by status", ja: "ステータスで絞り込み" },
+  "Tất cả trạng thái": { vi: "Tất cả trạng thái", en: "All Statuses", ja: "すべてのステータス" },
+  "⏳ Chờ duyệt": { vi: "⏳ Chờ duyệt", en: "⏳ Pending", ja: "⏳ 承認待ち" },
+  "✅ Đã duyệt": { vi: "✅ Đã duyệt", en: "✅ Approved", ja: "✅ 承認済み" },
+  "❌ Từ chối": { vi: "❌ Từ chối", en: "❌ Rejected", ja: "❌ 却下" },
+  "❌ Bị từ chối": { vi: "❌ Bị từ chối", en: "❌ Rejected", ja: "❌ 却下" },
+  "Lọc theo gói": { vi: "Lọc theo gói", en: "Filter by plan", ja: "プランで絞り込み" },
+  "Tất cả gói": { vi: "Tất cả gói", en: "All Plans", ja: "すべてのプラン" },
+  "Tìm theo email, tên, mã đơn...": { vi: "Tìm theo email, tên, mã đơn...", en: "Search by email, name, request ID...", ja: "メール・名前・リクエストIDで検索..." },
+  "Không có yêu cầu thanh toán nào phù hợp.": { vi: "Không có yêu cầu thanh toán nào phù hợp.", en: "No matching payment requests found.", ja: "一致する支払いリクエストはありません。" },
+  "Thời gian gửi": { vi: "Thời gian gửi", en: "Submitted At", ja: "送信日時" },
+  "Người dùng": { vi: "Người dùng", en: "User", ja: "ユーザー" },
+  "Gói": { vi: "Gói", en: "Plan", ja: "プラン" },
+  "Số tiền": { vi: "Số tiền", en: "Amount", ja: "金額" },
+  "Ghi chú / Mã GD": { vi: "Ghi chú / Mã GD", en: "Note / Txn ID", ja: "メモ / 取引ID" },
+  "Biên lai": { vi: "Biên lai", en: "Receipt", ja: "明細画像" },
+  "Trạng thái": { vi: "Trạng thái", en: "Status", ja: "ステータス" },
+  "Hành động": { vi: "Hành động", en: "Actions", ja: "操作" },
+  "Phản hồi từ Admin": { vi: "Phản hồi từ Admin", en: "Admin Feedback", ja: "管理者からの回答" },
+  "Đang chờ Quản trị viên xác nhận": { vi: "Đang chờ Quản trị viên xác nhận", en: "Awaiting Administrator confirmation", ja: "管理者の確認待ち" },
+  "Gửi lại": { vi: "Gửi lại", en: "Resubmit", ja: "再送信" },
+  "Xem ảnh": { vi: "Xem ảnh", en: "View Image", ja: "画像を見る" },
+  "✅ Duyệt": { vi: "✅ Duyệt", en: "✅ Approve", ja: "✅ 承認" },
+  "Duyệt ngay": { vi: "Duyệt ngay", en: "Approve Now", ja: "今すぐ承認" },
+  "Duyệt thanh toán": { vi: "Duyệt thanh toán", en: "Approve Payment", ja: "支払いを承認" },
+  "Từ chối yêu cầu thanh toán": { vi: "Từ chối yêu cầu thanh toán", en: "Reject Payment Request", ja: "支払いリクエストを却下" },
+  "Lý do từ chối": { vi: "Lý do từ chối", en: "Rejection Reason", ja: "却下理由" },
+  "Ví dụ: Chưa nhận được chuyển khoản, sai số tiền...": { vi: "Ví dụ: Chưa nhận được chuyển khoản, sai số tiền...", en: "e.g. Transfer not received, incorrect amount...", ja: "例: 振込が確認できない、金額相違など..." },
+  "Xác nhận từ chối": { vi: "Xác nhận từ chối", en: "Confirm Rejection", ja: "却下を確定" },
+  "Ảnh biên lai chuyển khoản": { vi: "Ảnh biên lai chuyển khoản", en: "Transfer Receipt Image", ja: "振込明細画像" },
+  "Vui lòng nhập lý do từ chối.": { vi: "Vui lòng nhập lý do từ chối.", en: "Please enter a rejection reason.", ja: "却下理由を入力してください。" },
+  "Yêu cầu bị từ chối": { vi: "Yêu cầu bị từ chối", en: "Request rejected", ja: "リクエストが却下されました" },
+  "1. Cấp / nâng cấp / thu hồi gói thủ công": { vi: "1. Cấp / nâng cấp / thu hồi gói thủ công", en: "1. Grant / Upgrade / Revoke User Plan", ja: "1. プランの手動付与・アップグレード・取消" },
+  "Email người dùng": { vi: "Email người dùng", en: "User Email", ja: "ユーザーメール" },
+  "Hạng gói": { vi: "Hạng gói", en: "Plan Tier", ja: "プランランク" },
+  "Cấp / nâng cấp": { vi: "Cấp / nâng cấp", en: "Grant / Upgrade", ja: "付与・アップグレード" },
+  "Thu hồi gói": { vi: "Thu hồi gói", en: "Revoke Plan", ja: "プラン取消" },
+  "Thu hồi": { vi: "Thu hồi", en: "Revoke", ja: "取消" },
+  "Danh sách thành viên đang hoạt động": { vi: "Danh sách thành viên đang hoạt động", en: "Active Members", ja: "有効メンバー一覧" },
+  "Hết hạn": { vi: "Hết hạn", en: "Expires", ja: "有効期限" },
+  "Miễn phí": { vi: "Miễn phí", en: "Free", ja: "無料" },
+  "Chưa có thành viên nào kích hoạt gói.": { vi: "Chưa có thành viên nào kích hoạt gói.", en: "No members have activated a plan yet.", ja: "プランを有効化したメンバーはまだいません。" },
+  "2. 🔑 Gán hộ Google Gemini API Key theo Email người dùng": { vi: "2. 🔑 Gán hộ Google Gemini API Key theo Email người dùng", en: "2. 🔑 Assign Google Gemini API Key by User Email", ja: "2. 🔑 ユーザーメール宛に Google Gemini API Key を割り当て" },
+  "Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt Gemini API Key đó cho tài khoản của họ trong AI Converter.": { vi: "Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt Gemini API Key đó cho tài khoản của họ trong AI Converter.", en: "When a user signs in with an assigned Email, the system automatically activates that Gemini API Key for their account in AI Converter.", ja: "割り当てられたメールアドレスでユーザーがログインすると、AI Converter でその Gemini API Key が自動的に有効化されます。" },
+  "Model mặc định": { vi: "Model mặc định", en: "Default Model", ja: "デフォルトモデル" },
+  "Gemini 2.5 Flash (Nhanh)": { vi: "Gemini 2.5 Flash (Nhanh)", en: "Gemini 2.5 Flash (Fast)", ja: "Gemini 2.5 Flash (高速)" },
+  "Gemini 2.5 Pro (Chính xác cao)": { vi: "Gemini 2.5 Pro (Chính xác cao)", en: "Gemini 2.5 Pro (High Accuracy)", ja: "Gemini 2.5 Pro (高精度)" },
+  "🔑 Gán API cho Email": { vi: "🔑 Gán API cho Email", en: "🔑 Assign API to Email", ja: "🔑 メールにAPIを割当" },
+  "🔑 Gán API": { vi: "🔑 Gán API", en: "🔑 Assign API", ja: "🔑 API割当" },
+  "🔑 Đã gán API": { vi: "🔑 Đã gán API", en: "🔑 API Assigned", ja: "🔑 API割当済" },
+  "Đã gán Gemini API": { vi: "Đã gán Gemini API", en: "Gemini API Assigned", ja: "Gemini API 割当済" },
+  "Thu hồi API": { vi: "Thu hồi API", en: "Revoke API", ja: "API取消" },
+  "Thu hồi Gemini API Key": { vi: "Thu hồi Gemini API Key", en: "Revoke Gemini API Key", ja: "Gemini API Key を取消" },
+  "Cập nhật": { vi: "Cập nhật", en: "Updated", ja: "更新日時" },
+  "Chưa có tài khoản nào được Admin gán Gemini API Key.": { vi: "Chưa có tài khoản nào được Admin gán Gemini API Key.", en: "No accounts have been assigned a Gemini API Key by Admin yet.", ja: "管理者によって Gemini API Key が割り当てられたアカウントはまだありません。" },
+  "Cấu hình tài khoản nhận tiền VietQR": { vi: "Cấu hình tài khoản nhận tiền VietQR", en: "VietQR Receiving Bank Account Configuration", ja: "VietQR 受取銀行口座の設定" },
+  "Tên ngân hàng": { vi: "Tên ngân hàng", en: "Bank Name", ja: "銀行名" },
+  "Mã ngân hàng VietQR (BIN, ví dụ 970414, MB, VCB)": { vi: "Mã ngân hàng VietQR (BIN, ví dụ 970414, MB, VCB)", en: "VietQR Bank Code (BIN, e.g. 970414, MB, VCB)", ja: "VietQR 銀行コード (BIN、例: 970414, MB, VCB)" },
+  "Tên chủ tài khoản": { vi: "Tên chủ tài khoản", en: "Account Holder Name", ja: "口座名義人" },
+  "Lưu cấu hình": { vi: "Lưu cấu hình", en: "Save Config", ja: "設定を保存" },
+  "Tạo mã giảm giá": { vi: "Tạo mã giảm giá", en: "Create Discount Code", ja: "割引クーポンの作成" },
+  "Phần trăm giảm (1–100)": { vi: "Phần trăm giảm (1–100)", en: "Discount Percentage (1–100)", ja: "割引率 (1〜100%)" },
+  "Thêm mã": { vi: "Thêm mã", en: "Add Code", ja: "コードを追加" },
+  "Mã": { vi: "Mã", en: "Code", ja: "コード" },
+  "Chưa có mã giảm giá nào.": { vi: "Chưa có mã giảm giá nào.", en: "No discount codes created yet.", ja: "割引クーポンはまだありません。" },
+  "Thành viên trả phí đang hoạt động:": { vi: "Thành viên trả phí đang hoạt động:", en: "Active paid members:", ja: "有効な有料プランメンバー数:" },
+  ". Xuất toàn bộ dữ liệu quản trị (thành viên, yêu cầu thanh toán, mã giảm giá, cấu hình VietQR) dưới dạng JSON.": { vi: ". Xuất toàn bộ dữ liệu quản trị (thành viên, yêu cầu thanh toán, mã giảm giá, cấu hình VietQR) dưới dạng JSON.", en: ". Export all admin data (members, payment requests, discount codes, VietQR config) as JSON.", ja: "。すべての管理データ（メンバー、支払いリクエスト、割引コード、VietQR設定）を JSON 形式でエクスポートします。" },
+  "Xuất dữ liệu hệ thống (.json)": { vi: "Xuất dữ liệu hệ thống (.json)", en: "Export System Data (.json)", ja: "システムデータをエクスポート (.json)" },
+  "Truy cập bị từ chối! Chỉ tài khoản quản trị phamduchieurobotics@gmail.com mới có quyền thực hiện thao tác này.": { vi: "Truy cập bị từ chối! Chỉ tài khoản quản trị phamduchieurobotics@gmail.com mới có quyền thực hiện thao tác này.", en: "Access denied! Only the administrator account phamduchieurobotics@gmail.com can perform this action.", ja: "アクセス拒否！管理者アカウント phamduchieurobotics@gmail.com のみがこの操作を実行できます。" },
+  "Truy cập bị từ chối! Bạn không có quyền vào trang Quản trị.": { vi: "Truy cập bị từ chối! Bạn không có quyền vào trang Quản trị.", en: "Access denied! You do not have permission to view the Admin Panel.", ja: "アクセス拒否！管理パネルを表示する権限がありません。" },
+  "Vui lòng nhập một địa chỉ email hợp lệ.": { vi: "Vui lòng nhập một địa chỉ email hợp lệ.", en: "Please enter a valid email address.", ja: "有効なメールアドレスを入力してください。" },
+  "Vui lòng nhập địa chỉ email người dùng hợp lệ.": { vi: "Vui lòng nhập địa chỉ email người dùng hợp lệ.", en: "Please enter a valid user email address.", ja: "有効なユーザーメールアドレスを入力してください。" },
+  "Vui lòng dán Google Gemini API Key để gán cho người dùng.": { vi: "Vui lòng dán Google Gemini API Key để gán cho người dùng.", en: "Please paste a Google Gemini API Key to assign to the user.", ja: "ユーザーに割り当てる Google Gemini API Key を貼り付けてください。" },
+  "Vui lòng nhập hoặc chọn email cần thu hồi API Key.": { vi: "Vui lòng nhập hoặc chọn email cần thu hồi API Key.", en: "Please enter or select an email to revoke the API Key.", ja: "API Key を取り消すメールアドレスを入力または選択してください。" },
+  "Gói không hợp lệ.": { vi: "Gói không hợp lệ.", en: "Invalid plan.", ja: "無効なプランです。" },
+  "Thông tin ngân hàng/STK chưa hợp lệ.": { vi: "Thông tin ngân hàng/STK chưa hợp lệ.", en: "Invalid bank or account details.", ja: "銀行情報または口座番号が無効です。" },
+  "Đã lưu cấu hình VietQR.": { vi: "Đã lưu cấu hình VietQR.", en: "Saved VietQR configuration.", ja: "VietQR 設定を保存しました。" },
+  "Mã giảm giá hoặc phần trăm không hợp lệ.": { vi: "Mã giảm giá hoặc phần trăm không hợp lệ.", en: "Invalid discount code or percentage.", ja: "割引コードまたは割引率が無効です。" },
+  "Mã giảm giá đã tồn tại.": { vi: "Mã giảm giá đã tồn tại.", en: "Discount code already exists.", ja: "この割引コードは既に存在します。" },
+  "Đã xóa mã giảm giá.": { vi: "Đã xóa mã giảm giá.", en: "Discount code deleted.", ja: "割引コードを削除しました。" },
+  "Đã xảy ra lỗi khi thực hiện thao tác quản trị.": { vi: "Đã xảy ra lỗi khi thực hiện thao tác quản trị.", en: "An error occurred while performing the admin action.", ja: "管理操作の実行中にエラーが発生しました。" },
+  "Đã xảy ra lỗi khi thực hiện thao tác.": { vi: "Đã xảy ra lỗi khi thực hiện thao tác.", en: "An error occurred while performing the action.", ja: "操作の実行中にエラーが発生しました。" },
+  "✏️ Chỉnh sửa hồ sơ & Ảnh đại diện": { vi: "✏️ Chỉnh sửa hồ sơ & Ảnh đại diện", en: "✏️ Edit Profile & Avatar", ja: "✏️ プロフィールとアバターを編集" },
+  "Chỉnh sửa hồ sơ": { vi: "Chỉnh sửa hồ sơ", en: "Edit Profile", ja: "プロフィールを編集" },
+  "Tải ảnh từ máy": { vi: "Tải ảnh từ máy", en: "Upload Image", ja: "画像をアップロード" },
+  "Khôi phục ảnh Google gốc": { vi: "Khôi phục ảnh Google gốc", en: "Restore Google Avatar", ja: "Google の元の画像に戻す" },
+  "Dán đường dẫn ảnh (URL)": { vi: "Dán đường dẫn ảnh (URL)", en: "Paste Image URL", ja: "画像URLを貼り付け" },
+  "Dùng ảnh này": { vi: "Dùng ảnh này", en: "Use This Image", ja: "この画像を使用" },
+  "Tên hiển thị": { vi: "Tên hiển thị", en: "Display Name", ja: "表示名" },
+  "Tên hiển thị của bạn": { vi: "Tên hiển thị của bạn", en: "Your display name", ja: "あなたの表示名" },
+  "Email Google": { vi: "Email Google", en: "Google Email", ja: "Google メール" },
+  "Mã sinh viên": { vi: "Mã sinh viên", en: "Student ID", ja: "学籍番号" },
+  "Mã sinh viên (tùy chọn)": { vi: "Mã sinh viên (tùy chọn)", en: "Student ID (optional)", ja: "学籍番号 (任意)" },
+  "Ví dụ: 25023599": { vi: "Ví dụ: 25023599", en: "e.g. 25023599", ja: "例: 25023599" },
+  "Lớp / Khoa": { vi: "Lớp / Khoa", en: "Class / Faculty", ja: "クラス / 学部" },
+  "Lớp / Khoa (tùy chọn)": { vi: "Lớp / Khoa (tùy chọn)", en: "Class / Faculty (optional)", ja: "クラス / 学部 (任意)" },
+  "Ví dụ: K70E - RE2": { vi: "Ví dụ: K70E - RE2", en: "e.g. K70E - RE2", ja: "例: K70E - RE2" },
+  "Mục tiêu học tập": { vi: "Mục tiêu học tập", en: "Learning Goal", ja: "学習目標" },
+  "Mục tiêu học tập (tùy chọn)": { vi: "Mục tiêu học tập (tùy chọn)", en: "Learning Goal (optional)", ja: "学習目標 (任意)" },
+  "Ví dụ: A+ KTCT Mác - Lênin": { vi: "Ví dụ: A+ KTCT Mác - Lênin", en: "e.g. A+ Calculus / IELTS 8.0", ja: "例: 微積分 A+ / TOEIC 900" },
+  "Chưa cập nhật": { vi: "Chưa cập nhật", en: "Not set", ja: "未設定" },
+  "Lưu hồ sơ": { vi: "Lưu hồ sơ", en: "Save Profile", ja: "プロフィールを保存" },
+  "Đã lưu hồ sơ của bạn.": { vi: "Đã lưu hồ sơ của bạn.", en: "Your profile has been saved.", ja: "プロフィールを保存しました。" },
+  "Vui lòng nhập đường dẫn ảnh hợp lệ.": { vi: "Vui lòng nhập đường dẫn ảnh hợp lệ.", en: "Please enter a valid image URL.", ja: "有効な画像URLを入力してください。" },
+  "Không tải được ảnh từ đường dẫn này.": { vi: "Không tải được ảnh từ đường dẫn này.", en: "Could not load image from this URL.", ja: "このURLから画像を読み込めませんでした。" },
+  "Vui lòng chọn một file ảnh.": { vi: "Vui lòng chọn một file ảnh.", en: "Please select an image file.", ja: "画像ファイルを選択してください。" },
+  "Không thể xử lý ảnh đã chọn.": { vi: "Không thể xử lý ảnh đã chọn.", en: "Could not process the selected image.", ja: "選択した画像を処理できませんでした。" },
+  "Đã khôi phục ảnh Google gốc (nhấn Lưu để áp dụng).": { vi: "Đã khôi phục ảnh Google gốc (nhấn Lưu để áp dụng).", en: "Restored original Google avatar (click Save to apply).", ja: "元の Google アバターに戻しました（「保存」を押して適用）。" },
+  "Không thể sao chép.": { vi: "Không thể sao chép.", en: "Could not copy to clipboard.", ja: "コピーできませんでした。" },
+  "Không thể lưu dữ liệu vào trình duyệt (bộ nhớ đầy hoặc bị chặn).": { vi: "Không thể lưu dữ liệu vào trình duyệt (bộ nhớ đầy hoặc bị chặn).", en: "Could not save data to browser storage (storage full or blocked).", ja: "ブラウザにデータを保存できませんでした（容量不足またはブロックされています）。" },
+  "Không thể tải file xuống.": { vi: "Không thể tải file xuống.", en: "Could not download file.", ja: "ファイルをダウンロードできませんでした。" },
+  "Cài đặt Google Gemini API": { vi: "Cài đặt Google Gemini API", en: "Google Gemini API Settings", ja: "Google Gemini API 設定" },
+  "Hỗ trợ cả API từ tài khoản Google AI Pro / Ultra / Paid, API Free và API được Quản trị viên gán theo Email.": { vi: "Hỗ trợ cả API từ tài khoản Google AI Pro / Ultra / Paid, API Free và API được Quản trị viên gán theo Email.", en: "Supports keys from Google AI Pro / Ultra / Paid accounts, Free tier API keys, and Admin-assigned email keys.", ja: "Google AI Pro / Ultra / 有料アカウントのAPI、無料版API、および管理者がメール宛に割り当てたAPIに対応しています。" },
+  "🔑 Đã được Quản trị viên gán hộ Gemini API:": { vi: "🔑 Đã được Quản trị viên gán hộ Gemini API:", en: "🔑 Gemini API Assigned by Administrator:", ja: "🔑 管理者によって Gemini API が割り当てられています:" },
+  "Đã được Quản trị viên gán hộ Gemini API:": { vi: "Đã được Quản trị viên gán hộ Gemini API:", en: "Gemini API Assigned by Administrator:", ja: "管理者によって Gemini API が割り当てられています:" },
+  "Tài khoản": { vi: "Tài khoản", en: "Account", ja: "アカウント" },
+  "đã được gán sẵn API Key (Model mặc định:": { vi: "đã được gán sẵn API Key (Model mặc định:", en: "has an assigned API Key (Default model:", ja: "には API Key が割り当て済みです（デフォルトモデル:" },
+  "). Bạn có thể dùng ngay": { vi: "). Bạn có thể dùng ngay", en: "). You can immediately use", ja: "）。個人のキーを入力せずに今すぐ" },
+  "mà không cần tự nhập Key cá nhân.": { vi: "mà không cần tự nhập Key cá nhân.", en: "without entering a personal key.", ja: "を利用できます。" },
+  "Gemini API Key cá nhân (tùy chọn ghi đè)": { vi: "Gemini API Key cá nhân (tùy chọn ghi đè)", en: "Personal Gemini API Key (optional override)", ja: "個人用 Gemini API Key (任意・上書き用)" },
+  "Dán chuỗi khóa bắt đầu bằng AIza...": { vi: "Dán chuỗi khóa bắt đầu bằng AIza...", en: "Paste your key starting with AIza...", ja: "AIza... で始まるキーを貼り付け" },
+  "Hiện / Ẩn API Key": { vi: "Hiện / Ẩn API Key", en: "Show / Hide API Key", ja: "API Key を表示 / 非表示" },
+  "Hiện hoặc ẩn API Key": { vi: "Hiện hoặc ẩn API Key", en: "Show or hide API Key", ja: "API Key を表示または非表示" },
+  "Sau khi dán hoặc bấm Lưu Key, ô nhập tự động ẩn dưới dạng mật khẩu (••••••••). Bấm biểu tượng con mắt để xem lại bất cứ lúc nào.": { vi: "Sau khi dán hoặc bấm Lưu Key, ô nhập tự động ẩn dưới dạng mật khẩu (••••••••). Bấm biểu tượng con mắt để xem lại bất cứ lúc nào.", en: "After pasting or clicking Save Key, the input automatically masks as a password (••••••••). Click the eye icon to reveal anytime.", ja: "貼り付けまたは「キーを保存」を押すと、自動的にパスワード形式（••••••••）で隠れます。目のアイコンでいつでも確認できます。" },
+  "Lưu Key": { vi: "Lưu Key", en: "Save Key", ja: "キーを保存" },
+  "Kiểm tra kết nối (Test API)": { vi: "Kiểm tra kết nối (Test API)", en: "Test Connection (Test API)", ja: "接続テスト (Test API)" },
+  "Kiểm tra kết nối": { vi: "Kiểm tra kết nối", en: "Test Connection", ja: "接続テスト" },
+  "Xóa Key cá nhân": { vi: "Xóa Key cá nhân", en: "Delete Personal Key", ja: "個人キーを削除" },
+  "Xóa Key": { vi: "Xóa Key", en: "Delete Key", ja: "キーを削除" },
+  "Chọn Model Gemini AI": { vi: "Chọn Model Gemini AI", en: "Select Gemini AI Model", ja: "Gemini AI モデルを選択" },
+  "Gemini 2.5 Pro – Chế độ Chính xác cao (Khuyên dùng cho Google AI Pro / Ultra / Paid)": { vi: "Gemini 2.5 Pro – Chế độ Chính xác cao (Khuyên dùng cho Google AI Pro / Ultra / Paid)", en: "Gemini 2.5 Pro – High Accuracy Mode (Recommended for Google AI Pro / Ultra / Paid)", ja: "Gemini 2.5 Pro – 高精度モード (Google AI Pro / Ultra / 有料版推奨)" },
+  "Gemini 2.5 Flash – Chế độ Nhanh / Tiết kiệm (API Free)": { vi: "Gemini 2.5 Flash – Chế độ Nhanh / Tiết kiệm (API Free)", en: "Gemini 2.5 Flash – Fast / Balanced Mode (Free API)", ja: "Gemini 2.5 Flash – 高速・省コストモード (無料 API)" },
+  "Gemini 3 Flash Preview – Tốc độ cao (API Free / Preview)": { vi: "Gemini 3 Flash Preview – Tốc độ cao (API Free / Preview)", en: "Gemini 3 Flash Preview – High Speed (Free / Preview API)", ja: "Gemini 3 Flash Preview – 超高速モード (無料 / Preview API)" },
+  "💎 Chế độ Chính xác cao (Gemini 2.5 Pro):": { vi: "💎 Chế độ Chính xác cao (Gemini 2.5 Pro):", en: "💎 High Accuracy Mode (Gemini 2.5 Pro):", ja: "💎 高精度モード (Gemini 2.5 Pro):" },
+  "Chế độ Chính xác cao (Gemini 2.5 Pro):": { vi: "Chế độ Chính xác cao (Gemini 2.5 Pro):", en: "High Accuracy Mode (Gemini 2.5 Pro):", ja: "高精度モード (Gemini 2.5 Pro):" },
+  "Tối ưu tối đa cho công thức Toán/Lý/Hóa phức tạp và tự động giải đề chuẩn xác.": { vi: "Tối ưu tối đa cho công thức Toán/Lý/Hóa phức tạp và tự động giải đề chuẩn xác.", en: "Maximized accuracy for complex Math/Physics/Chemistry formulas and automated exam solving.", ja: "複雑な数学・物理・化学の数式認識と高精度な自動解答に最適化されています。" },
+  "⚠️ Lưu ý khi dùng API Free / Flash:": { vi: "⚠️ Lưu ý khi dùng API Free / Flash:", en: "⚠️ Note when using Free / Flash API:", ja: "⚠️ 無料 / Flash API 使用時の注意:" },
+  "Lưu ý khi dùng API Free / Flash:": { vi: "Lưu ý khi dùng API Free / Flash:", en: "Note when using Free / Flash API:", ja: "無料 / Flash API 使用時の注意:" },
+  "Tốc độ nhanh & miễn phí, nhưng bạn nên mở": { vi: "Tốc độ nhanh & miễn phí, nhưng bạn nên mở", en: "Fast & free, but you should use", ja: "高速かつ無料ですが、読み取り後に" },
+  "hoặc chạy": { vi: "hoặc chạy", en: "or run", ja: "を開くか、" },
+  "sau khi đọc đề để đảm bảo đáp án chuẩn 100%.": { vi: "sau khi đọc đề để đảm bảo đáp án chuẩn 100%.", en: "after extraction to ensure 100% answer accuracy.", ja: "を実行して100%の解答精度を確認することをお勧めします。" },
+  "🌐 Ngôn ngữ giao diện (Language / 表示言語)": { vi: "🌐 Ngôn ngữ giao diện (Language / 表示言語)", en: "🌐 Interface Language (Language / 表示言語)", ja: "🌐 表示言語 (Language / 表示言語)" },
+  "Chuyển đổi tức thì giữa Tiếng Việt, Tiếng Anh và Tiếng Nhật (giữ nguyên phông chữ hệ thống).": { vi: "Chuyển đổi tức thì giữa Tiếng Việt, Tiếng Anh và Tiếng Nhật (giữ nguyên phông chữ hệ thống).", en: "Switch instantly between Vietnamese, English, and Japanese (preserving the system font).", ja: "ベトナム語・英語・日本語を即座に切り替えます（システムフォントを維持）。" },
+  "Chuyển đổi qua lại giữa Tiếng Việt, Tiếng Anh và Tiếng Nhật (giữ nguyên phông chữ).": { vi: "Chuyển đổi qua lại giữa Tiếng Việt, Tiếng Anh và Tiếng Nhật (giữ nguyên phông chữ).", en: "Switch between Vietnamese, English, and Japanese (preserving the system font).", ja: "ベトナム語・英語・日本語を切り替えます（システムフォントを維持）。" },
+  "Hướng dẫn lấy Gemini API Key": { vi: "Hướng dẫn lấy Gemini API Key", en: "How to Get a Gemini API Key", ja: "Gemini API Key の取得手順" },
+  "Mở Google AI Studio ↗": { vi: "Mở Google AI Studio ↗", en: "Open Google AI Studio ↗", ja: "Google AI Studio を開く ↗" },
+  "Truy cập": { vi: "Truy cập", en: "Visit", ja: "上のボタンから" },
+  "bằng nút mở tab mới ở trên.": { vi: "bằng nút mở tab mới ở trên.", en: "using the button above.", ja: "にアクセスします。" },
+  "Đăng nhập bằng tài khoản Google của bạn (tài khoản thường, Google AI Pro hoặc Ultra).": { vi: "Đăng nhập bằng tài khoản Google của bạn (tài khoản thường, Google AI Pro hoặc Ultra).", en: "Sign in with your Google account (standard, Google AI Pro, or Ultra).", ja: "Google アカウント（通常、Google AI Pro、または Ultra）でログインします。" },
+  "Nhấn nút": { vi: "Nhấn nút", en: "Click", ja: "ボタン" },
+  "Create API Key (Tạo khóa API)": { vi: "Create API Key (Tạo khóa API)", en: "Create API Key", ja: "Create API Key (APIキーを作成)" },
+  "và chọn hoặc tạo một dự án Google Cloud.": { vi: "và chọn hoặc tạo một dự án Google Cloud.", en: "and select or create a Google Cloud project.", ja: "を押して Google Cloud プロジェクトを選択または作成します。" },
+  "Sao chép chuỗi khóa bắt đầu bằng": { vi: "Sao chép chuỗi khóa bắt đầu bằng", en: "Copy the key string starting with", ja: "で始まるキー文字列をコピーし：" },
+  ", dán vào ô phía trên rồi bấm": { vi: ", dán vào ô phía trên rồi bấm", en: ", paste it into the box above, and click", ja: "、上の入力欄に貼り付けて" },
+  "và": { vi: "và", en: "and", ja: "および" },
+  "🔒 Bảo mật:": { vi: "🔒 Bảo mật:", en: "🔒 Security:", ja: "🔒 セキュリティ:" },
+  "Bảo mật:": { vi: "Bảo mật:", en: "Security:", ja: "セキュリティ:" },
+  "API Key chỉ lưu cục bộ hoặc được Quản trị viên gán theo Email đăng nhập và chỉ gửi trực tiếp tới máy chủ chính thức của Google Gemini API.": { vi: "API Key chỉ lưu cục bộ hoặc được Quản trị viên gán theo Email đăng nhập và chỉ gửi trực tiếp tới máy chủ chính thức của Google Gemini API.", en: "Your API Key is stored locally or assigned by Admin to your login Email, and is sent directly only to official Google Gemini API servers.", ja: "API Key はローカル保存または管理者によりログインメール宛に割り当てられ、Google Gemini API 公式サーバーにのみ直接送信されます。" },
+  "Chưa cấu hình": { vi: "Chưa cấu hình", en: "Not configured", ja: "未設定" },
+  "Đã lưu Key": { vi: "Đã lưu Key", en: "Key Saved", ja: "キー保存済み" },
+  "Đã lưu Key cá nhân": { vi: "Đã lưu Key cá nhân", en: "Personal Key Saved", ja: "個人キー保存済み" },
+  "✅ Đã gán bởi Admin": { vi: "✅ Đã gán bởi Admin", en: "✅ Assigned by Admin", ja: "✅ 管理者により割当済" },
+  "✅ Kết nối thành công": { vi: "✅ Kết nối thành công", en: "✅ Connected", ja: "✅ 接続成功" },
+  "❌ Key không hợp lệ": { vi: "❌ Key không hợp lệ", en: "❌ Invalid Key", ja: "❌ 無効なキー" },
+  "Đang kiểm tra...": { vi: "Đang kiểm tra...", en: "Testing...", ja: "確認中..." },
+  "Vui lòng nhập Gemini API Key trước.": { vi: "Vui lòng nhập Gemini API Key trước.", en: "Please enter a Gemini API Key first.", ja: "先に Gemini API Key を入力してください。" },
+  "Kết nối Gemini API thành công!": { vi: "Kết nối Gemini API thành công!", en: "Connected to Gemini API successfully!", ja: "Gemini API への接続に成功しました！" },
+  "Vui lòng dán chuỗi Gemini API Key.": { vi: "Vui lòng dán chuỗi Gemini API Key.", en: "Please paste a Gemini API Key string.", ja: "Gemini API Key を貼り付けてください。" },
+  "Đã lưu API Key cục bộ trên trình duyệt.": { vi: "Đã lưu API Key cục bộ trên trình duyệt.", en: "Saved API Key locally in this browser.", ja: "ブラウザに API Key を保存しました。" },
+  "Xóa API Key": { vi: "Xóa API Key", en: "Delete API Key", ja: "API Key を削除" },
+  "Bạn có chắc muốn xóa Gemini API Key cá nhân đã lưu?": { vi: "Bạn có chắc muốn xóa Gemini API Key cá nhân đã lưu?", en: "Are you sure you want to delete your saved personal Gemini API Key?", ja: "保存された個人用 Gemini API Key を削除してもよろしいですか？" },
+  "Đã xóa API Key cá nhân.": { vi: "Đã xóa API Key cá nhân.", en: "Personal API Key deleted.", ja: "個人用 API Key を削除しました。" },
+  "Model Gemini Pro được ưu tiên cho gói Diamond VIP (bạn vẫn có thể dùng nếu có API Key cá nhân).": { vi: "Model Gemini Pro được ưu tiên cho gói Diamond VIP (bạn vẫn có thể dùng nếu có API Key cá nhân).", en: "Gemini Pro is optimized for Diamond VIP (you can still use it with your own API Key).", ja: "Gemini Pro は Diamond VIP 優先モデルです（個人の API Key があれば利用可能です）。" },
+  "Đã dán & tự động ẩn API Key.": { vi: "Đã dán & tự động ẩn API Key.", en: "Pasted & automatically masked API Key.", ja: "API Key を貼り付け、自動的に非表示にしました。" },
+  "Chưa có Gemini API Key! Hãy cài đặt API Key trước khi chạy AI.": { vi: "Chưa có Gemini API Key! Hãy cài đặt API Key trước khi chạy AI.", en: "No Gemini API Key found! Please configure an API Key before running AI.", ja: "Gemini API Key が未設定です！AI を実行する前に API Key を設定してください。" },
+  "Đi tới Cài đặt API": { vi: "Đi tới Cài đặt API", en: "Go to API Settings", ja: "API設定へ移動" },
+  "Cài đặt API": { vi: "Cài đặt API", en: "API Settings", ja: "API設定" },
+  "⚠️ Bạn chưa cài đặt Gemini API Key (cần thiết để dùng AI đọc ảnh, giải đề & Double-Check).": { vi: "⚠️ Bạn chưa cài đặt Gemini API Key (cần thiết để dùng AI đọc ảnh, giải đề & Double-Check).", en: "⚠️ You have not configured a Gemini API Key yet (required for AI Vision OCR, solving & Double-Check).", ja: "⚠️ Gemini API Key が未設定です（AI 画像読取・自動解答・ダブルチェックに必要です）。" },
+  "Đi tới trang Cài đặt API →": { vi: "Đi tới trang Cài đặt API →", en: "Go to API Settings →", ja: "API設定ページへ →" },
+  "1. Tải đề thi thông minh": { vi: "1. Tải đề thi thông minh", en: "1. Smart Exam Uploader", ja: "1. スマート試験ファイルアップロード" },
+  "Tự động nhận diện": { vi: "Tự động nhận diện", en: "Auto-Detect", ja: "自動判別" },
+  "📂 Chọn, kéo thả hoặc Ctrl+V tệp đề thi": { vi: "📂 Chọn, kéo thả hoặc Ctrl+V tệp đề thi", en: "📂 Select, drag & drop, or Ctrl+V exam files", ja: "📂 試験ファイルを選択・ドラッグ＆ドロップ・Ctrl+V貼付" },
+  "Ảnh → AI Vision • Tài liệu đủ Đ/A → Chuyển ngay • Thiếu Đ/A → AI giải & kiểm tra chéo": { vi: "Ảnh → AI Vision • Tài liệu đủ Đ/A → Chuyển ngay • Thiếu Đ/A → AI giải & kiểm tra chéo", en: "Images → AI Vision • Docs with keys → Instant convert • Missing keys → AI solve & double-check", ja: "画像 → AI Vision • 解答付き文書 → 即時変換 • 解答なし → AI 解答＆ダブルチェック" },
+  "Ảnh → AI Vision": { vi: "Ảnh → AI Vision", en: "Image → AI Vision", ja: "画像 → AI Vision" },
+  "Tài liệu": { vi: "Tài liệu", en: "Document", ja: "ドキュメント" },
+  "Xóa hết": { vi: "Xóa hết", en: "Clear All", ja: "すべてクリア" },
+  "✍️ Hoặc dán nhanh văn bản / Markdown trực tiếp": { vi: "✍️ Hoặc dán nhanh văn bản / Markdown trực tiếp", en: "✍️ Or paste raw text / Markdown directly", ja: "✍️ またはテキスト / Markdown を直接貼り付け" },
+  "Dán câu hỏi trắc nghiệm hoặc Markdown tại đây (nếu thiếu đáp án AI sẽ tự giải)...": { vi: "Dán câu hỏi trắc nghiệm hoặc Markdown tại đây (nếu thiếu đáp án AI sẽ tự giải)...", en: "Paste multiple-choice questions or Markdown here (AI will solve missing answers automatically)...", ja: "ここに問題文または Markdown を貼り付けてください（解答がない場合は AI が自動解答します）..." },
+  "Tự động giải & kiểm tra chéo nếu thiếu đáp án": { vi: "Tự động giải & kiểm tra chéo nếu thiếu đáp án", en: "Auto-solve & double-check if answer keys are missing", ja: "解答がない場合は自動で AI 解答＆ダブルチェック" },
+  "Tự động tải Excel sau khi xong": { vi: "Tự động tải Excel sau khi xong", en: "Auto-download Excel when finished", ja: "完了後に Excel を自動ダウンロード" },
+  "Nối thêm vào danh sách hiện có": { vi: "Nối thêm vào danh sách hiện có", en: "Append to current question list", ja: "現在のリストの末尾に追加" },
+  "Giữ tiền tố số câu (Câu 1.)": { vi: "Giữ tiền tố số câu (Câu 1.)", en: "Keep question number prefix (Q1.)", ja: "問題番号の接頭辞 (問1.) を維持" },
+  "Đang xử lý thông minh...": { vi: "Đang xử lý thông minh...", en: "Smart processing...", ja: "スマート処理中..." },
+  "✨ Bắt đầu chuyển đổi thông minh": { vi: "✨ Bắt đầu chuyển đổi thông minh", en: "✨ Start Smart Conversion", ja: "✨ スマート変換を開始" },
+  "Dừng": { vi: "Dừng", en: "Stop", ja: "停止" },
+  "Đã trích xuất nội dung": { vi: "Đã trích xuất nội dung", en: "Content extracted", ja: "コンテンツ抽出完了" },
+  "Đang trích xuất nội dung...": { vi: "Đang trích xuất nội dung...", en: "Extracting content...", ja: "コンテンツを抽出中..." },
+  "Đã kiểm tra cấu trúc & đáp án": { vi: "Đã kiểm tra cấu trúc & đáp án", en: "Structure & answer keys checked", ja: "構造と解答キーを確認完了" },
+  "Đang kiểm tra đáp án...": { vi: "Đang kiểm tra đáp án...", en: "Checking answer keys...", ja: "解答キーを確認中..." },
+  "Đang kiểm tra cấu trúc câu hỏi & đáp án...": { vi: "Đang kiểm tra cấu trúc câu hỏi & đáp án...", en: "Checking question structure & answer keys...", ja: "問題構造と解答キーを確認中..." },
+  "AI đã giải & kiểm tra chéo xong": { vi: "AI đã giải & kiểm tra chéo xong", en: "AI solved & double-checked", ja: "AI 解答・ダブルチェック完了" },
+  "AI đã giải & kiểm tra chéo 100% khớp!": { vi: "AI đã giải & kiểm tra chéo 100% khớp!", en: "AI solved & double-checked (100% verified)!", ja: "AI 解答・ダブルチェック完了 (100%一致)！" },
+  "Đã đủ đáp án – chuyển đổi trực tiếp (không cần gọi AI)": { vi: "Đã đủ đáp án – chuyển đổi trực tiếp (không cần gọi AI)", en: "Answer keys present – converted directly (no AI call needed)", ja: "解答キー完備 – 直接変換完了 (AI 呼び出し不要)" },
+  "Đã đủ đáp án hợp lệ – bỏ qua bước AI giải": { vi: "Đã đủ đáp án hợp lệ – bỏ qua bước AI giải", en: "Valid answer keys present – skipped AI solving step", ja: "有効な解答キーあり – AI 解答ステップをスキップ" },
+  "AI đang giải & kiểm tra chéo...": { vi: "AI đang giải & kiểm tra chéo...", en: "AI solving & double-checking...", ja: "AI が解答・ダブルチェック中..." },
+  "AI Vision & kiểm tra chéo...": { vi: "AI Vision & kiểm tra chéo...", en: "AI Vision & double-checking...", ja: "AI Vision 読取・ダブルチェック中..." },
+  "PDF scan → AI Vision đang đọc & giải...": { vi: "PDF scan → AI Vision đang đọc & giải...", en: "Scanned PDF → AI Vision reading & solving...", ja: "スキャンPDF → AI Vision が読取・解答中..." },
+  "Định dạng tự do → AI đang đọc, giải & kiểm tra chéo...": { vi: "Định dạng tự do → AI đang đọc, giải & kiểm tra chéo...", en: "Unstructured format → AI reading, solving & double-checking...", ja: "自由形式 → AI が構造化・解答・ダブルチェック中..." },
+  "AI đang giải đáp án còn thiếu...": { vi: "AI đang giải đáp án còn thiếu...", en: "AI solving remaining missing answers...", ja: "AI が未解答の問題を解答中..." },
+  "AI đang kiểm tra chéo độ chính xác đáp án...": { vi: "AI đang kiểm tra chéo độ chính xác đáp án...", en: "AI double-checking answer accuracy...", ja: "AI が解答精度をダブルチェック中..." },
+  "2. File mẫu & Kiểm duyệt AI": { vi: "2. File mẫu & Kiểm duyệt AI", en: "2. Template & AI Verification", ja: "2. テンプレートとAI検証" },
+  "Đã tích hợp sẵn cấu trúc chuẩn 11 cột": { vi: "Đã tích hợp sẵn cấu trúc chuẩn 11 cột", en: "Built-in 11-column standard format", ja: "標準11列フォーマット内蔵" },
+  "(không cần tải file mẫu lên).": { vi: "(không cần tải file mẫu lên).", en: "(no need to upload a template file).", ja: "（テンプレートのアップロード不要）。" },
+  "👁️ Xem file mẫu": { vi: "👁️ Xem file mẫu", en: "👁️ View Template", ja: "👁️ サンプルを表示" },
+  "⬇ Tải file mẫu (.xlsx)": { vi: "⬇ Tải file mẫu (.xlsx)", en: "⬇ Download Template (.xlsx)", ja: "⬇ テンプレート (.xlsx)" },
+  "Nạp nhanh bảng đáp án thủ công": { vi: "Nạp nhanh bảng đáp án thủ công", en: "Quick Manual Answer Key Input", ja: "手動で解答キーを一括適用" },
+  "1.C 2.A 3.D 4.B hoặc 1-c, 2-a,c": { vi: "1.C 2.A 3.D 4.B hoặc 1-c, 2-a,c", en: "1.C 2.A 3.D 4.B or 1-c, 2-a,c", ja: "1.C 2.A 3.D 4.B または 1-c, 2-a,c" },
+  "Áp dụng đáp án": { vi: "Áp dụng đáp án", en: "Apply Answer Key", ja: "解答キーを適用" },
+  "🔍 AI Kiểm tra lại toàn bộ đáp án (Double-Check)": { vi: "🔍 AI Kiểm tra lại toàn bộ đáp án (Double-Check)", en: "🔍 AI Double-Check All Answers", ja: "🔍 AI 全解答ダブルチェック" },
+  "🔒 🔍 AI Kiểm tra lại toàn bộ đáp án (Double-Check)": { vi: "🔒 🔍 AI Kiểm tra lại toàn bộ đáp án (Double-Check)", en: "🔒 🔍 AI Double-Check All Answers", ja: "🔒 🔍 AI 全解答ダブルチェック" },
+  "3. Chuẩn hóa & Xuất file": { vi: "3. Chuẩn hóa & Xuất file", en: "3. Normalize & Export", ja: "3. 正規化とエクスポート" },
+  "Chế độ môn học": { vi: "Chế độ môn học", en: "Subject Mode", ja: "科目モード" },
+  "Toán - Lý - Hóa (Chuyên LaTeX)": { vi: "Toán - Lý - Hóa (Chuyên LaTeX)", en: "Math - Physics - Chemistry (LaTeX)", ja: "数学・物理・化学 (LaTeX特化)" },
+  "Tiếng Anh (Gạch chân <u>, trọng âm)": { vi: "Tiếng Anh (Gạch chân <u>, trọng âm)", en: "English (Underline <u>, stress marks)", ja: "英語 (下線 <u>・アクセント記号)" },
+  "Môn lý thuyết khác": { vi: "Môn lý thuyết khác", en: "General / Theory Subjects", ja: "その他の理論・一般科目" },
+  "Định dạng Đáp án": { vi: "Định dạng Đáp án", en: "Answer Format", ja: "正解の出力形式" },
+  "Số (1–5)": { vi: "Số (1–5)", en: "Number (1–5)", ja: "数字 (1–5)" },
+  "Chữ (A–E)": { vi: "Chữ (A–E)", en: "Letter (A–E)", ja: "英字 (A–E)" },
+  "Thời gian (giây)": { vi: "Thời gian (giây)", en: "Time (seconds)", ja: "制限時間 (秒)" },
+  "Phạm vi xuất": { vi: "Phạm vi xuất", en: "Export Scope", ja: "出力範囲" },
+  "Chỉ câu có Đ/A": { vi: "Chỉ câu có Đ/A", en: "Answered only", ja: "正解ありのみ" },
+  "Chia file": { vi: "Chia file", en: "Split File", ja: "ファイル分割" },
+  "Gộp 1 file": { vi: "Gộp 1 file", en: "Single file", ja: "1ファイルにまとめる" },
+  "Giữ chuẩn LaTeX ($...$)": { vi: "Giữ chuẩn LaTeX ($...$)", en: "Keep LaTeX math ($...$)", ja: "LaTeX 数式 ($...$) を維持" },
+  "Giữ thẻ HTML (<u>, <b>, <i>)": { vi: "Giữ thẻ HTML (<u>, <b>, <i>)", en: "Keep HTML tags (<u>, <b>, <i>)", ja: "HTMLタグ (<u>, <b>, <i>) を維持" },
+  "Tên file:": { vi: "Tên file:", en: "Filename:", ja: "ファイル名:" },
+  "Tên bộ đề (1-Click Import)": { vi: "Tên bộ đề (1-Click Import)", en: "Deck Title (1-Click Import)", ja: "問題集タイトル (ワンクリック登録)" },
+  "Thẻ môn học / Tag": { vi: "Thẻ môn học / Tag", en: "Subject / Tag", ja: "科目 / タグ" },
+  "VD: Giải tích, Tiếng Anh": { vi: "VD: Giải tích, Tiếng Anh", en: "e.g. Calculus, English", ja: "例: 微積分、英語" },
+  "Đích lưu": { vi: "Đích lưu", en: "Target Deck", ja: "保存先" },
+  "Đích lưu (Gộp cần Gold)": { vi: "Đích lưu (Gộp cần Gold)", en: "Target Deck (Merge requires Gold)", ja: "保存先 (統合は Gold 以上)" },
+  "🎮 Mở trong Creator Studio": { vi: "🎮 Mở trong Creator Studio", en: "🎮 Open in Creator Studio", ja: "🎮 Creator Studio で開く" },
+  "Kiểm duyệt & Chỉnh sửa câu hỏi": { vi: "Kiểm duyệt & Chỉnh sửa câu hỏi", en: "Review & Edit Questions", ja: "問題の確認と編集" },
+  "Bảng nhanh": { vi: "Bảng nhanh", en: "Quick Table", ja: "クイック表" },
+  "Đối chiếu song song (Split-Screen)": { vi: "Đối chiếu song song (Split-Screen)", en: "Split-Screen Review", ja: "並列レビュー (Split-Screen)" },
+  "🔒 Đối chiếu song song (Split-Screen)": { vi: "🔒 Đối chiếu song song (Split-Screen)", en: "🔒 Split-Screen Review", ja: "🔒 並列レビュー (Split-Screen)" },
+  "✓ Duyệt tất cả": { vi: "✓ Duyệt tất cả", en: "✓ Verify All", ja: "✓ すべて承認" },
+  "Xóa bảng": { vi: "Xóa bảng", en: "Clear Table", ja: "表をクリア" },
+  "Tìm theo số câu hoặc từ khóa...": { vi: "Tìm theo số câu hoặc từ khóa...", en: "Search by question # or keyword...", ja: "問題番号またはキーワードで検索..." },
+  "Chưa có câu hỏi nào. Hãy tải tệp Ảnh, PDF, Word, Markdown/Text hoặc Excel ở Khối 1 để bắt đầu.": { vi: "Chưa có câu hỏi nào. Hãy tải tệp Ảnh, PDF, Word, Markdown/Text hoặc Excel ở Khối 1 để bắt đầu.", en: "No questions loaded yet. Upload Image, PDF, Word, Markdown/Text, or Excel files in Panel 1 to start.", ja: "問題がまだありません。パネル1から画像・PDF・Word・Markdown/Text・Excel をアップロードして開始してください。" },
+  "Ảnh đề gốc": { vi: "Ảnh đề gốc", en: "Original Exam Image", ja: "元の試験画像" },
+  "Chưa có ảnh đề gốc nào trong hàng đợi. Bạn có thể tải ảnh ở Khối 1 để đối chiếu song song.": { vi: "Chưa có ảnh đề gốc nào trong hàng đợi. Bạn có thể tải ảnh ở Khối 1 để đối chiếu song song.", en: "No original exam images in the queue. Upload images in Panel 1 for side-by-side comparison.", ja: "元の試験画像がありません。パネル1で画像をアップロードすると並列比較できます。" },
+  "Câu hỏi (KaTeX + HTML)": { vi: "Câu hỏi (KaTeX + HTML)", en: "Question (KaTeX + HTML)", ja: "問題文 (KaTeX + HTML)" },
+  "Phương án": { vi: "Phương án", en: "Options", ja: "選択肢" },
+  "Đáp án": { vi: "Đáp án", en: "Answer", ja: "正解" },
+  "Duyệt": { vi: "Duyệt", en: "Verified", ja: "承認" },
+  "⚠️ Cần kiểm tra kỹ": { vi: "⚠️ Cần kiểm tra kỹ", en: "⚠️ Needs Review", ja: "⚠️ 要確認" },
+  "Thiếu Đ/A": { vi: "Thiếu Đ/A", en: "Missing Key", ja: "解答なし" },
+  "✓ Đã duyệt (Verified)": { vi: "✓ Đã duyệt (Verified)", en: "✓ Verified", ja: "✓ 承認済み (Verified)" },
+  "Sửa nội dung câu hỏi": { vi: "Sửa nội dung câu hỏi", en: "Edit question text", ja: "問題文を編集" },
+  "Giải thích đáp án...": { vi: "Giải thích đáp án...", en: "Answer explanation...", ja: "解答の解説..." },
+  "Nội dung (LaTeX & HTML)": { vi: "Nội dung (LaTeX & HTML)", en: "Content (LaTeX & HTML)", ja: "問題内容 (LaTeX & HTML)" },
+  "Xem trước trực quan": { vi: "Xem trước trực quan", en: "Live Preview", ja: "ライブプレビュー" },
+  "File mẫu chuẩn 11 cột – AI_Tutor.xlsx": { vi: "File mẫu chuẩn 11 cột – AI_Tutor.xlsx", en: "11-Column Standard Template – AI_Tutor.xlsx", ja: "標準11列テンプレート – AI_Tutor.xlsx" },
+  "AI kiểm tra chéo khớp đáp án (Độ tự tin cao).": { vi: "AI kiểm tra chéo khớp đáp án (Độ tự tin cao).", en: "AI cross-check matched answer (High confidence).", ja: "AI ダブルチェックで解答一致（高信頼度）。" },
+  "Vui lòng chọn / kéo thả tệp tài liệu (Ảnh, PDF, Word, Markdown/Text) hoặc dán nội dung trước.": { vi: "Vui lòng chọn / kéo thả tệp tài liệu (Ảnh, PDF, Word, Markdown/Text) hoặc dán nội dung trước.", en: "Please select / drag & drop files (Image, PDF, Word, Markdown/Text) or paste content first.", ja: "先にファイル（画像・PDF・Word・Markdown/Text）を選択/ドロップするか、テキストを貼り付けてください。" },
+  "Không tìm thấy câu hỏi hợp lệ nào trong tệp đã tải lên.": { vi: "Không tìm thấy câu hỏi hợp lệ nào trong tệp đã tải lên.", en: "No valid questions found in the uploaded file(s).", ja: "アップロードされたファイル内に有効な問題が見つかりませんでした。" },
+  "Đã dừng quá trình xử lý. Các câu đã trích xuất được giữ lại.": { vi: "Đã dừng quá trình xử lý. Các câu đã trích xuất được giữ lại.", en: "Processing stopped. Extracted questions have been kept.", ja: "処理を停止しました。抽出済みの問題は保持されています。" },
+  "Tất cả câu hỏi đều đã có đáp án.": { vi: "Tất cả câu hỏi đều đã có đáp án.", en: "All questions already have answer keys.", ja: "すべての問題にすでに正解が設定されています。" },
+  "Chưa có câu hỏi nào để kiểm tra chéo.": { vi: "Chưa có câu hỏi nào để kiểm tra chéo.", en: "No questions available to double-check.", ja: "ダブルチェックする問題がありません。" },
+  "AI Double-Check hoàn tất: toàn bộ đáp án đều khớp & tự tin cao!": { vi: "AI Double-Check hoàn tất: toàn bộ đáp án đều khớp & tự tin cao!", en: "AI Double-Check complete: all answers matched with high confidence!", ja: "AI ダブルチェック完了：すべての解答が高い信頼度で一致しました！" },
+  "Đã dừng kiểm tra chéo.": { vi: "Đã dừng kiểm tra chéo.", en: "Stopped double-check.", ja: "ダブルチェックを停止しました。" },
+  "Còn câu chưa duyệt": { vi: "Còn câu chưa duyệt", en: "Unverified Questions Remaining", ja: "未承認の問題があります" },
+  "Tiếp tục": { vi: "Tiếp tục", en: "Continue", ja: "続行" },
+  "Không có câu hỏi hợp lệ để xuất.": { vi: "Không có câu hỏi hợp lệ để xuất.", en: "No valid questions to export.", ja: "エクスポートできる有効な問題がありません。" },
+  "Chưa có câu hỏi hợp lệ có đáp án để nhập. Hãy chạy AI giải đáp án hoặc chọn đáp án trước.": { vi: "Chưa có câu hỏi hợp lệ có đáp án để nhập. Hãy chạy AI giải đáp án hoặc chọn đáp án trước.", en: "No valid questions with answer keys to import. Run AI Solver or select answers first.", ja: "正解が設定された有効な問題がありません。先に AI 解答を実行するか正解を選択してください。" },
+  "Chưa có câu hỏi hợp lệ để mở trong Creator Studio.": { vi: "Chưa có câu hỏi hợp lệ để mở trong Creator Studio.", en: "No valid questions to open in Creator Studio.", ja: "Creator Studio で開ける有効な問題がありません。" },
+  "Đã đánh dấu duyệt tất cả câu hỏi.": { vi: "Đã đánh dấu duyệt tất cả câu hỏi.", en: "Marked all questions as verified.", ja: "すべての問題を承認済みにしました。" },
+  "Xóa toàn bộ câu hỏi trong AI Converter?": { vi: "Xóa toàn bộ câu hỏi trong AI Converter?", en: "Clear all questions in AI Converter?", ja: "AI Converter 内のすべての問題をクリアしますか？" },
+  "Thiếu nội dung câu hỏi.": { vi: "Thiếu nội dung câu hỏi.", en: "Question text is required.", ja: "問題文が入力されていません。" },
+  "Cần ít nhất 2 phương án.": { vi: "Cần ít nhất 2 phương án.", en: "At least 2 options are required.", ja: "選択肢は最低2つ必要です。" },
+  "Cần có câu hỏi và danh sách đáp án.": { vi: "Cần có câu hỏi và danh sách đáp án.", en: "Questions and an answer key list are required.", ja: "問題と解答キーリストが必要です。" },
+  "Không khớp định dạng đáp án.": { vi: "Không khớp định dạng đáp án.", en: "Answer key format did not match.", ja: "解答キーの形式が一致しません。" },
+  "Định dạng không hỗ trợ. Hãy chọn Ảnh (.png/.jpg/.webp), Markdown/Text (.md/.txt), PDF (.pdf), Word (.doc/.docx) hoặc Excel (.xlsx).": { vi: "Định dạng không hỗ trợ. Hãy chọn Ảnh (.png/.jpg/.webp), Markdown/Text (.md/.txt), PDF (.pdf), Word (.doc/.docx) hoặc Excel (.xlsx).", en: "Unsupported format. Please select Image (.png/.jpg/.webp), Markdown/Text (.md/.txt), PDF (.pdf), Word (.doc/.docx), or Excel (.xlsx).", ja: "未対応の形式です。画像 (.png/.jpg/.webp)、Markdown/Text (.md/.txt)、PDF (.pdf)、Word (.doc/.docx)、または Excel (.xlsx) を選択してください。" },
+  "🎮 Creator Studio / Quiz Studio": { vi: "🎮 Creator Studio / Quiz Studio", en: "🎮 Creator Studio / Quiz Studio", ja: "🎮 Creator Studio / Quiz Studio" },
+  "Trình tạo & chơi Quiz tương tác chuẩn Quizizz / Wayground (KaTeX, Streak, Redemption, thời gian từng câu).": { vi: "Trình tạo & chơi Quiz tương tác chuẩn Quizizz / Wayground (KaTeX, Streak, Redemption, thời gian từng câu).", en: "Interactive Quizizz / Wayground-style Quiz creator & player (KaTeX, Streak, Redemption, per-question timer).", ja: "Quizizz / Wayground スタイルのインタラクティブクイズ作成＆プレイヤー（KaTeX、Streak、Redemption、問題別タイマー）。" },
+  "✍️ Tạo Quiz thủ công": { vi: "✍️ Tạo Quiz thủ công", en: "✍️ Create Quiz Manually", ja: "✍️ 手動でクイズ作成" },
+  "Tự soạn từng câu hỏi với toolbar B/I/U, LaTeX & ảnh": { vi: "Tự soạn từng câu hỏi với toolbar B/I/U, LaTeX & ảnh", en: "Author questions with B/I/U toolbar, LaTeX math & images", ja: "B/I/U ツールバー・LaTeX 数式・画像付きで問題を作成" },
+  "Tạo Quiz mới": { vi: "Tạo Quiz mới", en: "Create New Quiz", ja: "新規クイズ作成" },
+  "📚 Lấy từ Kho đề AI Tutor": { vi: "📚 Lấy từ Kho đề AI Tutor", en: "📚 Load from AI Tutor Decks", ja: "📚 AI Tutor 問題集から読み込む" },
+  "Chưa có bộ đề nào": { vi: "Chưa có bộ đề nào", en: "No decks available", ja: "問題集がありません" },
+  "✨ Nhập từ AI Converter": { vi: "✨ Nhập từ AI Converter", en: "✨ Import from AI Converter", ja: "✨ AI Converter から取り込む" },
+  "Bạn chưa lưu Quiz nào trong Creator Studio. Hãy tạo mới hoặc chọn từ Kho đề ở trên!": { vi: "Bạn chưa lưu Quiz nào trong Creator Studio. Hãy tạo mới hoặc chọn từ Kho đề ở trên!", en: "You haven't saved any Quizzes in Creator Studio yet. Create one or load from your Decks above!", ja: "Creator Studio に保存されたクイズはまだありません。新規作成するか上の問題集から読み込んでください！" },
+  "▶ Bắt đầu làm bài (Play)": { vi: "▶ Bắt đầu làm bài (Play)", en: "▶ Start Quiz (Play)", ja: "▶ クイズ開始 (Play)" },
+  "Chỉnh sửa": { vi: "Chỉnh sửa", en: "Edit", ja: "編集" },
+  "✏️ Chỉnh sửa": { vi: "✏️ Chỉnh sửa", en: "✏️ Edit", ja: "✏️ 編集" },
+  "📋 Nhân bản": { vi: "📋 Nhân bản", en: "📋 Duplicate", ja: "📋 複製" },
+  "🗑 Xóa": { vi: "🗑 Xóa", en: "🗑 Delete", ja: "🗑 削除" },
+  "← Danh sách": { vi: "← Danh sách", en: "← Back to List", ja: "← 一覧へ戻る" },
+  "Tên Quiz...": { vi: "Tên Quiz...", en: "Quiz Title...", ja: "クイズのタイトル..." },
+  "Môn học / Tag": { vi: "Môn học / Tag", en: "Subject / Tag", ja: "科目 / タグ" },
+  "Thời gian hàng loạt": { vi: "Thời gian hàng loạt", en: "Batch question timer", ja: "一括制限時間" },
+  "Đặt thời gian hàng loạt": { vi: "Đặt thời gian hàng loạt", en: "Apply Batch Time", ja: "一括時間を適用" },
+  "Lưu vào Kho đề": { vi: "Lưu vào Kho đề", en: "Save to Decks", ja: "問題集に保存" },
+  "💾 Lưu Quiz": { vi: "💾 Lưu Quiz", en: "💾 Save Quiz", ja: "💾 クイズを保存" },
+  "+ Thêm câu hỏi mới": { vi: "+ Thêm câu hỏi mới", en: "+ Add New Question", ja: "+ 新しい問題を追加" },
+  "Quiz này chưa có câu hỏi nào. Nhấn": { vi: "Quiz này chưa có câu hỏi nào. Nhấn", en: "This Quiz has no questions yet. Click", ja: "このクイズにはまだ問題がありません。" },
+  "để mở Question Builder chuẩn Quizizz!": { vi: "để mở Question Builder chuẩn Quizizz!", en: "to open the Quizizz-style Question Builder!", ja: "を押して Question Builder を開きましょう！" },
+  "(⏱️ Tuỳ chỉnh thời gian riêng mở khóa đầy đủ từ gói Silver)": { vi: "(⏱️ Tuỳ chỉnh thời gian riêng mở khóa đầy đủ từ gói Silver)", en: "(⏱️ Custom per-question timer unlocks fully from Silver plan)", ja: "(⏱️ 問題別の時間設定は Silver プラン以上で完全解放)" },
+  "Nhiều đáp án": { vi: "Nhiều đáp án", en: "Multiple Answers", ja: "複数正解" },
+  "1 đáp án": { vi: "1 đáp án", en: "Single Answer", ja: "単一正解" },
+  "Không giới hạn": { vi: "Không giới hạn", en: "Unlimited", ja: "無制限" },
+  "∞ Không giới hạn": { vi: "∞ Không giới hạn", en: "∞ Unlimited", ja: "∞ 無制限" },
+  "Tạo câu hỏi mới (Question Builder)": { vi: "Tạo câu hỏi mới (Question Builder)", en: "Create New Question (Question Builder)", ja: "新規問題作成 (Question Builder)" },
+  "In đậm": { vi: "In đậm", en: "Bold", ja: "太字" },
+  "In nghiêng": { vi: "In nghiêng", en: "Italic", ja: "斜体" },
+  "Gạch chân": { vi: "Gạch chân", en: "Underline", ja: "下線" },
+  "Chèn công thức Toán LaTeX": { vi: "Chèn công thức Toán LaTeX", en: "Insert LaTeX math formula", ja: "LaTeX 数式を挿入" },
+  "∑ Công thức Toán (LaTeX)": { vi: "∑ Công thức Toán (LaTeX)", en: "∑ Math Formula (LaTeX)", ja: "∑ 数式 (LaTeX)" },
+  "Chèn ảnh": { vi: "Chèn ảnh", en: "Insert Image", ja: "画像を挿入" },
+  "🖼️ Chèn link ảnh": { vi: "🖼️ Chèn link ảnh", en: "🖼️ Insert Image URL", ja: "🖼️ 画像URLを挿入" },
+  "Single Choice (1 đáp án)": { vi: "Single Choice (1 đáp án)", en: "Single Choice (1 correct answer)", ja: "Single Choice (単一正解)" },
+  "Multiple Choice (Nhiều đáp án)": { vi: "Multiple Choice (Nhiều đáp án)", en: "Multiple Choice (Multiple correct answers)", ja: "Multiple Choice (複数正解)" },
+  "Nhập câu hỏi... (dùng $...$ cho công thức LaTeX, <u>...</u> cho gạch chân)": { vi: "Nhập câu hỏi... (dùng $...$ cho công thức LaTeX, <u>...</u> cho gạch chân)", en: "Enter question... (use $...$ for LaTeX math, <u>...</u> for underline)", ja: "問題文を入力... (LaTeX 数式は $...$、下線は <u>...</u>)" },
+  "Xem trước trực tiếp (KaTeX + HTML)": { vi: "Xem trước trực tiếp (KaTeX + HTML)", en: "Live Preview (KaTeX + HTML)", ja: "ライブプレビュー (KaTeX + HTML)" },
+  "Link hình ảnh minh họa": { vi: "Link hình ảnh minh họa", en: "Illustration Image URL", ja: "イラスト画像URL" },
+  "Các phương án trả lời (bấm nút tròn ✓ để chọn đáp án đúng)": { vi: "Các phương án trả lời (bấm nút tròn ✓ để chọn đáp án đúng)", en: "Answer Options (click the circle ✓ to mark correct answer(s))", ja: "選択肢（丸い ✓ ボタンを押して正解を選択）" },
+  "Chọn đáp án đúng": { vi: "Chọn đáp án đúng", en: "Mark as correct answer", ja: "正解として選択" },
+  "Giải thích ngắn gọn (hỗ trợ LaTeX $...$)...": { vi: "Giải thích ngắn gọn (hỗ trợ LaTeX $...$)...", en: "Brief explanation (supports LaTeX $...$)...", ja: "簡潔な解説 (LaTeX $...$ 対応)..." },
+  "Lưu câu hỏi": { vi: "Lưu câu hỏi", en: "Save Question", ja: "問題を保存" },
+  "Vui lòng nhập nội dung câu hỏi.": { vi: "Vui lòng nhập nội dung câu hỏi.", en: "Please enter the question text.", ja: "問題文を入力してください。" },
+  "Cần ít nhất 2 phương án trả lời.": { vi: "Cần ít nhất 2 phương án trả lời.", en: "At least 2 answer options are required.", ja: "選択肢は最低2つ必要です。" },
+  "Vui lòng chọn ít nhất 1 đáp án đúng.": { vi: "Vui lòng chọn ít nhất 1 đáp án đúng.", en: "Please mark at least 1 correct answer.", ja: "正解を少なくとも1つ選択してください。" },
+  "Đã cập nhật câu hỏi.": { vi: "Đã cập nhật câu hỏi.", en: "Question updated.", ja: "問題を更新しました。" },
+  "Hãy thêm ít nhất 1 câu hỏi trước khi lưu Quiz.": { vi: "Hãy thêm ít nhất 1 câu hỏi trước khi lưu Quiz.", en: "Please add at least 1 question before saving the Quiz.", ja: "クイズを保存する前に少なくとも1問追加してください。" },
+  "Quiz chưa có câu hỏi nào.": { vi: "Quiz chưa có câu hỏi nào.", en: "This Quiz has no questions yet.", ja: "クイズに問題がありません。" },
+  "⚙️ Cài đặt trước khi làm bài (Quiz Lobby)": { vi: "⚙️ Cài đặt trước khi làm bài (Quiz Lobby)", en: "⚙️ Pre-Game Settings (Quiz Lobby)", ja: "⚙️ 開始前設定 (Quiz Lobby)" },
+  "← Quay lại Editor": { vi: "← Quay lại Editor", en: "← Back to Editor", ja: "← エディターに戻る" },
+  "📦 Chọn số lượng câu & Chia phiên làm bài": { vi: "📦 Chọn số lượng câu & Chia phiên làm bài", en: "📦 Question Count & Session Splitting", ja: "📦 問題数とセッション分割" },
+  "Chia nhiều phiên (VD: 50 câu/phiên)": { vi: "Chia nhiều phiên (VD: 50 câu/phiên)", en: "Split into sessions (e.g. 50 Qs/session)", ja: "複数セッションに分割 (例: 50問/回)" },
+  "Số câu mỗi phiên": { vi: "Số câu mỗi phiên", en: "Questions per session", ja: "1セッションあたりの問題数" },
+  "🔒 Một số tính năng nâng cao (Streak 🔥, Redemption Question, Đảo đề/đáp án) mở khóa từ Gói Silver trở lên.": { vi: "🔒 Một số tính năng nâng cao (Streak 🔥, Redemption Question, Đảo đề/đáp án) mở khóa từ Gói Silver trở lên.", en: "🔒 Some advanced features (Streak 🔥, Redemption Question, Shuffle) unlock from the Silver plan or higher.", ja: "🔒 一部の高度な機能（Streak 🔥、Redemption Question、シャッフル）は Silver プラン以上で解放されます。" },
+  "Chế độ thời gian": { vi: "Chế độ thời gian", en: "Timer Mode", ja: "タイマーモード" },
+  "Dùng thời gian riêng từng câu": { vi: "Dùng thời gian riêng từng câu", en: "Use per-question timer", ja: "問題ごとの制限時間を使用" },
+  "Ghi đè thời gian chung cho tất cả câu": { vi: "Ghi đè thời gian chung cho tất cả câu", en: "Override uniform time for all questions", ja: "全問題に共通の制限時間を適用" },
+  "Không giới hạn thời gian": { vi: "Không giới hạn thời gian", en: "No time limit", ja: "時間制限なし" },
+  "Thời gian chung (giây)": { vi: "Thời gian chung (giây)", en: "Uniform time (seconds)", ja: "共通制限時間 (秒)" },
+  "Hiện đáp án đúng sau mỗi câu": { vi: "Hiện đáp án đúng sau mỗi câu", en: "Show correct answer after each question", ja: "各問題の後に正解を表示" },
+  "Bật (Hiện đáp án đúng + Đúng/Sai)": { vi: "Bật (Hiện đáp án đúng + Đúng/Sai)", en: "On (Show correct answer + Correct/Incorrect)", ja: "オン (正解と正誤を表示)" },
+  "Chỉ hiện Đúng / Sai": { vi: "Chỉ hiện Đúng / Sai", en: "Show Correct / Incorrect only", ja: "正誤のみ表示" },
+  "Tắt (Ẩn cho đến khi nộp bài)": { vi: "Tắt (Ẩn cho đến khi nộp bài)", en: "Off (Hide until submission)", ja: "オフ (提出まで非表示)" },
+  "Tùy chọn hiển thị": { vi: "Tùy chọn hiển thị", en: "Display Options", ja: "表示オプション" },
+  "Hiện giải thích đáp án ngay sau mỗi câu": { vi: "Hiện giải thích đáp án ngay sau mỗi câu", en: "Show explanation immediately after each question", ja: "各問題の直後に解説を表示" },
+  "Cho phép xem lại bài làm & đáp án sau khi nộp": { vi: "Cho phép xem lại bài làm & đáp án sau khi nộp", en: "Allow reviewing answers after finishing", ja: "終了後に回答と正解の見直しを許可" },
+  "Tùy chọn nâng cao chuẩn Quizizz": { vi: "Tùy chọn nâng cao chuẩn Quizizz", en: "Advanced Quizizz Options", ja: "Quizizz スタイル高度オプション" },
+  "Đảo thứ tự câu hỏi": { vi: "Đảo thứ tự câu hỏi", en: "Shuffle question order", ja: "問題の順序をシャッフル" },
+  "Đảo thứ tự đáp án (Zero-Drift)": { vi: "Đảo thứ tự đáp án (Zero-Drift)", en: "Shuffle answer options (Zero-Drift)", ja: "選択肢の順序をシャッフル (Zero-Drift)" },
+  "Bật âm thanh hiệu ứng Đúng / Sai": { vi: "Bật âm thanh hiệu ứng Đúng / Sai", en: "Enable Correct / Incorrect sound effects", ja: "正解・不正解の効果音を有効化" },
+  "Bật thanh Streak 🔥 & điểm thưởng tốc độ": { vi: "Bật thanh Streak 🔥 & điểm thưởng tốc độ", en: "Enable Streak 🔥 bar & speed bonus points", ja: "Streak 🔥 バーとスピードボーナス点を有効化" },
+  "Câu hỏi cứu vớt (Redemption Question – làm lại câu sai ở cuối bài)": { vi: "Câu hỏi cứu vớt (Redemption Question – làm lại câu sai ở cuối bài)", en: "Redemption Question (retry missed questions at the end)", ja: "敗者復活問題 (Redemption Question – 最後に間違いを再挑戦)" },
+  "Vòng Cứu vớt (Redemption Question):": { vi: "Vòng Cứu vớt (Redemption Question):", en: "Redemption Round:", ja: "敗者復活ラウンド (Redemption):" },
+  "Trả lời đúng để gỡ lại câu bạn vừa làm sai!": { vi: "Trả lời đúng để gỡ lại câu bạn vừa làm sai!", en: "Answer correctly to redeem your missed question!", ja: "正解して先ほど間違えた問題を取り戻しましょう！" },
+  "Chọn nhiều đáp án rồi bấm Xác nhận (Enter)": { vi: "Chọn nhiều đáp án rồi bấm Xác nhận (Enter)", en: "Select multiple options then click Confirm (Enter)", ja: "複数選択して「確定 (Enter)」を押してください" },
+  "Xác nhận đáp án (Enter)": { vi: "Xác nhận đáp án (Enter)", en: "Confirm Answer (Enter)", ja: "解答を確定 (Enter)" },
+  "🎉 Chính xác!": { vi: "🎉 Chính xác!", en: "🎉 Correct!", ja: "🎉 正解！" },
+  "❌ Chưa chính xác!": { vi: "❌ Chưa chính xác!", en: "❌ Incorrect!", ja: "❌ 不正解！" },
+  "Câu tiếp theo → (Enter)": { vi: "Câu tiếp theo → (Enter)", en: "Next Question → (Enter)", ja: "次の問題へ → (Enter)" },
+  "Độ chính xác": { vi: "Độ chính xác", en: "Accuracy", ja: "正答率" },
+  "Tổng điểm": { vi: "Tổng điểm", en: "Total Score", ja: "合計スコア" },
+  "Đúng / Sai / Bỏ qua": { vi: "Đúng / Sai / Bỏ qua", en: "Correct / Wrong / Skipped", ja: "正解 / 不正解 / 未回答" },
+  "Streak dài nhất · TB/câu": { vi: "Streak dài nhất · TB/câu", en: "Best Streak · Avg Time/Q", ja: "最高連続正解 · 平均回答時間" },
+  "🔄 Làm lại phiên này": { vi: "🔄 Làm lại phiên này", en: "🔄 Retry This Session", ja: "🔄 このセッションを再挑戦" },
+  "⚙️ Chọn phiên khác": { vi: "⚙️ Chọn phiên khác", en: "⚙️ Choose Another Session", ja: "⚙️ 別のセッションを選択" },
+  "✏️ Quay lại Editor": { vi: "✏️ Quay lại Editor", en: "✏️ Back to Editor", ja: "✏️ エディターへ戻る" },
+  "Xem lại chi tiết từng câu": { vi: "Xem lại chi tiết từng câu", en: "Detailed Question Review", ja: "問題別の詳細レビュー" },
+  "Chưa trả lời": { vi: "Chưa trả lời", en: "Unanswered", ja: "未回答" },
+  "🔥 Đã cứu vớt": { vi: "🔥 Đã cứu vớt", en: "🔥 Redeemed", ja: "🔥 復活正解" },
+  "Bạn chọn:": { vi: "Bạn chọn:", en: "Your choice:", ja: "あなたの回答:" },
+  "Xóa Quiz": { vi: "Xóa Quiz", en: "Delete Quiz", ja: "クイズを削除" },
+  "Xóa Quiz này khỏi Creator Studio?": { vi: "Xóa Quiz này khỏi Creator Studio?", en: "Delete this Quiz from Creator Studio?", ja: "Creator Studio からこのクイズを削除しますか？" },
+  "Đã đặt thời gian hàng loạt cho tất cả câu.": { vi: "Đã đặt thời gian hàng loạt cho tất cả câu.", en: "Applied batch time to all questions.", ja: "すべての問題に一括制限時間を適用しました。" },
+  "Thoát Quiz": { vi: "Thoát Quiz", en: "Exit Quiz", ja: "クイズを終了" },
+  "Bạn có chắc muốn thoát phiên làm bài hiện tại?": { vi: "Bạn có chắc muốn thoát phiên làm bài hiện tại?", en: "Are you sure you want to exit the current quiz session?", ja: "現在のクイズセッションを終了してもよろしいですか？" },
+  "☁️ Sao lưu & Khôi phục dữ liệu (3 Lớp)": { vi: "☁️ Sao lưu & Khôi phục dữ liệu (3 Lớp)", en: "☁️ 3-Layer Data Backup & Restore", ja: "☁️ 3層データバックアップと復元" },
+  "Chế độ khi khôi phục dữ liệu": { vi: "Chế độ khi khôi phục dữ liệu", en: "Restore Mode", ja: "データ復元モード" },
+  "Gộp thêm (Merge)": { vi: "Gộp thêm (Merge)", en: "Merge", ja: "追加統合 (Merge)" },
+  "Gộp thêm": { vi: "Gộp thêm", en: "Merge", ja: "追加統合" },
+  "– Giữ bộ đề hiện có và thêm bộ đề mới từ bản sao lưu": { vi: "– Giữ bộ đề hiện có và thêm bộ đề mới từ bản sao lưu", en: "– Keep existing decks and add new decks from backup", ja: "– 既存の問題集を保持し、バックアップから新しい問題集を追加" },
+  "Ghi đè (Replace)": { vi: "Ghi đè (Replace)", en: "Replace", ja: "上書き (Replace)" },
+  "Ghi đè": { vi: "Ghi đè", en: "Replace", ja: "上書き" },
+  "– Thay thế toàn bộ dữ liệu trên trình duyệt bằng bản sao lưu": { vi: "– Thay thế toàn bộ dữ liệu trên trình duyệt bằng bản sao lưu", en: "– Replace all browser data with the backup file", ja: "– ブラウザ上の全データをバックアップで置き換え" },
+  "Đã kết nối": { vi: "Đã kết nối", en: "Connected", ja: "接続済み" },
+  "Chưa kết nối": { vi: "Chưa kết nối", en: "Not Connected", ja: "未接続" },
+  "Tự động tạo thư mục riêng": { vi: "Tự động tạo thư mục riêng", en: "Automatically creates dedicated folder", ja: "専用フォルダを自動作成：" },
+  "và ghi đè duy nhất 1 file sao lưu bên trong bằng quyền": { vi: "và ghi đè duy nhất 1 file sao lưu bên trong bằng quyền", en: "and updates a single backup file inside using scope", ja: "し、次の権限で単一のバックアップファイルを安全に更新します：" },
+  "Kết nối lại Drive": { vi: "Kết nối lại Drive", en: "Reconnect Drive", ja: "Drive に再接続" },
+  "Kết nối Google Drive": { vi: "Kết nối Google Drive", en: "Connect Google Drive", ja: "Google Drive に接続" },
+  "Đang xử lý...": { vi: "Đang xử lý...", en: "Processing...", ja: "処理中..." },
+  "☁️ Sao lưu lên Google Drive": { vi: "☁️ Sao lưu lên Google Drive", en: "☁️ Back Up to Google Drive", ja: "☁️ Google Drive にバックアップ" },
+  "⬇️ Khôi phục từ Google Drive": { vi: "⬇️ Khôi phục từ Google Drive", en: "⬇️ Restore from Google Drive", ja: "⬇️ Google Drive から復元" },
+  "2. Sao lưu & Khôi phục ngoại tuyến (.json)": { vi: "2. Sao lưu & Khôi phục ngoại tuyến (.json)", en: "2. Offline Backup & Restore (.json)", ja: "2. オフラインバックアップと復元 (.json)" },
+  "Hoạt động 100% Offline": { vi: "Hoạt động 100% Offline", en: "100% Offline Ready", ja: "100% オフライン対応" },
+  "Tải về máy tính/điện thoại file": { vi: "Tải về máy tính/điện thoại file", en: "Download file", ja: "PC・スマホにファイル" },
+  "để lưu trữ an toàn hoặc chuyển sang thiết bị khác.": { vi: "để lưu trữ an toàn hoặc chuyển sang thiết bị khác.", en: "to your device for safekeeping or transferring to another device.", ja: "をダウンロードして安全に保管、または別端末へ移行できます。" },
+  "⬇️ Xuất file sao lưu (.json)": { vi: "⬇️ Xuất file sao lưu (.json)", en: "⬇️ Export Backup File (.json)", ja: "⬇️ バックアップを出力 (.json)" },
+  "⬆️ Khôi phục từ file (.json)": { vi: "⬆️ Khôi phục từ file (.json)", en: "⬆️ Restore from File (.json)", ja: "⬆️ ファイルから復元 (.json)" },
+  "3. Lớp đồng bộ Cloud & IndexedDB tự động": { vi: "3. Lớp đồng bộ Cloud & IndexedDB tự động", en: "3. Automatic Cloud & IndexedDB Sync Layer", ja: "3. 自動 Cloud & IndexedDB 同期レイヤー" },
+  "Server cục bộ + IndexedDB": { vi: "Server cục bộ + IndexedDB", en: "Server + IndexedDB", ja: "サーバー + IndexedDB" },
+  "Dịch vụ": { vi: "Dịch vụ", en: "Service", ja: "サービス" },
+  "tự động đồng bộ nền theo tài khoản Google và giữ bản dự phòng trong IndexedDB (sẵn sàng kết nối Supabase / Firebase).": { vi: "tự động đồng bộ nền theo tài khoản Google và giữ bản dự phòng trong IndexedDB (sẵn sàng kết nối Supabase / Firebase).", en: "automatically syncs in the background per Google account and keeps a local mirror in IndexedDB.", ja: "が Google アカウントごとにバックグラウンドで自動同期し、IndexedDB に予備コピーを保持します。" },
+  "🔄 Đồng bộ ngay": { vi: "🔄 Đồng bộ ngay", en: "🔄 Sync Now", ja: "🔄 今すぐ同期" },
+  "Đã đồng bộ dữ liệu thành công.": { vi: "Đã đồng bộ dữ liệu thành công.", en: "Data synced successfully.", ja: "データの同期が完了しました。" },
+  "Bộ đề chưa có câu hỏi để chia sẻ.": { vi: "Bộ đề chưa có câu hỏi để chia sẻ.", en: "This deck has no questions to share.", ja: "共有できる問題がこの問題集にありません。" },
+  "Học sinh mở Link, quét mã QR hoặc nhập Mã đề ở trang chủ sẽ vào thẳng": { vi: "Học sinh mở Link, quét mã QR hoặc nhập Mã đề ở trang chủ sẽ vào thẳng", en: "Students opening the Link, scanning the QR code, or entering the Share Code on the home page will jump straight into", ja: "リンクを開くか、QRコードをスキャン、またはホーム画面でコードを入力すると、直接" },
+  "làm bài ngay (không cần import Excel).": { vi: "làm bài ngay (không cần import Excel).", en: "to start immediately (no Excel import needed).", ja: "に入りすぐ演習を開始できます（Excel インポート不要）。" },
+  "Mã QR chia sẻ đề": { vi: "Mã QR chia sẻ đề", en: "Shared Deck QR Code", ja: "問題集共有 QR コード" },
+  "⬇ Tải mã QR": { vi: "⬇ Tải mã QR", en: "⬇ Download QR", ja: "⬇ QR をダウンロード" },
+  "Mã đề ngắn": { vi: "Mã đề ngắn", en: "Short Share Code", ja: "短縮共有コード" },
+  "Sao chép Mã đề": { vi: "Sao chép Mã đề", en: "Copy Code", ja: "コードをコピー" },
+  "Đường dẫn trực tiếp (hoạt động cả tab ẩn danh)": { vi: "Đường dẫn trực tiếp (hoạt động cả tab ẩn danh)", en: "Direct Share Link (works in incognito tabs too)", ja: "直接共有リンク（シークレットタブでも利用可能）" },
+  "Sao chép Link": { vi: "Sao chép Link", en: "Copy Link", ja: "リンクをコピー" },
+  "Dữ liệu đã được đóng gói kèm Link để mở trực tiếp trên mọi trình duyệt.": { vi: "Dữ liệu đã được đóng gói kèm Link để mở trực tiếp trên mọi trình duyệt.", en: "Deck data is embedded in the Link so it opens directly in any browser.", ja: "問題データがリンク内に圧縮されているため、どのブラウザでも直接開けます。" },
+  "Bộ đề chưa có câu hỏi để xuất PDF.": { vi: "Bộ đề chưa có câu hỏi để xuất PDF.", en: "This deck has no questions to export to PDF.", ja: "PDF に出力できる問題がありません。" },
+  "🖨️ Xuất đề thi ra PDF (Chuẩn khổ A4)": { vi: "🖨️ Xuất đề thi ra PDF (Chuẩn khổ A4)", en: "🖨️ Export Exam to PDF (A4 Standard)", ja: "🖨️ 試験問題を PDF 出力 (A4標準)" },
+  "Chế độ xuất": { vi: "Chế độ xuất", en: "Export Mode", ja: "出力モード" },
+  "Bản cho học sinh": { vi: "Bản cho học sinh", en: "Student Version", ja: "生徒用（問題のみ）" },
+  "(chỉ in đề thi, ẩn đáp án)": { vi: "(chỉ in đề thi, ẩn đáp án)", en: "(print questions only, hide answers)", ja: "（問題のみ印刷、正解を非表示）" },
+  "Bản cho giáo viên": { vi: "Bản cho giáo viên", en: "Teacher Version", ja: "教師用（解答・解説付き）" },
+  "(tô đậm đáp án đúng + bảng đáp án & giải thích cuối trang)": { vi: "(tô đậm đáp án đúng + bảng đáp án & giải thích cuối trang)", en: "(highlight correct answers + answer key & explanations at the end)", ja: "（正解を太字表示＋巻末に解答一覧と解説を添付）" },
+  "Bố cục cột phương án trả lời": { vi: "Bố cục cột phương án trả lời", en: "Answer Options Column Layout", ja: "選択肢の段組みレイアウト" },
+  "2 cột gọn gàng (A/B – C/D)": { vi: "2 cột gọn gàng (A/B – C/D)", en: "2 Compact Columns (A/B – C/D)", ja: "2列コンパクト (A/B – C/D)" },
+  "1 cột dọc (phù hợp câu dài / nhiều công thức)": { vi: "1 cột dọc (phù hợp câu dài / nhiều công thức)", en: "1 Vertical Column (best for long options / formulas)", ja: "1列縦並び (長文や数式が多い問題に最適)" },
+  "Thêm khung": { vi: "Thêm khung", en: "Include", ja: "ページ上部に" },
+  "Họ tên / Lớp / Điểm": { vi: "Họ tên / Lớp / Điểm", en: "Name / Class / Score", ja: "氏名 / クラス / 得点" },
+  "ở đầu trang": { vi: "ở đầu trang", en: "header box at top of page", ja: "の記入欄を追加" },
+  "🖨️ In / Lưu thành PDF": { vi: "🖨️ In / Lưu thành PDF", en: "🖨️ Print / Save as PDF", ja: "🖨️ 印刷 / PDFとして保存" },
+  "Họ và tên:": { vi: "Họ và tên:", en: "Full Name:", ja: "氏名:" },
+  "Lớp / MSSV:": { vi: "Lớp / MSSV:", en: "Class / Student ID:", ja: "クラス / 学籍番号:" },
+  "Điểm:": { vi: "Điểm:", en: "Score:", ja: "得点:" },
+  "BẢN GIÁO VIÊN (CÓ ĐÁP ÁN)": { vi: "BẢN GIÁO VIÊN (CÓ ĐÁP ÁN)", en: "TEACHER COPY (WITH ANSWER KEY)", ja: "教師用（解答付き）" },
+  "ĐỀ THI DÀNH CHO HỌC SINH": { vi: "ĐỀ THI DÀNH CHO HỌC SINH", en: "STUDENT EXAM PAPER", ja: "生徒用試験問題" },
+  "BẢNG ĐÁP ÁN & GIẢI THÍCH CHI TIẾT": { vi: "BẢNG ĐÁP ÁN & GIẢI THÍCH CHI TIẾT", en: "ANSWER KEY & DETAILED EXPLANATIONS", ja: "解答一覧と詳細解説" },
+  "Giải thích chi tiết": { vi: "Giải thích chi tiết", en: "Detailed Explanations", ja: "詳細解説" },
+  "Xác nhận": { vi: "Xác nhận", en: "Confirm", ja: "確認" },
+  "Hủy": { vi: "Hủy", en: "Cancel", ja: "キャンセル" },
+  "Lưu": { vi: "Lưu", en: "Save", ja: "保存" },
+  "Đóng": { vi: "Đóng", en: "Close", ja: "閉じる" },
+  "Áp dụng": { vi: "Áp dụng", en: "Apply", ja: "適用" },
+  "Sao chép": { vi: "Sao chép", en: "Copy", ja: "コピー" },
+  "Sửa": { vi: "Sửa", en: "Edit", ja: "編集" },
+  "Mở": { vi: "Mở", en: "Open", ja: "開く" },
+  "(tùy chọn)": { vi: "(tùy chọn)", en: "(optional)", ja: "(任意)" },
+  "Tổng hợp": { vi: "Tổng hợp", en: "General", ja: "総合" },
+  "Quiz mới": { vi: "Quiz mới", en: "New Quiz", ja: "新規クイズ" },
+  "Quiz từ AI Converter": { vi: "Quiz từ AI Converter", en: "Quiz from AI Converter", ja: "AI Converter からのクイズ" },
+  "Quiz không tên": { vi: "Quiz không tên", en: "Untitled Quiz", ja: "無題のクイズ" },
+  "cao hơn": { vi: "cao hơn", en: "higher plan", ja: "上位プラン" },
+  "câu hỏi": { vi: "câu hỏi", en: "questions", ja: "問" },
+  "câu": { vi: "câu", en: "questions", ja: "問" },
+  "Tiến độ": { vi: "Tiến độ", en: "Progress", ja: "進捗" },
+  "· Hết hạn:": { vi: "· Hết hạn:", en: "· Expires:", ja: "· 有効期限:" },
+  "• Hết hạn:": { vi: "• Hết hạn:", en: "• Expires:", ja: "• 有効期限:" },
+  "Hết hạn:": { vi: "Hết hạn:", en: "Expires:", ja: "有効期限:" },
+  "tuần": { vi: "tuần", en: "week", ja: "週" },
+  "tháng": { vi: "tháng", en: "month", ja: "月" },
+  "câu cần ôn lại": { vi: "câu cần ôn lại", en: "questions to review", ja: "問（復習対象）" },
+  "Phiên": { vi: "Phiên", en: "Session", ja: "セッション" },
+  "Câu hỏi:": { vi: "Câu hỏi:", en: "Question:", ja: "問題:" },
+  "(đã cắm cờ)": { vi: "(đã cắm cờ)", en: "(flagged)", ja: "(フラグ付き)" },
+  "Chuỗi đúng:": { vi: "Chuỗi đúng:", en: "Streak:", ja: "連続正解:" },
+  "bộ đề cá nhân.": { vi: "bộ đề cá nhân.", en: "personal decks.", ja: "セット（個人問題集）。" },
+  "Hợp lệ:": { vi: "Hợp lệ:", en: "Valid:", ja: "有効:" },
+  "Lỗi:": { vi: "Lỗi:", en: "Errors:", ja: "エラー:" },
+  "mục (các dòng lỗi sẽ bị bỏ qua)": { vi: "mục (các dòng lỗi sẽ bị bỏ qua)", en: "items (invalid rows will be skipped)", ja: "件（エラー行はスキップされます）" },
+  "Phần gạch chân ở": { vi: "Phần gạch chân ở", en: "The underlined part in", ja: "下線部の" },
+  "phát âm khác các phương án còn lại.": { vi: "phát âm khác các phương án còn lại.", en: "is pronounced differently from the others.", ja: "は他の選択肢と発音が異なります。" },
+  "Những số nào là số nguyên tố?": { vi: "Những số nào là số nguyên tố?", en: "Which of the following numbers are prime?", ja: "次のうち素数はどれですか？" },
+  "Những số nào sau đây là số nguyên tố? (Chọn tất cả đáp án đúng)": { vi: "Những số nào sau đây là số nguyên tố? (Chọn tất cả đáp án đúng)", en: "Which of the following numbers are prime? (Select all that apply)", ja: "次のうち素数はどれですか？（すべて選択）" },
+  "2 và 5 là số nguyên tố.": { vi: "2 và 5 là số nguyên tố.", en: "2 and 5 are prime numbers.", ja: "2 と 5 は素数です。" },
+  "Chọn gói": { vi: "Chọn gói", en: "Choose Plan", ja: "プランを選択" },
+  "(365 ngày sau khi duyệt)": { vi: "(365 ngày sau khi duyệt)", en: "(365 days upon approval)", ja: "(承認後365日間)" },
+  "Lý do:": { vi: "Lý do:", en: "Reason:", ja: "理由:" },
+  "Duyệt:": { vi: "Duyệt:", en: "Approved:", ja: "承認:" },
+  "Người dùng:": { vi: "Người dùng:", en: "User:", ja: "ユーザー:" },
+  "Lớp/Khoa:": { vi: "Lớp/Khoa:", en: "Class/Faculty:", ja: "クラス/学部:" },
+  "Xin chào,": { vi: "Xin chào,", en: "Hello,", ja: "こんにちは、" },
+  "nội dung": { vi: "nội dung", en: "content", ja: "内容" },
+  "số tài khoản": { vi: "số tài khoản", en: "account number", ja: "口座番号" },
+  "nội dung chuyển khoản": { vi: "nội dung chuyển khoản", en: "transfer memo", ja: "振込メモ" },
+  "Đã chuyển ngôn ngữ giao diện sang Tiếng Việt.": { vi: "Đã chuyển ngôn ngữ giao diện sang Tiếng Việt.", en: "Switched interface language to Vietnamese.", ja: "表示言語をベトナム語に切り替えました。" },
+  "(hoặc dán Key riêng để ghi đè)": { vi: "(hoặc dán Key riêng để ghi đè)", en: "(or paste personal key to override)", ja: "（または個人キーを貼り付けて上書き）" },
+  "Không kết nối được": { vi: "Không kết nối được", en: "Connection failed", ja: "接続できませんでした" },
+  "Không thể khởi tạo thư viện đọc tài liệu.": { vi: "Không thể khởi tạo thư viện đọc tài liệu.", en: "Could not initialize document parser library.", ja: "ドキュメント解析ライブラリを初期化できませんでした。" },
+  "Không tải được thư viện phân tích từ CDN. Vui lòng kiểm tra kết nối mạng.": { vi: "Không tải được thư viện phân tích từ CDN. Vui lòng kiểm tra kết nối mạng.", en: "Could not load parser library from CDN. Please check your network.", ja: "CDN から解析ライブラリを読み込めませんでした。通信環境を確認してください。" },
+  "Không thể đọc tệp văn bản.": { vi: "Không thể đọc tệp văn bản.", en: "Could not read text file.", ja: "テキストファイルを読み込めませんでした。" },
+  "Không thể đọc dữ liệu nhị phân của tệp.": { vi: "Không thể đọc dữ liệu nhị phân của tệp.", en: "Could not read binary file data.", ja: "バイナリデータを読み込めませんでした。" },
+  "Không thể mã hóa tệp.": { vi: "Không thể mã hóa tệp.", en: "Could not encode file.", ja: "ファイルをエンコードできませんでした。" },
+  "Tệp .doc định dạng nhị phân cũ (Word 97-2003) không thể đọc trực tiếp trên trình duyệt. Hãy lưu lại thành .docx hoặc .pdf rồi tải lên.": { vi: "Tệp .doc định dạng nhị phân cũ (Word 97-2003) không thể đọc trực tiếp trên trình duyệt. Hãy lưu lại thành .docx hoặc .pdf rồi tải lên.", en: "Legacy binary .doc (Word 97-2003) cannot be read directly in the browser. Please save as .docx or .pdf and upload again.", ja: "旧バイナリ形式の .doc (Word 97-2003) はブラウザで直接読み込めません。.docx または .pdf 形式で保存してからアップロードしてください。" },
+  "Không thể đọc file ảnh.": { vi: "Không thể đọc file ảnh.", en: "Could not read image file.", ja: "画像ファイルを読み込めませんでした。" },
+  "File ảnh không hợp lệ.": { vi: "File ảnh không hợp lệ.", en: "Invalid image file.", ja: "無効な画像ファイルです。" },
+  "Yêu cầu tới Gemini AI quá thời gian chờ (Timeout 90s). Vui lòng thử lại.": { vi: "Yêu cầu tới Gemini AI quá thời gian chờ (Timeout 90s). Vui lòng thử lại.", en: "Request to Gemini AI timed out (90s). Please try again.", ja: "Gemini AI へのリクエストがタイムアウトしました (90秒)。もう一度お試しください。" },
+  "Gemini không trả về JSON.": { vi: "Gemini không trả về JSON.", en: "Gemini did not return valid JSON.", ja: "Gemini から JSON が返されませんでした。" },
+  "Vượt quá số lần thử lại API.": { vi: "Vượt quá số lần thử lại API.", en: "Exceeded maximum API retry attempts.", ja: "API の最大再試行回数を超えました。" },
+  "chưa rõ": { vi: "chưa rõ", en: "uncertain", ja: "不明" },
+  "Tệp lỗi": { vi: "Tệp lỗi", en: "Corrupted file", ja: "ファイルエラー" },
+  "Tệp ảnh hỏng": { vi: "Tệp ảnh hỏng", en: "Corrupted image", ja: "破損した画像" },
+  "Tệp bị hỏng hoặc không hợp lệ": { vi: "Tệp bị hỏng hoặc không hợp lệ", en: "Corrupted or invalid file", ja: "破損または無効なファイル" },
+  "Văn bản đã dán": { vi: "Văn bản đã dán", en: "Pasted Text", ja: "貼り付けたテキスト" },
+  "Không xác định": { vi: "Không xác định", en: "Unknown error", ja: "不明なエラー" },
+  "Bộ đề AI Converter": { vi: "Bộ đề AI Converter", en: "AI Converter Deck", ja: "AI Converter 問題集" },
+  "tệp đang chờ xử lý": { vi: "tệp đang chờ xử lý", en: "file(s) queued", ja: "件のファイルが待機中" },
+  "Gộp vào:": { vi: "Gộp vào:", en: "Merge into:", ja: "統合先:" },
+  "(Gộp cần Gold)": { vi: "(Gộp cần Gold)", en: "(Merge requires Gold)", ja: "(統合は Gold 以上)" },
+  "Tổng:": { vi: "Tổng:", en: "Total:", ja: "合計:" },
+  "Thiếu Đ/A / Lỗi:": { vi: "Thiếu Đ/A / Lỗi:", en: "Missing Key / Errors:", ja: "解答なし / エラー:" },
+  "✓ Đã kiểm tra:": { vi: "✓ Đã kiểm tra:", en: "✓ Verified:", ja: "✓ 承認済:" },
+  "⚠️ Nghi ngờ sai:": { vi: "⚠️ Nghi ngờ sai:", en: "⚠️ Suspect:", ja: "⚠️ 要確認:" },
+  "Hiện có": { vi: "Hiện có", en: "Currently", ja: "現在" },
+  "bộ đề trong Kho đề": { vi: "bộ đề trong Kho đề", en: "deck(s) in your library", ja: "セットの問題集" },
+  "câu hợp lệ trong AI Converter": { vi: "câu hợp lệ trong AI Converter", en: "valid question(s) in AI Converter", ja: "問の有効な問題 (AI Converter)" },
+  "Cập nhật:": { vi: "Cập nhật:", en: "Updated:", ja: "更新:" },
+  "Tổng cộng": { vi: "Tổng cộng", en: "Total", ja: "合計" },
+  "Câu": { vi: "Câu", en: "Question", ja: "問題" },
+  "chữ in đậm": { vi: "chữ in đậm", en: "bold text", ja: "太字テキスト" },
+  "chữ in nghiêng": { vi: "chữ in nghiêng", en: "italic text", ja: "斜体テキスト" },
+  "chữ gạch chân": { vi: "chữ gạch chân", en: "underlined text", ja: "下線テキスト" },
+  "câu/phiên": { vi: "câu/phiên", en: "Qs/session", ja: "問/回" },
+  "điểm": { vi: "điểm", en: "pts", ja: "点" },
+  "File sao lưu không hợp lệ hoặc bị hỏng cấu trúc.": { vi: "File sao lưu không hợp lệ hoặc bị hỏng cấu trúc.", en: "Invalid or corrupted backup file structure.", ja: "バックアップファイルが無効または破損しています。" },
+  "bộ đề từ bộ nhớ đệm Cloud/IndexedDB!": { vi: "bộ đề từ bộ nhớ đệm Cloud/IndexedDB!", en: "deck(s) from Cloud/IndexedDB cache!", ja: "セットの問題集を Cloud/IndexedDB から自動復元しました！" },
+  "Thư viện Google Identity Services chưa tải xong. Vui lòng kiểm tra kết nối mạng.": { vi: "Thư viện Google Identity Services chưa tải xong. Vui lòng kiểm tra kết nối mạng.", en: "Google Identity Services library has not loaded yet. Please check your network.", ja: "Google Identity Services がまだ読み込まれていません。通信環境を確認してください。" },
+  "Đã hủy cấp quyền Google Drive.": { vi: "Đã hủy cấp quyền Google Drive.", en: "Cancelled Google Drive authorization.", ja: "Google Drive の認証がキャンセルされました。" },
+  "Tài khoản Google không cung cấp địa chỉ email.": { vi: "Tài khoản Google không cung cấp địa chỉ email.", en: "Google account did not provide an email address.", ja: "Google アカウントからメールアドレスを取得できませんでした。" },
+  "Không thể kết nối Google Drive.": { vi: "Không thể kết nối Google Drive.", en: "Could not connect to Google Drive.", ja: "Google Drive に接続できませんでした。" },
+  "Phiên Google Drive đã hết hạn (401). Vui lòng bấm Kết nối lại.": { vi: "Phiên Google Drive đã hết hạn (401). Vui lòng bấm Kết nối lại.", en: "Google Drive session expired (401). Please click Reconnect.", ja: "Google Drive セッションの有効期限が切れました (401)。再接続してください。" },
+  "Phiên Google Drive đã hết hạn (401). Vui lòng kết nối lại.": { vi: "Phiên Google Drive đã hết hạn (401). Vui lòng kết nối lại.", en: "Google Drive session expired (401). Please reconnect.", ja: "Google Drive セッションの有効期限が切れました (401)。再接続してください。" },
+  "Không thể xuất file sao lưu.": { vi: "Không thể xuất file sao lưu.", en: "Could not export backup file.", ja: "バックアップファイルを出力できませんでした。" },
+  "Không thể đọc file sao lưu.": { vi: "Không thể đọc file sao lưu.", en: "Could not read backup file.", ja: "バックアップファイルを読み込めませんでした。" },
+  "File JSON không đúng định dạng sao lưu của AI Tutor.": { vi: "File JSON không đúng định dạng sao lưu của AI Tutor.", en: "JSON file is not a valid AI Tutor backup.", ja: "この JSON ファイルは AI Tutor のバックアップ形式ではありません。" },
+  "bộ đề và dữ liệu học tập thành công!": { vi: "bộ đề và dữ liệu học tập thành công!", en: "deck(s) and study data successfully!", ja: "セットの問題集と学習データを復元しました！" },
+  "Ghi đè dữ liệu hiện tại": { vi: "Ghi đè dữ liệu hiện tại", en: "Replace Current Data", ja: "現在のデータを上書き" },
+  "File JSON bị lỗi cú pháp.": { vi: "File JSON bị lỗi cú pháp.", en: "Malformed JSON file.", ja: "JSON ファイルの構文が正しくありません。" },
+  "Dữ liệu hiện có:": { vi: "Dữ liệu hiện có:", en: "Current data:", ja: "現在のデータ:" },
+  "bộ đề ·": { vi: "bộ đề ·", en: "decks ·", ja: "問題集 ·" },
+  "câu sai ·": { vi: "câu sai ·", en: "mistakes ·", ja: "弱点ノート ·" },
+  "lịch sử thi.": { vi: "lịch sử thi.", en: "exam records.", ja: "試験履歴。" },
+  "Lần sao lưu gần nhất:": { vi: "Lần sao lưu gần nhất:", en: "Last backup:", ja: "最終バックアップ:" },
+  "Bộ đề được chia sẻ": { vi: "Bộ đề được chia sẻ", en: "Shared Deck", ja: "共有された問題集" },
+  "Chia sẻ": { vi: "Chia sẻ", en: "Share", ja: "共有" },
+  "🔗 Chia sẻ bộ đề:": { vi: "🔗 Chia sẻ bộ đề:", en: "🔗 Share Deck:", ja: "🔗 問題集を共有:" },
+  "Bộ đề gồm": { vi: "Bộ đề gồm", en: "Deck contains", ja: "問題集には" },
+  "Bộ đề dung lượng lớn được lưu qua mã đề": { vi: "Bộ đề dung lượng lớn được lưu qua mã đề", en: "Large deck saved under share code", ja: "大容量問題集は共有コード" },
+  "trên máy chủ.": { vi: "trên máy chủ.", en: "on the server.", ja: "としてサーバーに保存されました。" },
+  "mã đề": { vi: "mã đề", en: "share code", ja: "共有コード" },
+  "đường dẫn chia sẻ": { vi: "đường dẫn chia sẻ", en: "share link", ja: "共有リンク" },
+  "Đã tải mã QR": { vi: "Đã tải mã QR", en: "Downloaded QR code", ja: "QRコードをダウンロードしました" },
+  "đã nhập": { vi: "đã nhập", en: "entered", ja: "入力されたコード" },
+  "Môn:": { vi: "Môn:", en: "Subject:", ja: "科目:" },
+  "Tổng số:": { vi: "Tổng số:", en: "Total:", ja: "問題数:" },
+  "câu ·": { vi: "câu ·", en: "Qs ·", ja: "問 ·" },
+  "ℹ️ Đang dùng placeholder": { vi: "ℹ️ Đang dùng placeholder", en: "ℹ️ Currently using placeholder", ja: "ℹ️ 現在プレースホルダーを使用中:" },
+  ". Hãy dán OAuth Client ID từ Google Cloud Console vào dòng 6 của": { vi: ". Hãy dán OAuth Client ID từ Google Cloud Console vào dòng 6 của", en: ". Paste your OAuth Client ID from Google Cloud Console on line 6 of", ja: "。Google Cloud Console の OAuth Client ID を次のファイルの6行目に貼り付けてください:" },
+  "để bật Google Drive.": { vi: "để bật Google Drive.", en: "to enable Google Drive.", ja: "（Google Drive を有効化するため）。" },
+  "Chưa cấu hình GOOGLE_DRIVE_CLIENT_ID! Hãy thay thế \"YOUR_GOOGLE_CLIENT_ID\" ở dòng 6 của file cloud-share-pdf.js bằng Client ID từ Google Cloud Console.": { vi: "Chưa cấu hình GOOGLE_DRIVE_CLIENT_ID! Hãy thay thế \"YOUR_GOOGLE_CLIENT_ID\" ở dòng 6 của file cloud-share-pdf.js bằng Client ID từ Google Cloud Console.", en: "GOOGLE_DRIVE_CLIENT_ID is not configured! Replace \"YOUR_GOOGLE_CLIENT_ID\" on line 6 of cloud-share-pdf.js with your Client ID from Google Cloud Console.", ja: "GOOGLE_DRIVE_CLIENT_ID が設定されていません！cloud-share-pdf.js の6行目の \"YOUR_GOOGLE_CLIENT_ID\" を Google Cloud Console の Client ID に置き換えてください。" },
+  "Chưa thay \"YOUR_GOOGLE_CLIENT_ID\" trong cloud-share-pdf.js bằng OAuth Client ID từ Google Cloud Console.": { vi: "Chưa thay \"YOUR_GOOGLE_CLIENT_ID\" trong cloud-share-pdf.js bằng OAuth Client ID từ Google Cloud Console.", en: "Replace \"YOUR_GOOGLE_CLIENT_ID\" in cloud-share-pdf.js with your OAuth Client ID from Google Cloud Console.", ja: "cloud-share-pdf.js の \"YOUR_GOOGLE_CLIENT_ID\" を Google Cloud Console の OAuth Client ID に置き換えてください。" },
+  "🇻🇳 Tiếng Việt": { vi: "🇻🇳 Tiếng Việt", en: "VI", ja: "VI" },
+  "Gemini 2.0 Flash (Ổn định)": { vi: "Gemini 2.0 Flash (Ổn định)", en: "Gemini 2.0 Flash (Stable)", ja: "Gemini 2.0 Flash (安定)" },
+  "Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt sẵn Gemini API Key đó cho AI Converter mà người dùng không cần tự nhập.": { vi: "Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt sẵn Gemini API Key đó cho AI Converter mà người dùng không cần tự nhập.", en: "When the user signs in with the assigned email, the system automatically activates that Gemini API Key for AI Converter without requiring manual entry.", ja: "指定されたメールアドレスでユーザーがログインすると、手動入力なしで AI Converter 用の Gemini API Key が自動的に有効化されます。" },
+  "Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt sẵn Google Gemini API Key đó cho AI Converter mà người dùng không cần tự nhập.": { vi: "Khi người dùng đăng nhập bằng Email đã được gán, hệ thống sẽ tự động kích hoạt sẵn Google Gemini API Key đó cho AI Converter mà người dùng không cần tự nhập.", en: "When the user signs in with the assigned email, the system automatically activates that Google Gemini API Key for AI Converter without requiring manual entry.", ja: "指定されたメールアドレスでユーザーがログインすると、手動入力なしで AI Converter 用の Google Gemini API Key が自動的に有効化されます。" }
 };
 
 const I18N_PATTERNS = [
   {
     re: /^Xin chào,\s*(.+?)\s*👋$/,
-    en: function (m) { return "Hello, " + m[1] + " 👋"; },
-    ja: function (m) { return "こんにちは、" + m[1] + " 👋"; }
+    en: (m) => "Hello, " + m[1] + " 👋",
+    ja: (m) => "こんにちは、" + m[1] + " 👋"
+  },
+  {
+    re: /^MSSV:\s*(.+)$/,
+    en: (m) => "Student ID: " + m[1],
+    ja: (m) => "学籍番号: " + m[1]
+  },
+  {
+    re: /^MSSV\s+(.+)$/,
+    en: (m) => "ID " + m[1],
+    ja: (m) => "学籍番号 " + m[1]
+  },
+  {
+    re: /^Lớp\/Khoa:\s*(.+)$/,
+    en: (m) => "Class/Faculty: " + m[1],
+    ja: (m) => "クラス/学部: " + m[1]
   },
   {
     re: /^(\d+)\s+câu hỏi$/,
-    en: function (m) { return m[1] + " questions"; },
-    ja: function (m) { return m[1] + " 問"; }
+    en: (m) => m[1] + " questions",
+    ja: (m) => m[1] + " 問"
+  },
+  {
+    re: /^(\d+)\s+câu$/,
+    en: (m) => m[1] + " Qs",
+    ja: (m) => m[1] + " 問"
+  },
+  {
+    re: /^(\d+)\s+giây$/,
+    en: (m) => m[1] + " sec",
+    ja: (m) => m[1] + " 秒"
+  },
+  {
+    re: /^(\d+)\s+phút$/,
+    en: (m) => m[1] + " min",
+    ja: (m) => m[1] + " 分"
+  },
+  {
+    re: /^(\d+)\s+điểm$/,
+    en: (m) => m[1] + " pts",
+    ja: (m) => m[1] + " 点"
+  },
+  {
+    re: /^(\d+)\s+câu\/phiên$/,
+    en: (m) => m[1] + " Qs/session",
+    ja: (m) => m[1] + " 問/回"
+  },
+  {
+    re: /^(\d+)\s+câu cần ôn lại$/,
+    en: (m) => m[1] + " questions to review",
+    ja: (m) => "復習対象 " + m[1] + " 問"
+  },
+  {
+    re: /^(\d+)\s+tệp đang chờ xử lý$/,
+    en: (m) => m[1] + " file(s) queued",
+    ja: (m) => m[1] + " ファイル待機中"
   },
   {
     re: /^Tiến độ\s+(\d+)%$/,
-    en: function (m) { return "Progress " + m[1] + "%"; },
-    ja: function (m) { return "進捗 " + m[1] + "%"; }
+    en: (m) => "Progress " + m[1] + "%",
+    ja: (m) => "進捗 " + m[1] + "%"
   },
   {
     re: /^Tổng:\s*(\d+)$/,
-    en: function (m) { return "Total: " + m[1]; },
-    ja: function (m) { return "合計: " + m[1]; }
+    en: (m) => "Total: " + m[1],
+    ja: (m) => "合計: " + m[1]
   },
   {
     re: /^Hợp lệ:\s*(\d+)$/,
-    en: function (m) { return "Valid: " + m[1]; },
-    ja: function (m) { return "有効: " + m[1]; }
+    en: (m) => "Valid: " + m[1],
+    ja: (m) => "有効: " + m[1]
   },
   {
-    re: /^Trang\s+(\d+)\/(\d+)$/,
-    en: function (m) { return "Page " + m[1] + "/" + m[2]; },
-    ja: function (m) { return "ページ " + m[1] + "/" + m[2]; }
+    re: /^Lỗi:\s*(\d+)$/,
+    en: (m) => "Errors: " + m[1],
+    ja: (m) => "エラー: " + m[1]
   },
   {
-    re: /^Duyệt thanh toán\s*\((\d+)\)$/,
-    en: function (m) { return "Payment Approvals (" + m[1] + ")"; },
-    ja: function (m) { return "支払い承認 (" + m[1] + ")"; }
+    re: /^Thiếu Đ\/A \/ Lỗi:\s*(\d+)$/,
+    en: (m) => "Missing Key / Errors: " + m[1],
+    ja: (m) => "解答なし / エラー: " + m[1]
   },
   {
-    re: /^Danh sách Quiz đã tạo\s*\((\d+)\)$/,
-    en: function (m) { return "Created Quizzes (" + m[1] + ")"; },
-    ja: function (m) { return "作成済みクイズ一覧 (" + m[1] + ")"; }
+    re: /^✓ Đã kiểm tra:\s*(\d+)\/(\d+)$/,
+    en: (m) => "✓ Verified: " + m[1] + "/" + m[2],
+    ja: (m) => "✓ 承認済: " + m[1] + "/" + m[2]
   },
   {
-    re: /^Danh sách tài khoản đã được Admin gán Gemini API\s*\((\d+)\)$/,
-    en: function (m) { return "Accounts with Admin-Assigned Gemini API (" + m[1] + ")"; },
-    ja: function (m) { return "管理者が Gemini API を割り当てたアカウント (" + m[1] + ")"; }
+    re: /^⚠️ Nghi ngờ sai:\s*(\d+)$/,
+    en: (m) => "⚠️ Suspect: " + m[1],
+    ja: (m) => "⚠️ 要確認: " + m[1]
+  },
+  {
+    re: /^Tất cả\s*\((\d+)\)$/,
+    en: (m) => "All (" + m[1] + ")",
+    ja: (m) => "すべて (" + m[1] + ")"
+  },
+  {
+    re: /^Chưa duyệt\s*\((\d+)\)$/,
+    en: (m) => "Unverified (" + m[1] + ")",
+    ja: (m) => "未承認 (" + m[1] + ")"
+  },
+  {
+    re: /^⚠️ Cảnh báo nghi ngờ sai\s*\((\d+)\)$/,
+    en: (m) => "⚠️ Suspect Answers (" + m[1] + ")",
+    ja: (m) => "⚠️ 要確認の解答 (" + m[1] + ")"
+  },
+  {
+    re: /^Thiếu đáp án\s*\((\d+)\)$/,
+    en: (m) => "Missing Answers (" + m[1] + ")",
+    ja: (m) => "解答なし (" + m[1] + ")"
+  },
+  {
+    re: /^🤖 AI giải câu thiếu Đ\/A\s*\((\d+)\)$/,
+    en: (m) => "🤖 AI Solve Missing (" + m[1] + ")",
+    ja: (m) => "🤖 AI 未解答を解く (" + m[1] + ")"
   },
   {
     re: /^⚡ Nhập thẳng vào Kho đề\s*\((\d+)\s*câu hợp lệ\)$/,
-    en: function (m) { return "⚡ 1-Click Import to Decks (" + m[1] + " valid)"; },
-    ja: function (m) { return "⚡ 問題集へワンクリック登録 (" + m[1] + " 問)"; }
+    en: (m) => "⚡ 1-Click Import to Decks (" + m[1] + " valid)",
+    ja: (m) => "⚡ 問題集へワンクリック登録 (" + m[1] + " 問)"
+  },
+  {
+    re: /^Gộp vào:\s*(.+?)\s*\((\d+)\s*câu\)$/,
+    en: (m) => "Merge into: " + m[1] + " (" + m[2] + " Qs)",
+    ja: (m) => "統合先: " + m[1] + " (" + m[2] + " 問)"
+  },
+  {
+    re: /^(.+?)\s*\((\d+)\s*câu\)$/,
+    en: (m) => m[1] + " (" + m[2] + " Qs)",
+    ja: (m) => m[1] + " (" + m[2] + " 問)"
+  },
+  {
+    re: /^Bộ đề\s+([0-9\-]+)$/,
+    en: (m) => "Deck " + m[1],
+    ja: (m) => "問題集 " + m[1]
+  },
+  {
+    re: /^Bộ đề AI Converter\s+([0-9\-]+)$/,
+    en: (m) => "AI Converter Deck " + m[1],
+    ja: (m) => "AI Converter 問題集 " + m[1]
+  },
+  {
+    re: /^Trang\s+(\d+)\/(\d+)$/,
+    en: (m) => "Page " + m[1] + "/" + m[2],
+    ja: (m) => "ページ " + m[1] + "/" + m[2]
+  },
+  {
+    re: /^Câu hỏi:\s*(.+)$/,
+    en: (m) => "Question: " + m[1],
+    ja: (m) => "問題: " + m[1]
+  },
+  {
+    re: /^Câu\s*#(\d+)(.*)$/,
+    en: (m) => "Question #" + m[1] + m[2],
+    ja: (m) => "問題 #" + m[1] + m[2]
+  },
+  {
+    re: /^Câu\s+(\d+)(\s*\(đã cắm cờ\))?$/,
+    en: (m) => "Question " + m[1] + (m[2] ? " (flagged)" : ""),
+    ja: (m) => "問題 " + m[1] + (m[2] ? " (フラグ付き)" : "")
+  },
+  {
+    re: /^Câu\s+(\d+)\.$/,
+    en: (m) => "Q" + m[1] + ".",
+    ja: (m) => "問" + m[1] + "."
+  },
+  {
+    re: /^Chỉnh sửa câu\s*#(\d+)$/,
+    en: (m) => "Edit Question #" + m[1],
+    ja: (m) => "問題 #" + m[1] + " を編集"
+  },
+  {
+    re: /^Thời gian câu\s+(\d+)$/,
+    en: (m) => "Time for Question " + m[1],
+    ja: (m) => "問題 " + m[1] + " の制限時間"
+  },
+  {
+    re: /^Phương án\s+([A-E])(\s*\(tùy chọn\))?$/,
+    en: (m) => "Option " + m[1] + (m[2] ? " (optional)" : ""),
+    ja: (m) => "選択肢 " + m[1] + (m[2] ? " (任意)" : "")
+  },
+  {
+    re: /^Duyệt thanh toán\s*\((\d+)\)$/,
+    en: (m) => "Payment Approvals (" + m[1] + ")",
+    ja: (m) => "支払い承認 (" + m[1] + ")"
+  },
+  {
+    re: /^Danh sách Quiz đã tạo\s*\((\d+)\)$/,
+    en: (m) => "Created Quizzes (" + m[1] + ")",
+    ja: (m) => "作成済みクイズ一覧 (" + m[1] + ")"
+  },
+  {
+    re: /^Danh sách tài khoản đã được Admin gán Gemini API\s*\((\d+)\)$/,
+    en: (m) => "Accounts with Admin-Assigned Gemini API (" + m[1] + ")",
+    ja: (m) => "管理者が Gemini API を割り当てたアカウント (" + m[1] + ")"
+  },
+  {
+    re: /^🔑 Đã được Admin gán API\s*\((.+)\)$/,
+    en: (m) => "🔑 Admin-Assigned API (" + m[1] + ")",
+    ja: (m) => "🔑 管理者割当済 API (" + m[1] + ")"
+  },
+  {
+    re: /^Đang dùng API Key do Quản trị viên gán cho\s*(.+?)\s*\(hoặc dán Key riêng để ghi đè\)$/,
+    en: (m) => "Using Admin-assigned API Key for " + m[1] + " (or paste personal key to override)",
+    ja: (m) => m[1] + " 宛の管理者割当 API Key を使用中（または個人キーで上書き）"
+  },
+  {
+    re: /^Chọn gói\s+(.+)$/,
+    en: (m) => "Choose " + m[1],
+    ja: (m) => m[1] + " を選択"
+  },
+  {
+    re: /^Thanh toán\s*–\s*(.+)$/,
+    en: (m) => "Checkout – " + m[1],
+    ja: (m) => "お支払い – " + m[1]
+  },
+  {
+    re: /^(.+?)\s*\(365 ngày sau khi duyệt\)$/,
+    en: (m) => m[1] + " (365 days upon approval)",
+    ja: (m) => m[1] + " (承認後365日間)"
+  },
+  {
+    re: /^([•·]\s*)?Hết hạn:\s*(.+)$/,
+    en: (m) => (m[1] || "") + "Expires: " + m[2],
+    ja: (m) => (m[1] || "") + "有効期限: " + m[2]
+  },
+  {
+    re: /^Cập nhật:\s*(.+)$/,
+    en: (m) => "Updated: " + m[1],
+    ja: (m) => "更新: " + m[1]
+  },
+  {
+    re: /^Duyệt:\s*(.+)$/,
+    en: (m) => "Approved: " + m[1],
+    ja: (m) => "承認: " + m[1]
+  },
+  {
+    re: /^Đã duyệt lúc\s+(.+)$/,
+    en: (m) => "Approved at " + m[1],
+    ja: (m) => m[1] + " に承認済"
+  },
+  {
+    re: /^Lý do:\s*(.+)$/,
+    en: (m) => "Reason: " + m[1],
+    ja: (m) => "理由: " + m[1]
+  },
+  {
+    re: /^Đang chờ duyệt gói\s+(.+?)\s*\((.+?)\)\s*•\s*Gửi lúc\s+(.+)$/,
+    en: (m) => "Pending " + m[1] + " (" + m[2] + ") • Sent " + m[3],
+    ja: (m) => m[1] + " (" + m[2] + ") 承認待ち • 送信: " + m[3]
+  },
+  {
+    re: /^⏳ Đang chờ Quản trị viên xác nhận yêu cầu nâng cấp gói\s*(.*)$/,
+    en: (m) => "⏳ Awaiting Administrator confirmation for plan upgrade " + m[1],
+    ja: (m) => "⏳ プランアップグレードの管理者承認待ち " + m[1]
+  },
+  {
+    re: /^1 phiên duy nhất\s*\((\d+)\s*câu\)\.?$/,
+    en: (m) => "Single session (" + m[1] + " Qs).",
+    ja: (m) => "全1セッション (" + m[1] + " 問)。"
+  },
+  {
+    re: /^Tự động chia thành\s*(\d+)\s*phiên\s*×\s*(\d+)\s*câu\.?$/,
+    en: (m) => "Auto-split into " + m[1] + " sessions × " + m[2] + " Qs.",
+    ja: (m) => "自動的に " + m[1] + " セッション × " + m[2] + " 問に分割。"
+  },
+  {
+    re: /^Tự động chia thành\s*(\d+)\s*phiên:\s*(\d+)\s*phiên\s*×\s*(\d+)\s*câu\s*\+\s*1 phiên cuối\s*×\s*(\d+)\s*câu\.?$/,
+    en: (m) => "Auto-split into " + m[1] + " sessions: " + m[2] + " × " + m[3] + " Qs + 1 final session × " + m[4] + " Qs.",
+    ja: (m) => "全 " + m[1] + " セッションに分割: " + m[2] + " 回 × " + m[3] + " 問 + 最終回 " + m[4] + " 問。"
+  },
+  {
+    re: /^([✓○]\s*)?Phiên\s+(\d+)\s*\(Câu\s+([0-9–\-]+)\s*•\s*(\d+)\s*câu\)$/,
+    en: (m) => (m[1] || "") + "Session " + m[2] + " (Q" + m[3] + " • " + m[4] + " Qs)",
+    ja: (m) => (m[1] || "") + "セッション " + m[2] + " (問" + m[3] + " • " + m[4] + " 問)"
+  },
+  {
+    re: /^Phiên\s+(\d+)\/(\d+)\s*\(Câu\s+([0-9–\-]+)\)$/,
+    en: (m) => "Session " + m[1] + "/" + m[2] + " (Q" + m[3] + ")",
+    ja: (m) => "セッション " + m[1] + "/" + m[2] + " (問" + m[3] + ")"
+  },
+  {
+    re: /^Phiên\s+(\d+)$/,
+    en: (m) => "Session " + m[1],
+    ja: (m) => "セッション " + m[1]
+  },
+  {
+    re: /^–\s*Phiên\s+(\d+)$/,
+    en: (m) => "– Session " + m[1],
+    ja: (m) => "– セッション " + m[1]
+  },
+  {
+    re: /^Câu\s+([0-9–\-]+)\s*\((\d+)\s*câu\)$/,
+    en: (m) => "Q" + m[1] + " (" + m[2] + " Qs)",
+    ja: (m) => "問" + m[1] + " (" + m[2] + " 問)"
+  },
+  {
+    re: /^🚀 Bắt đầu Phiên\s+(\d+)\s*\((\d+)\s*câu\)$/,
+    en: (m) => "🚀 Start Session " + m[1] + " (" + m[2] + " Qs)",
+    ja: (m) => "🚀 セッション " + m[1] + " を開始 (" + m[2] + " 問)"
+  },
+  {
+    re: /^🚀 Bắt đầu\s*\((\d+)\s*câu ngẫu nhiên\)$/,
+    en: (m) => "🚀 Start (" + m[1] + " random Qs)",
+    ja: (m) => "🚀 開始 (ランダム " + m[1] + " 問)"
+  },
+  {
+    re: /^🚀 Bắt đầu toàn bộ\s*\((\d+)\s*câu\)$/,
+    en: (m) => "🚀 Start All (" + m[1] + " Qs)",
+    ja: (m) => "🚀 全問開始 (" + m[1] + " 問)"
+  },
+  {
+    re: /^Làm toàn bộ\s*\((\d+)\s*câu\)$/,
+    en: (m) => "All Questions (" + m[1] + " Qs)",
+    ja: (m) => "全問演習 (" + m[1] + " 問)"
+  },
+  {
+    re: /^Số câu ngẫu nhiên\s*\(1–(\d+)\)$/,
+    en: (m) => "Number of random questions (1–" + m[1] + ")",
+    ja: (m) => "ランダム出題数 (1–" + m[1] + ")"
+  },
+  {
+    re: /^Chọn một đáp án\s*\(phím tắt 1–(\d+)\)$/,
+    en: (m) => "Select one option (shortcut 1–" + m[1] + ")",
+    ja: (m) => "1つ選択 (ショートカット 1–" + m[1] + ")"
+  },
+  {
+    re: /^🏆 Tổng kết Quiz\s*–\s*(.+)$/,
+    en: (m) => "🏆 Quiz Summary – " + m[1],
+    ja: (m) => "🏆 クイズ結果 – " + m[1]
+  },
+  {
+    re: /^▶ Làm tiếp Phiên\s+(\d+)\s*\((\d+)\s*câu\)$/,
+    en: (m) => "▶ Continue Session " + m[1] + " (" + m[2] + " Qs)",
+    ja: (m) => "▶ 次のセッション " + m[1] + " へ (" + m[2] + " 問)"
+  },
+  {
+    re: /^🔁 Làm lại các câu sai\s*\((\d+)\)$/,
+    en: (m) => "🔁 Retry Wrong Questions (" + m[1] + ")",
+    ja: (m) => "🔁 間違えた問題を再挑戦 (" + m[1] + ")"
+  },
+  {
+    re: /^🔥 Câu hỏi cứu vớt \(Redemption\)! Làm lại\s+(\d+)\s+câu sai để gỡ điểm!$/,
+    en: (m) => "🔥 Redemption Round! Retry " + m[1] + " missed question(s) to recover points!",
+    ja: (m) => "🔥 敗者復活ラウンド！間違えた " + m[1] + " 問に再挑戦してスコアを挽回！"
+  },
+  {
+    re: /^Hiện có\s+(\d+)\s+bộ đề trong Kho đề$/,
+    en: (m) => m[1] + " deck(s) available in your library",
+    ja: (m) => "問題集に現在 " + m[1] + " セットあります"
+  },
+  {
+    re: /^Hiện có\s+(\d+)\s+câu hợp lệ trong AI Converter$/,
+    en: (m) => m[1] + " valid question(s) in AI Converter",
+    ja: (m) => "AI Converter に有効な問題が " + m[1] + " 問あります"
+  },
+  {
+    re: /^Lấy từ AI Converter\s*\((\d+)\)$/,
+    en: (m) => "Load from AI Converter (" + m[1] + ")",
+    ja: (m) => "AI Converter から取得 (" + m[1] + ")"
+  },
+  {
+    re: /^Tổng cộng\s+(\d+)\s+câu hỏi$/,
+    en: (m) => "Total " + m[1] + " questions",
+    ja: (m) => "合計 " + m[1] + " 問"
+  },
+  {
+    re: /^Dữ liệu hiện có:\s*(\d+)\s*bộ đề\s*·\s*(\d+)\s*câu sai\s*·\s*(\d+)\s*lịch sử thi\.$/,
+    en: (m) => "Current data: " + m[1] + " decks · " + m[2] + " mistakes · " + m[3] + " exam records.",
+    ja: (m) => "現在のデータ: 問題集 " + m[1] + " · 弱点ノート " + m[2] + " · 試験履歴 " + m[3] + "。"
+  },
+  {
+    re: /^1\. Google Drive cá nhân\s*\(📁\s*(.+)\)$/,
+    en: (m) => "1. Personal Google Drive (📁 " + m[1] + ")",
+    ja: (m) => "1. 個人 Google Drive (📁 " + m[1] + ")"
+  },
+  {
+    re: /^Lần sao lưu gần nhất:\s*(.+)$/,
+    en: (m) => "Last backup: " + m[1],
+    ja: (m) => "最終バックアップ: " + m[1]
+  },
+  {
+    re: /^🔗 Chia sẻ bộ đề:\s*(.+)$/,
+    en: (m) => "🔗 Share Deck: " + m[1],
+    ja: (m) => "🔗 問題集を共有: " + m[1]
+  },
+  {
+    re: /^Bộ đề gồm\s+(\d+)\s+câu hỏi$/,
+    en: (m) => "Deck contains " + m[1] + " questions",
+    ja: (m) => "全 " + m[1] + " 問の問題集"
+  },
+  {
+    re: /^Người dùng:\s*(.+?)\s*•\s*Gói\s+(.+?)\s*\((.+)\)$/,
+    en: (m) => "User: " + m[1] + " • Plan " + m[2] + " (" + m[3] + ")",
+    ja: (m) => "ユーザー: " + m[1] + " • プラン " + m[2] + " (" + m[3] + ")"
+  },
+  {
+    re: /^Biên lai\s*–\s*(.+)$/,
+    en: (m) => "Receipt – " + m[1],
+    ja: (m) => "振込明細 – " + m[1]
+  },
+  {
+    re: /^Xác nhận duyệt đơn\s+(.+?)\s+và kích hoạt gói\s+(.+?)\s+\(\+365 ngày\) cho\s+(.+)\?$/,
+    en: (m) => "Approve payment of " + m[1] + " and activate " + m[2] + " (+365 days) for " + m[3] + "?",
+    ja: (m) => m[3] + " の支払い (" + m[1] + ") を承認し、" + m[2] + " (+365日) を有効化しますか？"
+  },
+  {
+    re: /^Đã duyệt đơn và kích hoạt gói\s+(.+?)\s+\(365 ngày\) cho\s+(.+)\.$/,
+    en: (m) => "Approved request and activated " + m[1] + " (365 days) for " + m[2] + ".",
+    ja: (m) => "リクエストを承認し、" + m[2] + " に " + m[1] + " (365日間) を有効化しました。"
+  },
+  {
+    re: /^Đã từ chối yêu cầu của\s+(.+)\.$/,
+    en: (m) => "Rejected request from " + m[1] + ".",
+    ja: (m) => m[1] + " のリクエストを却下しました。"
+  },
+  {
+    re: /^Đã cấp gói\s+(.+?)\s+cho\s+(.+)\.$/,
+    en: (m) => "Granted " + m[1] + " plan to " + m[2] + ".",
+    ja: (m) => m[2] + " に " + m[1] + " プランを付与しました。"
+  },
+  {
+    re: /^Bạn có chắc muốn thu hồi gói của\s+(.+)\?$/,
+    en: (m) => "Are you sure you want to revoke the plan of " + m[1] + "?",
+    ja: (m) => m[1] + " のプランを取り消してもよろしいですか？"
+  },
+  {
+    re: /^Đã thu hồi gói của\s+(.+)\.$/,
+    en: (m) => "Revoked plan of " + m[1] + ".",
+    ja: (m) => m[1] + " のプランを取り消しました。"
+  },
+  {
+    re: /^Đã thêm mã giảm giá\s+(.+)\.$/,
+    en: (m) => "Added discount code " + m[1] + ".",
+    ja: (m) => "割引コード " + m[1] + " を追加しました。"
+  },
+  {
+    re: /^Đã chọn email\s+(.+?)\s+để gán Gemini API Key\.$/,
+    en: (m) => "Selected " + m[1] + " to assign Gemini API Key.",
+    ja: (m) => "Gemini API Key 割当対象として " + m[1] + " を選択しました。"
+  },
+  {
+    re: /^Đã gán Google Gemini API Key cho tài khoản\s+(.+?)\s+thành công!$/,
+    en: (m) => "Assigned Google Gemini API Key to " + m[1] + " successfully!",
+    ja: (m) => m[1] + " に Google Gemini API Key を割り当てました！"
+  },
+  {
+    re: /^Bạn có chắc muốn thu hồi Gemini API Key đã gán cho\s+(.+)\?$/,
+    en: (m) => "Are you sure you want to revoke the Gemini API Key assigned to " + m[1] + "?",
+    ja: (m) => m[1] + " に割り当てた Gemini API Key を取り消しますか？"
+  },
+  {
+    re: /^Đã thu hồi Gemini API Key của\s+(.+)\.$/,
+    en: (m) => "Revoked Gemini API Key of " + m[1] + ".",
+    ja: (m) => m[1] + " の Gemini API Key を取り消しました。"
+  },
+  {
+    re: /^Áp dụng thành công: giảm\s+(\d+)%\.$/,
+    en: (m) => "Discount code applied: -" + m[1] + "%.",
+    ja: (m) => "割引コードを適用しました: -" + m[1] + "%。"
+  },
+  {
+    re: /^Đã sao chép\s+(.+)\.$/,
+    en: (m) => "Copied " + m[1] + ".",
+    ja: (m) => m[1] + " をコピーしました。"
+  },
+  {
+    re: /^Tính năng "(.+?)" yêu cầu gói\s+(.+?)\s+trở lên\.$/,
+    en: (m) => "Feature \"" + m[1] + "\" requires the " + m[2] + " plan or higher.",
+    ja: (m) => "機能「" + m[1] + "」には " + m[2] + " プラン以上が必要です。"
+  },
+  {
+    re: /^Lỗi máy chủ:\s*(.+)$/,
+    en: (m) => "Server error: " + m[1],
+    ja: (m) => "サーバーエラー: " + m[1]
+  },
+  {
+    re: /^Không thể gửi yêu cầu:\s*(.+)$/,
+    en: (m) => "Could not send request: " + m[1],
+    ja: (m) => "リクエストを送信できませんでした: " + m[1]
+  },
+  {
+    re: /^Yêu cầu thanh toán gói\s+(.+?)\s+đã được ghi nhận.+$/,
+    en: (m) => "Your payment request for " + m[1] + " has been submitted and is awaiting Administrator approval.",
+    ja: (m) => m[1] + " プランの支払いリクエストを受け付けました。管理者の承認後に有効化されます。"
+  },
+  {
+    re: /^Bạn đã có (?:yêu cầu|một đơn) đang chờ duyệt cho gói\s+(.+?)\..*$/,
+    en: (m) => "You already have a pending request for the " + m[1] + " plan.",
+    ja: (m) => m[1] + " プランの承認待ちリクエストが既にあります。"
+  },
+  {
+    re: /^Đã kích hoạt trực tiếp gói\s+(.+?)\s+cho tài khoản Admin.*$/,
+    en: (m) => "Directly activated " + m[1] + " plan for Admin account.",
+    ja: (m) => "管理者アカウントで " + m[1] + " プランを直接有効化しました。"
+  },
+  {
+    re: /^Hiện còn\s+(\d+)\/(\d+)\s+câu chưa được đánh dấu ✓ Đã duyệt\. Bạn vẫn muốn tiếp tục\?$/,
+    en: (m) => m[1] + "/" + m[2] + " questions are not marked ✓ Verified yet. Continue anyway?",
+    ja: (m) => m[1] + "/" + m[2] + " 問がまだ「✓ 承認済」になっていません。続行しますか？"
+  },
+  {
+    re: /^Đã xuất\s+(\d+)\s+file\s+(.+?)\s+chuẩn AI Tutor!$/,
+    en: (m) => "Exported " + m[1] + " standard AI Tutor " + m[2] + " file(s)!",
+    ja: (m) => "AI Tutor 標準 " + m[2] + " ファイルを " + m[1] + " 件エクスポートしました！"
+  },
+  {
+    re: /^Hoàn tất! Đã xử lý\s+(\d+)\s+câu hỏi(.*)$/,
+    en: (m) => "Complete! Processed " + m[1] + " questions.",
+    ja: (m) => "完了！" + m[1] + " 問を処理しました。"
+  },
+  {
+    re: /^Đã thêm\s+(\d+)\s+tệp.*$/,
+    en: (m) => "Added " + m[1] + " file(s) to the smart processing queue.",
+    ja: (m) => m[1] + " 件のファイルをスマート処理キューに追加しました。"
+  },
+  {
+    re: /^Đã lưu Quiz "(.+?)" vào Creator Studio!$/,
+    en: (m) => "Saved Quiz \"" + m[1] + "\" to Creator Studio!",
+    ja: (m) => "クイズ「" + m[1] + "」を Creator Studio に保存しました！"
+  },
+  {
+    re: /^Đã nhập\s+(\d+)\s+câu hỏi vào Kho đề thành công!$/,
+    en: (m) => "Imported " + m[1] + " questions into your Decks!",
+    ja: (m) => m[1] + " 問を問題集にインポートしました！"
+  },
+  {
+    re: /^Bạn có chắc muốn xóa bộ đề "(.+?)"\? Hành động này không thể hoàn tác\.$/,
+    en: (m) => "Are you sure you want to delete deck \"" + m[1] + "\"? This cannot be undone.",
+    ja: (m) => "問題集「" + m[1] + "」を削除してもよろしいですか？この操作は元に戻せません。"
+  },
+  {
+    re: /^Chưa có dữ liệu điểm thi trong\s+(tuần|tháng)\s+này\. Hãy làm một bài thi thử hoặc Quiz Studio để xem biểu đồ\.$/,
+    en: (m) => "No exam score data for this " + (m[1] === "tuần" ? "week" : "month") + " yet. Complete a Mock Exam or Quiz Studio session to view analytics.",
+    ja: (m) => "この" + (m[1] === "tuần" ? "週" : "月") + "の試験スコアデータはまだありません。模擬試験または Quiz Studio を完了するとグラフが表示されます。"
+  },
+  {
+    re: /^1 phiên duy nhất\s*\((\d+)\s*câu\)\.$/,
+    en: (m) => "1 single session (" + m[1] + " questions).",
+    ja: (m) => "全1セッション (" + m[1] + " 問)。"
+  },
+  {
+    re: /^Tự động chia thành\s+(\d+)\s+phiên\s*×\s*(\d+)\s+câu\.$/,
+    en: (m) => "Automatically split into " + m[1] + " sessions × " + m[2] + " questions.",
+    ja: (m) => "自動的に " + m[1] + " セッション × " + m[2] + " 問に分割されます。"
+  },
+  {
+    re: /^Tự động chia thành\s+(\d+)\s+phiên:\s*(\d+)\s+phiên\s*×\s*(\d+)\s+câu\s*\+\s*1 phiên cuối\s*×\s*(\d+)\s+câu\.$/,
+    en: (m) => "Automatically split into " + m[1] + " sessions: " + m[2] + " sessions × " + m[3] + " Qs + 1 final session × " + m[4] + " Qs.",
+    ja: (m) => "自動的に " + m[1] + " セッションに分割: " + m[2] + " セッション × " + m[3] + " 問 + 最終セッション × " + m[4] + " 問。"
+  },
+  {
+    re: /^Phiên\s+(\d+)\s*\(Câu\s+(\d+)–(\d+)\s*•\s*(\d+)\s*câu\)$/,
+    en: (m) => "Session " + m[1] + " (Q" + m[2] + "–" + m[3] + " • " + m[4] + " Qs)",
+    ja: (m) => "セッション " + m[1] + " (問" + m[2] + "–" + m[3] + " • " + m[4] + "問)"
+  },
+  {
+    re: /^Bạn trả lời đúng\s+(\d+)\/(\d+)\s+câu(.*)$/,
+    en: (m) => "You answered " + m[1] + "/" + m[2] + " questions correctly. Review the detailed breakdown below.",
+    ja: (m) => m[2] + "問中 " + m[1] + "問正解しました。以下で各問題の詳細を確認してください。"
+  },
+  {
+    re: /^Bạn còn\s+(\d+)\s+câu chưa trả lời\. Bạn có chắc chắn muốn nộp bài\?$/,
+    en: (m) => "You have " + m[1] + " unanswered question(s). Are you sure you want to submit?",
+    ja: (m) => "未回答の問題が " + m[1] + " 問あります。提出してもよろしいですか？"
+  },
+  {
+    re: /^Bạn đã hoàn thành\s+(\d+)\/(\d+)\s+câu\. Kết thúc phiên học bây giờ\?$/,
+    en: (m) => "You have completed " + m[1] + "/" + m[2] + " questions. End this study session now?",
+    ja: (m) => m[2] + "問中 " + m[1] + "問完了しました。学習セッションを終了しますか？"
+  },
+  {
+    re: /^Đã kết thúc phiên học:\s*(\d+)\/(\d+)\s*câu đúng\.$/,
+    en: (m) => "Session ended: " + m[1] + "/" + m[2] + " correct.",
+    ja: (m) => "セッション終了: " + m[2] + "問中 " + m[1] + "問正解。"
+  },
+  {
+    re: /^File thiếu các cột bắt buộc:\s*(.+)$/,
+    en: (m) => "File is missing required columns: " + m[1],
+    ja: (m) => "ファイルに必須列がありません: " + m[1]
+  },
+  {
+    re: /^Dòng\s+(\d+):\s*Thiếu nội dung câu hỏi$/,
+    en: (m) => "Row " + m[1] + ": Missing question content",
+    ja: (m) => "行 " + m[1] + ": 問題文がありません"
+  },
+  {
+    re: /^Dòng\s+(\d+):\s*Cần ít nhất 2 phương án trả lời$/,
+    en: (m) => "Row " + m[1] + ": At least 2 answer choices are required",
+    ja: (m) => "行 " + m[1] + ": 少なくとも2つの選択肢が必要です"
+  },
+  {
+    re: /^Dòng\s+(\d+):\s*Đáp án đúng không hợp lệ\s*\("(.+?)"\)$/,
+    en: (m) => "Row " + m[1] + ": Invalid correct answer (\"" + m[2] + "\")",
+    ja: (m) => "行 " + m[1] + ": 正解の指定が無効です (\"" + m[2] + "\")"
+  },
+  {
+    re: /^Gói\s+(.+?)\s+chỉ cho phép tối đa\s+(\d+)\s+câu mỗi bộ đề\.$/,
+    en: (m) => "The " + m[1] + " plan allows up to " + m[2] + " questions per deck.",
+    ja: (m) => m[1] + " プランでは1問題集あたり最大 " + m[2] + " 問までです。"
+  },
+  {
+    re: /^Gói\s+(.+?)\s+cho phép tối đa\s+(\d+)\s+ảnh\/lần trong AI Converter\.$/,
+    en: (m) => "The " + m[1] + " plan allows up to " + m[2] + " images per batch in AI Converter.",
+    ja: (m) => m[1] + " プランでは AI Converter で1回あたり最大 " + m[2] + " 枚の画像まで処理できます。"
+  },
+  {
+    re: /^Đang chờ duyệt gói\s+(.+?)\s*\((.+?)\)\s*•\s*Gửi lúc\s+(.+)$/,
+    en: (m) => "Pending approval for " + m[1] + " (" + m[2] + ") • Submitted " + m[3],
+    ja: (m) => m[1] + " (" + m[2] + ") 承認待ち • 送信日時: " + m[3]
+  },
+  {
+    re: /^Đã duyệt lúc\s+(.+)$/,
+    en: (m) => "Approved at " + m[1],
+    ja: (m) => "承認日時: " + m[1]
+  },
+  {
+    re: /^Thanh toán\s*–\s*(.+)$/,
+    en: (m) => "Checkout – " + m[1],
+    ja: (m) => "お支払い – " + m[1]
+  },
+  {
+    re: /^🔑 Đã được Admin gán API\s*\((.+)\)$/,
+    en: (m) => "🔑 API Assigned by Admin (" + m[1] + ")",
+    ja: (m) => "🔑 管理者割当済 API (" + m[1] + ")"
+  },
+  {
+    re: /^Đang dùng API Key do Quản trị viên gán cho\s+(.+)$/,
+    en: (m) => "Using API Key assigned by Administrator for " + m[1],
+    ja: (m) => "管理者が " + m[1] + " に割り当てた API Key を使用中"
+  },
+  {
+    re: /^Kiểm tra thất bại:\s*(.+)$/,
+    en: (m) => "Verification failed: " + m[1],
+    ja: (m) => "テスト失敗: " + m[1]
+  },
+  {
+    re: /^Tệp "(.+?)" rỗng \(0 KB\), không có nội dung để xử lý\.$/,
+    en: (m) => "File \"" + m[1] + "\" is empty (0 KB), nothing to process.",
+    ja: (m) => "ファイル「" + m[1] + "」は空 (0 KB) です。"
+  },
+  {
+    re: /^AI đang giải đáp án\s+(\d+)\/(\d+)\.\.\.$/,
+    en: (m) => "AI solving answers " + m[1] + "/" + m[2] + "...",
+    ja: (m) => "AI 解答中 " + m[1] + "/" + m[2] + "..."
+  },
+  {
+    re: /^AI đang kiểm tra chéo đáp án\s+(\d+)\/(\d+)\.\.\.$/,
+    en: (m) => "AI cross-checking answers " + m[1] + "/" + m[2] + "...",
+    ja: (m) => "AI クロスチェック中 " + m[1] + "/" + m[2] + "..."
+  },
+  {
+    re: /^AI kiểm tra chéo đề xuất:\s*(.+?)\s*\(Độ tự tin\s+(.+?)\)\.\s*(.*)$/,
+    en: (m) => "AI Double-Check suggests: " + m[1] + " (Confidence " + m[2] + "). " + m[3],
+    ja: (m) => "AI クロスチェック提案: " + m[1] + " (信頼度 " + m[2] + ")。" + m[3]
+  },
+  {
+    re: /^AI đang cấu trúc & giải đề\s*\(phần\s+(\d+)\/(\d+)\)\.\.\.$/,
+    en: (m) => "AI structuring & solving exam (part " + m[1] + "/" + m[2] + ")...",
+    ja: (m) => "AI 構造化・解答中 (パート " + m[1] + "/" + m[2] + ")..."
+  },
+  {
+    re: /^Tệp Excel "(.+?)" không có câu hỏi hợp lệ\.$/,
+    en: (m) => "Excel file \"" + m[1] + "\" contains no valid questions.",
+    ja: (m) => "Excel ファイル「" + m[1] + "」に有効な問題がありません。"
+  },
+  {
+    re: /^Không thể đọc tệp Excel "(.+?)":\s*(.+)$/,
+    en: (m) => "Could not read Excel file \"" + m[1] + "\": " + m[2],
+    ja: (m) => "Excel ファイル「" + m[1] + "」を読み込めませんでした: " + m[2]
+  },
+  {
+    re: /^AI Vision đang đọc ảnh\s+(\d+)\/(\d+):\s*(.+)$/,
+    en: (m) => "AI Vision reading image " + m[1] + "/" + m[2] + ": " + m[3],
+    ja: (m) => "AI Vision 画像読み取り中 " + m[1] + "/" + m[2] + ": " + m[3]
+  },
+  {
+    re: /^Lỗi đọc ảnh "(.+?)":\s*(.+)$/,
+    en: (m) => "Error reading image \"" + m[1] + "\": " + m[2],
+    ja: (m) => "画像「" + m[1] + "」の読み取りエラー: " + m[2]
+  },
+  {
+    re: /^Ảnh AI Vision:\s*(.+)$/,
+    en: (m) => "AI Vision Image: " + m[1],
+    ja: (m) => "AI Vision 画像: " + m[1]
+  },
+  {
+    re: /^Đang trích xuất nội dung từ\s+(.+)\.\.\.$/,
+    en: (m) => "Extracting content from " + m[1] + "...",
+    ja: (m) => m[1] + " から内容を抽出中..."
+  },
+  {
+    re: /^Không thể đọc tệp "(.+?)":\s*(.+)$/,
+    en: (m) => "Could not read file \"" + m[1] + "\": " + m[2],
+    ja: (m) => "ファイル「" + m[1] + "」を読み込めませんでした: " + m[2]
+  },
+  {
+    re: /^Tệp PDF "(.+?)" là bản scan hình ảnh nên cần Gemini API Key để đọc\.$/,
+    en: (m) => "PDF \"" + m[1] + "\" is a scanned image PDF and requires a Gemini API Key for OCR.",
+    ja: (m) => "PDF「" + m[1] + "」はスキャン画像のため、読み取りに Gemini API Key が必要です。"
+  },
+  {
+    re: /^PDF dạng ảnh scan — AI đang đọc\s+(.+)\.\.\.$/,
+    en: (m) => "Scanned PDF — AI reading " + m[1] + "...",
+    ja: (m) => "スキャン PDF — AI が " + m[1] + " を読み取り中..."
+  },
+  {
+    re: /^Tệp "(.+?)" trống hoặc không có nội dung văn bản\.$/,
+    en: (m) => "File \"" + m[1] + "\" is empty or contains no text.",
+    ja: (m) => "ファイル「" + m[1] + "」が空かテキストを含んでいません。"
+  },
+  {
+    re: /^(.+?):\s*(\d+)\s*câu\s*\(đủ đáp án – chuyển đổi trực tiếp\)$/,
+    en: (m) => m[1] + ": " + m[2] + " Qs (complete answer keys – direct conversion)",
+    ja: (m) => m[1] + ": " + m[2] + "問 (解答あり – 直接変換)"
+  },
+  {
+    re: /^AI đang giải\s+(\d+)\s+câu thiếu đáp án & kiểm tra chéo\.\.\.$/,
+    en: (m) => "AI solving " + m[1] + " missing answers & cross-checking...",
+    ja: (m) => "AI が未解答の " + m[1] + " 問を解答＆クロスチェック中..."
+  },
+  {
+    re: /^(.+?):\s*(\d+)\s*câu\s*\(AI giải\s+(\d+)\s+câu(.*)$/,
+    en: (m) => m[1] + ": " + m[2] + " Qs (AI solved " + m[3] + " Qs)",
+    ja: (m) => m[1] + ": " + m[2] + "問 (AI解答 " + m[3] + "問)"
+  },
+  {
+    re: /^(.+?):\s*(\d+)\s*câu\s*\(thiếu\s+(\d+)\s+Đ\/A – cần API Key để AI tự giải\)$/,
+    en: (m) => m[1] + ": " + m[2] + " Qs (" + m[3] + " missing answers – API Key required for AI solving)",
+    ja: (m) => m[1] + ": " + m[2] + "問 (未解答 " + m[3] + "問 – AI自動解答には API Key が必要です)"
+  },
+  {
+    re: /^Đã trích xuất\s+(\d+)\s+câu từ "(.+?)" nhưng còn\s+(\d+)\s+câu thiếu đáp án\. Hãy cài Gemini API Key để AI tự giải & kiểm tra chéo\.$/,
+    en: (m) => "Extracted " + m[1] + " questions from \"" + m[2] + "\", with " + m[3] + " missing answers. Configure a Gemini API Key so AI can solve & cross-check them.",
+    ja: (m) => "「" + m[2] + "」から " + m[1] + " 問を抽出しました（未解答 " + m[3] + " 問）。AI自動解答には Gemini API Key を設定してください。"
+  },
+  {
+    re: /^(.+?):\s*(\d+)\s*câu\s*\(định dạng lộn xộn – cần API Key để AI chuẩn hóa đủ\)$/,
+    en: (m) => m[1] + ": " + m[2] + " Qs (messy format – API Key needed for full AI normalization)",
+    ja: (m) => m[1] + ": " + m[2] + "問 (フォーマット不揃い – AI正規化には API Key が必要です)"
+  },
+  {
+    re: /^Tệp "(.+?)" chưa đúng định dạng trắc nghiệm chuẩn nên cần Gemini API Key để AI phân tích & giải\.$/,
+    en: (m) => "File \"" + m[1] + "\" is not in standard quiz format and requires a Gemini API Key for AI parsing & solving.",
+    ja: (m) => "ファイル「" + m[1] + "」は標準問題形式ではないため、解析・解答には Gemini API Key が必要です。"
+  },
+  {
+    re: /^(.+?)\s*\(AI cấu trúc & giải\):\s*(\d+)\s*câu(.*)$/,
+    en: (m) => m[1] + " (AI structured & solved): " + m[2] + " Qs",
+    ja: (m) => m[1] + " (AI構造化・解答): " + m[2] + "問"
+  },
+  {
+    re: /^Lỗi xử lý tệp:\s*(.+)$/,
+    en: (m) => "File processing error: " + m[1],
+    ja: (m) => "ファイル処理エラー: " + m[1]
+  },
+  {
+    re: /^AI đã giải xong\s+(\d+)\s+câu hỏi\.$/,
+    en: (m) => "AI solved " + m[1] + " questions.",
+    ja: (m) => "AI が " + m[1] + " 問の解答を完了しました。"
+  },
+  {
+    re: /^Đã dừng giải đáp án\. Giữ lại\s+(\d+)\/(\d+)\s+câu đã giải\.$/,
+    en: (m) => "Stopped solving. Kept " + m[1] + "/" + m[2] + " solved questions.",
+    ja: (m) => "解答を停止しました。解答済みの " + m[1] + "/" + m[2] + " 問を保持します。"
+  },
+  {
+    re: /^Lỗi khi giải đáp án:\s*(.+)$/,
+    en: (m) => "Error solving answers: " + m[1],
+    ja: (m) => "解答エラー: " + m[1]
+  },
+  {
+    re: /^AI Double-Check phát hiện\s+(\d+)\s+câu cần kiểm tra kỹ!$/,
+    en: (m) => "AI Double-Check flagged " + m[1] + " question(s) for review!",
+    ja: (m) => "AI クロスチェックで要確認の問題が " + m[1] + " 問見つかりました！"
+  },
+  {
+    re: /^Lỗi Double-Check:\s*(.+)$/,
+    en: (m) => "Double-Check error: " + m[1],
+    ja: (m) => "クロスチェックエラー: " + m[1]
+  },
+  {
+    re: /^Đã áp dụng đáp án cho\s+Câu\s+#(\d+)$/,
+    en: (m) => "Applied answer to Question #" + m[1],
+    ja: (m) => "問題 #" + m[1] + " に解答を適用しました"
+  },
+  {
+    re: /^🔥 Câu hỏi cứu vớt \(Redemption\)! Làm lại\s+(\d+)\s+câu sai để gỡ điểm!$/,
+    en: (m) => "🔥 Redemption Round! Retry " + m[1] + " missed question(s) to recover points!",
+    ja: (m) => "🔥 リデンプション問題！間違えた " + m[1] + " 問に再挑戦してスコアを回復しましょう！"
+  },
+  {
+    re: /^(.+?)\s*–\s*Phiên\s+(\d+)\/(\d+)$/,
+    en: (m) => m[1] + " – Session " + m[2] + "/" + m[3],
+    ja: (m) => m[1] + " – セッション " + m[2] + "/" + m[3]
+  },
+  {
+    re: /^🏆 Tổng kết Quiz\s*–\s*(.+)$/,
+    en: (m) => "🏆 Quiz Summary – " + m[1],
+    ja: (m) => "🏆 クイズ結果 – " + m[1]
+  },
+  {
+    re: /^▶ Làm tiếp Phiên\s+(\d+)\/(\d+)$/,
+    en: (m) => "▶ Continue to Session " + m[1] + "/" + m[2],
+    ja: (m) => "▶ セッション " + m[1] + "/" + m[2] + " へ進む"
+  },
+  {
+    re: /^Đã tự động khôi phục\s+(\d+)\s+bộ đề từ bộ nhớ đệm Cloud\/IndexedDB!$/,
+    en: (m) => "Auto-restored " + m[1] + " deck(s) from Cloud/IndexedDB cache!",
+    ja: (m) => "Cloud/IndexedDB キャッシュから " + m[1] + " セットの問題集を自動復元しました！"
+  },
+  {
+    re: /^Không thể lấy thông tin email Google \(HTTP\s+(\d+)\)\.$/,
+    en: (m) => "Could not retrieve Google email info (HTTP " + m[1] + ").",
+    ja: (m) => "Google メール情報を取得できませんでした (HTTP " + m[1] + ")。"
+  },
+  {
+    re: /^Lỗi kiểm tra thư mục Google Drive \(HTTP\s+(\d+)\)\.$/,
+    en: (m) => "Error checking Google Drive folder (HTTP " + m[1] + ").",
+    ja: (m) => "Google Drive フォルダ確認エラー (HTTP " + m[1] + ")。"
+  },
+  {
+    re: /^Lỗi tạo thư mục trên Google Drive \(HTTP\s+(\d+)\)\.$/,
+    en: (m) => "Error creating Google Drive folder (HTTP " + m[1] + ").",
+    ja: (m) => "Google Drive フォルダ作成エラー (HTTP " + m[1] + ")。"
+  },
+  {
+    re: /^Lỗi tìm file Google Drive \(HTTP\s+(\d+)\)\.$/,
+    en: (m) => "Error searching Google Drive file (HTTP " + m[1] + ").",
+    ja: (m) => "Google Drive ファイル検索エラー (HTTP " + m[1] + ")。"
+  },
+  {
+    re: /^Đã kết nối Google Drive! Thư mục lưu trữ: "(.+?)"$/,
+    en: (m) => "Connected to Google Drive! Backup folder: \"" + m[1] + "\"",
+    ja: (m) => "Google Drive に接続しました！保存フォルダ: \"" + m[1] + "\""
+  },
+  {
+    re: /^Lỗi tải lên Google Drive \(HTTP\s+(\d+)\)\.$/,
+    en: (m) => "Google Drive upload error (HTTP " + m[1] + ").",
+    ja: (m) => "Google Drive アップロードエラー (HTTP " + m[1] + ")。"
+  },
+  {
+    re: /^Đã sao lưu "(.+?)" vào thư mục "(.+?)" thành công!$/,
+    en: (m) => "Backed up \"" + m[1] + "\" to folder \"" + m[2] + "\" successfully!",
+    ja: (m) => "「" + m[1] + "」をフォルダ「" + m[2] + "」にバックアップしました！"
+  },
+  {
+    re: /^Sao lưu thất bại:\s*(.+)$/,
+    en: (m) => "Backup failed: " + m[1],
+    ja: (m) => "バックアップ失敗: " + m[1]
+  },
+  {
+    re: /^Không tìm thấy file "(.+?)" trong thư mục "(.+?)" trên Google Drive\.$/,
+    en: (m) => "File \"" + m[1] + "\" not found in folder \"" + m[2] + "\" on Google Drive.",
+    ja: (m) => "Google Drive のフォルダ「" + m[2] + "」にファイル「" + m[1] + "」が見つかりません。"
+  },
+  {
+    re: /^Không tải được dữ liệu từ Google Drive \(HTTP\s+(\d+)\)\.$/,
+    en: (m) => "Could not download data from Google Drive (HTTP " + m[1] + ").",
+    ja: (m) => "Google Drive からデータを取得できませんでした (HTTP " + m[1] + ")。"
+  },
+  {
+    re: /^Đã khôi phục dữ liệu từ "(.+?)" thành công\s*\((.+)\)!$/,
+    en: (m) => "Restored data from \"" + m[1] + "\" successfully (" + m[2] + ")!",
+    ja: (m) => "「" + m[1] + "」からデータを復元しました (" + m[2] + ")！"
+  },
+  {
+    re: /^Khôi phục thất bại:\s*(.+)$/,
+    en: (m) => "Restore failed: " + m[1],
+    ja: (m) => "復元失敗: " + m[1]
+  },
+  {
+    re: /^Đã tải file sao lưu\s+(.+)$/,
+    en: (m) => "Downloaded backup file " + m[1],
+    ja: (m) => "バックアップファイル " + m[1] + " をダウンロードしました"
+  },
+  {
+    re: /^Đã khôi phục\s+(\d+)\s+bộ đề và dữ liệu học tập thành công!$/,
+    en: (m) => "Restored " + m[1] + " deck(s) and study data successfully!",
+    ja: (m) => m[1] + " セットの問題集と学習データを復元しました！"
+  },
+  {
+    re: /^Chế độ Ghi đè sẽ thay thế toàn bộ bộ đề và tiến độ hiện tại bằng dữ liệu từ file\s*\((\d+)\s*bộ đề\)\. Tiếp tục\?$/,
+    en: (m) => "Overwrite mode will replace all current decks and progress with data from the file (" + m[1] + " decks). Continue?",
+    ja: (m) => "上書きモードでは現在のすべての問題集と進捗がファイルのデータ (" + m[1] + " セット) に置き換えられます。続行しますか？"
+  },
+  {
+    re: /^Không tìm thấy bộ đề với mã\s+(.+)\.$/,
+    en: (m) => "No deck found with share code " + m[1] + ".",
+    ja: (m) => "共有コード " + m[1] + " の問題集が見つかりません。"
+  },
+  {
+    re: /^Đã mở bộ đề "(.+?)"\s*\((\d+)\s*câu\)\. Sẵn sàng làm bài!$/,
+    en: (m) => "Opened deck \"" + m[1] + "\" (" + m[2] + " Qs). Ready to start!",
+    ja: (m) => "問題集「" + m[1] + "」(" + m[2] + "問) を開きました。学習を始められます！"
   }
 ];
-
+/* END_VI_TRANSLATION_DICTIONARY */
 function getLang() {
   try {
     const v = localStorage.getItem(KEYS.lang) || "vi";
@@ -3147,68 +4804,113 @@ function getLang() {
 
 function translateString(viStr, lang) {
   if (!viStr || lang === "vi") return viStr;
-  const trimmed = viStr.trim();
+  const trimmed = String(viStr).replace(/\s+/g, " ").trim();
   if (!trimmed) return viStr;
-  const hit = I18N_MAP[trimmed];
+  const hit = I18N_MAP[trimmed] || I18N_MAP[String(viStr).trim()];
   if (hit && hit[lang]) {
-    const lead = viStr.match(/^\s*/)[0];
-    const trail = viStr.match(/\s*$/)[0];
+    const lead = String(viStr).match(/^\s*/)[0];
+    const trail = String(viStr).match(/\s*$/)[0];
     return lead + hit[lang] + trail;
   }
   for (let i = 0; i < I18N_PATTERNS.length; i++) {
     const p = I18N_PATTERNS[i];
     const m = trimmed.match(p.re);
     if (m && typeof p[lang] === "function") {
-      return p[lang](m);
+      const lead = String(viStr).match(/^\s*/)[0];
+      const trail = String(viStr).match(/\s*$/)[0];
+      return lead + p[lang](m) + trail;
     }
   }
   return viStr;
 }
 
+let __i18nApplying = false;
+let __i18nObserver = null;
+
 function applyI18n(root) {
-  if (typeof document === "undefined") return;
-  const lang = getLang();
-  if (document.documentElement) document.documentElement.setAttribute("lang", lang);
-  const container = root || document.body;
-  if (!container || typeof document.createTreeWalker !== "function") return;
+  if (typeof document === "undefined" || __i18nApplying) return;
+  __i18nApplying = true;
+  try {
+    const lang = getLang();
+    if (document.documentElement) document.documentElement.setAttribute("lang", lang);
+    const container = root || document.body;
+    if (!container || typeof document.createTreeWalker !== "function") return;
 
-  // 1. Walk text nodes without touching font-family or KaTeX math
-  const walker = document.createTreeWalker(container, 4 /* NodeFilter.SHOW_TEXT */, null, false);
-  let node;
-  while ((node = walker.nextNode())) {
-    const parent = node.parentElement;
-    if (!parent) continue;
-    const tag = parent.tagName;
-    if (tag === "SCRIPT" || tag === "STYLE" || tag === "CODE" || tag === "TEXTAREA") continue;
-    if (parent.closest && parent.closest(".katex")) continue;
-    const curVal = node.nodeValue || "";
-    if (!curVal.trim()) continue;
-    if (typeof node.__viText !== "string" || (lang === "vi" && node.__lastTranslated !== curVal)) {
-      if (node.__lastTranslated !== curVal) node.__viText = curVal;
-    }
-    const baseVi = typeof node.__viText === "string" ? node.__viText : curVal;
-    const nextVal = lang === "vi" ? baseVi : translateString(baseVi, lang);
-    if (nextVal !== curVal) {
-      node.__lastTranslated = nextVal;
-      node.nodeValue = nextVal;
-    }
-  }
-
-  // 2. Translate placeholders
-  if (typeof container.querySelectorAll === "function") {
-    const inputs = container.querySelectorAll("[placeholder]");
-    for (let i = 0; i < inputs.length; i++) {
-      const el = inputs[i];
-      const curP = el.getAttribute("placeholder") || "";
-      if (!el.__viPlaceholder || (lang === "vi" && el.__lastPlaceholder !== curP)) {
-        if (el.__lastPlaceholder !== curP) el.__viPlaceholder = curP;
+    // 1. Walk text nodes (including inside <option>, <button>, <th>, <td>, <label>, etc.) without touching font-family or KaTeX math
+    const walker = document.createTreeWalker(container, 4 /* NodeFilter.SHOW_TEXT */, null, false);
+    let node;
+    while ((node = walker.nextNode())) {
+      const parent = node.parentElement;
+      if (!parent) continue;
+      const tag = parent.tagName;
+      if (tag === "SCRIPT" || tag === "STYLE" || tag === "CODE" || tag === "TEXTAREA") continue;
+      if (parent.closest && parent.closest(".katex")) continue;
+      const curVal = node.nodeValue || "";
+      if (!curVal.trim()) continue;
+      if (typeof node.__viText !== "string" || node.__lastTranslated !== curVal) {
+        if (node.__lastTranslated !== curVal) node.__viText = curVal;
       }
-      const nextP = lang === "vi" ? el.__viPlaceholder : translateString(el.__viPlaceholder, lang);
-      if (nextP && nextP !== curP) {
-        el.__lastPlaceholder = nextP;
-        el.setAttribute("placeholder", nextP);
+      const baseVi = typeof node.__viText === "string" ? node.__viText : curVal;
+      const nextVal = lang === "vi" ? baseVi : translateString(baseVi, lang);
+      if (nextVal !== curVal) {
+        node.__lastTranslated = nextVal;
+        node.nodeValue = nextVal;
       }
     }
+
+    // 2. Translate attributes: placeholder, title, aria-label
+    if (typeof container.querySelectorAll === "function") {
+      const attrs = ["placeholder", "title", "aria-label"];
+      for (let a = 0; a < attrs.length; a++) {
+        const attr = attrs[a];
+        const propVi = "__vi_" + attr;
+        const propLast = "__last_" + attr;
+        const els = container.querySelectorAll("[" + attr + "]");
+        for (let i = 0; i < els.length; i++) {
+          const el = els[i];
+          const curVal = el.getAttribute(attr) || "";
+          if (!curVal.trim()) continue;
+          if (!el[propVi] || el[propLast] !== curVal) {
+            if (el[propLast] !== curVal) el[propVi] = curVal;
+          }
+          const nextVal = lang === "vi" ? el[propVi] : translateString(el[propVi], lang);
+          if (nextVal && nextVal !== curVal) {
+            el[propLast] = nextVal;
+            el.setAttribute(attr, nextVal);
+          }
+        }
+      }
+    }
+
+    // 3. Translate document.title
+    if (document.title) {
+      if (!document.__viTitle || document.__lastTitle !== document.title) {
+        if (document.__lastTitle !== document.title) document.__viTitle = document.title;
+      }
+      const nextTitle = lang === "vi" ? document.__viTitle : translateString(document.__viTitle, lang);
+      if (nextTitle && nextTitle !== document.title) {
+        document.__lastTitle = nextTitle;
+        document.title = nextTitle;
+      }
+    }
+
+    // 4. Attach automatic MutationObserver once on document.body so any dynamic modals/banners translate immediately
+    if (!__i18nObserver && document.body && typeof MutationObserver === "function") {
+      __i18nObserver = new MutationObserver(function (mutations) {
+        if (__i18nApplying || getLang() === "vi") return;
+        let shouldRun = false;
+        for (let i = 0; i < mutations.length; i++) {
+          if (mutations[i].addedNodes && mutations[i].addedNodes.length > 0) {
+            shouldRun = true;
+            break;
+          }
+        }
+        if (shouldRun) applyI18n(document.body);
+      });
+      __i18nObserver.observe(document.body, { childList: true, subtree: true });
+    }
+  } finally {
+    __i18nApplying = false;
   }
 }
 
@@ -3221,7 +4923,7 @@ function setLang(lang) {
   applyI18n(document.body);
   const msg = next === "en"
     ? "Switched interface language to English."
-    : (next === "ja" ? "表示言語を日本語に切り替えました。" : "Đã chuyển ngôn ngữ giao diện sang Tiếng Việt.");
+    : (next === "ja" ? "表示言語を日本語に切り替えました。" : "\u0110\u00e3 chuy\u1ec3n ng\u00f4n ng\u1eef giao di\u1ec7n sang Ti\u1ebfng Vi\u1ec7t.");
   showToast(msg, "info");
 }
 
@@ -3236,7 +4938,7 @@ window.UET = {
   isAdmin: isAdmin, isAdminUser: isAdminUser, currentTier: currentTier, tierRank: tierRank, effectiveLimits: effectiveLimits,
   can: can, requireFeature: requireFeature, promptUpgrade: promptUpgrade,
   getAssignedApiForUser: getActiveUserAssignedApi, getAssignedApiForEmail: getAssignedApiForEmail,
-  getLang: getLang, setLang: setLang, applyI18n: applyI18n,
+  getLang: getLang, setLang: setLang, applyI18n: applyI18n, translateString: translateString, translateString: translateString, translateString: translateString,
   getDecks: function () { return state.decks; }, getUserDecks: getUserDecks, getDeck: getDeck,
   normalizeQuestion: normalizeQuestion, parseWorkbookRows: parseWorkbookRows, addOrMergeDeck: addOrMergeDeck,
   downloadTemplate: downloadTemplate, showTab: showTab, navigateTo: navigateTo, syncHistory: syncHistory, renderTab: renderTab, updateChrome: updateChrome,
@@ -3330,8 +5032,8 @@ function init() {
   on("profAvatarFile", "change", onAvatarFile);
   on("profAvatarReset", "click", resetAvatar);
   on("profName", "input", updateProfPreview);
-  on("copyAccBtn", "click", function () { copyText(getPayCfg().accountNo, "số tài khoản"); });
-  on("copyMemoBtn", "click", function () { copyText(checkoutMemo(), "nội dung chuyển khoản"); });
+  on("copyAccBtn", "click", function () { copyText(getPayCfg().accountNo, "s\u1ed1 t\u00e0i kho\u1ea3n"); });
+  on("copyMemoBtn", "click", function () { copyText(checkoutMemo(), "n\u1ed9i dung chuy\u1ec3n kho\u1ea3n"); });
 
   on("navTabs", "click", function (e) {
     const b = e.target.closest ? e.target.closest("[data-tab]") : null;
@@ -3394,7 +5096,7 @@ function init() {
     const cb = state.confirmCb;
     state.confirmCb = null;
     closeModal("confirmModal");
-    if (cb) { try { cb(); } catch (e) { showToast("Đã xảy ra lỗi khi thực hiện thao tác.", "error"); } }
+    if (cb) { try { cb(); } catch (e) { showToast("\u0110\u00e3 x\u1ea3y ra l\u1ed7i khi th\u1ef1c hi\u1ec7n thao t\u00e1c.", "error"); } }
   });
 
   // Study
@@ -3484,7 +5186,7 @@ function init() {
   if (stored) onAuthenticated(stored);
   else {
     toggleEl("loginView", true);
-    document.title = "Đăng nhập | AI Tutor";
+    document.title = "\u0110\u0103ng nh\u1eadp | AI Tutor";
   }
 
   // Check if opened via Share Link (/quiz?code=... or ?share=... or #d=...) — works even in Incognito!
