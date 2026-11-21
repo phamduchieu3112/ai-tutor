@@ -292,31 +292,128 @@ function authHeaders() {
   return h;
 }
 async function apiCall(path, method, body) {
-  if (!state.backendOnline) return null;
   try {
     const res = await fetch(path, {
       method: method || "GET",
       headers: authHeaders(),
-      body: body ? JSON.stringify(body) : undefined
+      body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store"
     });
+    const ct = String((res.headers && res.headers.get && res.headers.get("content-type")) || "").toLowerCase();
+    // If static host rewrote /api/* to HTML or returned 404 / 405 / 5xx, fall back gracefully to localStorage
+    if (res.status === 404 || res.status === 405 || res.status >= 500 || ct.indexOf("application/json") === -1) {
+      state.backendOnline = false;
+      return null;
+    }
     const data = await res.json().catch(function () { return null; });
-    if (!res.ok) return { _err: (data && data.error) || ("HTTP " + res.status), _status: res.status };
+    if (!data) {
+      state.backendOnline = false;
+      return null;
+    }
+    state.backendOnline = true;
+    if (!res.ok) return { _err: data.error || ("HTTP " + res.status), _status: res.status };
     return data;
-  } catch (e) { return null; }
+  } catch (e) {
+    state.backendOnline = false;
+    return null;
+  }
 }
+
+function mergeRemoteBillingSnap(snap) {
+  if (!snap || snap._err) return false;
+  let changed = false;
+  const revoked = (snap.revokedSubscriptions && typeof snap.revokedSubscriptions === "object") ? snap.revokedSubscriptions : {};
+  const delVouchers = (snap.deletedVouchers && typeof snap.deletedVouchers === "object") ? snap.deletedVouchers : {};
+
+  if (snap.subscriptions && typeof snap.subscriptions === "object") {
+    const localSubs = loadObj(KEYS.subs);
+    const mergedSubs = Object.assign({}, localSubs);
+    Object.keys(revoked).forEach(function (em) {
+      const k = String(em || "").toLowerCase();
+      if (mergedSubs[k] && (Number(mergedSubs[k].since) || 0) <= Number(revoked[em])) {
+        delete mergedSubs[k];
+        changed = true;
+      }
+    });
+    Object.keys(snap.subscriptions).forEach(function (em) {
+      const k = String(em || "").toLowerCase();
+      const s = snap.subscriptions[em];
+      if (s && typeof s === "object" && s.tier) {
+        if (!mergedSubs[k] || JSON.stringify(mergedSubs[k]) !== JSON.stringify(s)) {
+          mergedSubs[k] = s;
+          changed = true;
+        }
+      }
+    });
+    saveJSON(KEYS.subs, mergedSubs);
+  }
+
+  if (Array.isArray(snap.payment_requests)) {
+    const localReqs = loadArr(KEYS.payReqs);
+    const map = {};
+    localReqs.forEach(function (r) { if (r && r.id) map[r.id] = r; });
+    snap.payment_requests.forEach(function (r) {
+      if (!r || !r.id) return;
+      const cur = map[r.id];
+      if (!cur || (cur.status === "pending" && r.status !== "pending") || JSON.stringify(cur) !== JSON.stringify(r)) {
+        map[r.id] = r;
+        changed = true;
+      }
+    });
+    const mergedReqs = Object.keys(map).map(function (id) { return map[id]; }).sort(function (a, b) {
+      return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+    });
+    saveJSON(KEYS.payReqs, mergedReqs);
+  }
+
+  if (snap.paymentConfig && typeof snap.paymentConfig === "object" && snap.paymentConfig.accountNo) {
+    saveJSON(KEYS.payCfg, snap.paymentConfig);
+  }
+
+  if (Array.isArray(snap.vouchers)) {
+    const localVouchers = loadArr(KEYS.vouchers).filter(function (v) {
+      return v && v.code && !delVouchers[String(v.code).toUpperCase()];
+    });
+    const vMap = {};
+    localVouchers.forEach(function (v) { vMap[String(v.code).toUpperCase()] = { code: String(v.code).toUpperCase(), discountPercent: Number(v.discountPercent) }; });
+    snap.vouchers.forEach(function (v) {
+      if (v && v.code && !delVouchers[String(v.code).toUpperCase()]) {
+        vMap[String(v.code).toUpperCase()] = { code: String(v.code).toUpperCase(), discountPercent: Number(v.discountPercent) };
+      }
+    });
+    const mergedVouchers = Object.keys(vMap).map(function (c) { return vMap[c]; });
+    if (JSON.stringify(loadArr(KEYS.vouchers)) !== JSON.stringify(mergedVouchers)) changed = true;
+    saveJSON(KEYS.vouchers, mergedVouchers);
+  }
+  return changed;
+}
+
 async function syncWithBackend() {
   try {
-    const res = await fetch("/api/health", { cache: "no-cache" });
-    if (!res.ok) { state.backendOnline = false; return; }
-    state.backendOnline = true;
-    const snap = await apiCall("/api/billing/state", "GET");
-    if (snap && !snap._err) {
-      if (snap.subscriptions && typeof snap.subscriptions === "object") saveJSON(KEYS.subs, snap.subscriptions);
-      if (Array.isArray(snap.payment_requests)) saveJSON(KEYS.payReqs, snap.payment_requests);
-      if (snap.paymentConfig && typeof snap.paymentConfig === "object") saveJSON(KEYS.payCfg, snap.paymentConfig);
-      if (Array.isArray(snap.vouchers)) saveJSON(KEYS.vouchers, snap.vouchers);
+    const res = await fetch("/api/health", { cache: "no-store" });
+    const ct = String((res.headers && res.headers.get && res.headers.get("content-type")) || "").toLowerCase();
+    if (!res.ok || ct.indexOf("application/json") === -1) {
+      state.backendOnline = false;
+      return false;
     }
-  } catch (e) { state.backendOnline = false; }
+    const health = await res.json().catch(function () { return null; });
+    if (!health || health.ok !== true) {
+      state.backendOnline = false;
+      return false;
+    }
+    state.backendOnline = true;
+    const payload = {
+      subscriptions: loadObj(KEYS.subs),
+      payment_requests: loadArr(KEYS.payReqs),
+      vouchers: loadArr(KEYS.vouchers),
+      paymentConfig: isAdmin() ? loadObj(KEYS.payCfg) : undefined
+    };
+    const snap = await apiCall("/api/billing/sync", "POST", payload) || await apiCall("/api/billing/state", "GET");
+    return mergeRemoteBillingSnap(snap);
+  } catch (e) {
+    state.backendOnline = false;
+    return false;
+  }
 }
 
 /* ------------------------------ Tiers & Rank Enforcement ------------------------------ */
@@ -739,6 +836,11 @@ function navigateTo(rawPath, options) {
   }
 
   if (!opts.skipRender) renderTab();
+  if (state.user && (route.tab === "pricing" || route.tab === "admin" || route.tab === "dashboard")) {
+    syncWithBackend().then(function (changed) {
+      if (changed) { updateChrome(); renderTab(); }
+    });
+  }
   window.scrollTo(0, 0);
 }
 
@@ -1836,10 +1938,8 @@ async function activateUnranked() {
   if (tierRank() >= 2) { showToast("Bạn đang sở hữu gói cao hơn Unranked.", "info"); return; }
   const subs = loadObj(KEYS.subs);
   subs[email] = { tier: "unranked", since: Date.now(), expires: Date.now() + 365 * DAY_MS };
-  if (state.backendOnline) {
-    const r = await apiCall("/api/subscriptions/unranked", "POST", { email: email });
-    if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
-  }
+  const r = await apiCall("/api/subscriptions/unranked", "POST", { email: email });
+  if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
   saveJSON(KEYS.subs, subs);
   updateChrome();
   renderTab();
@@ -1849,10 +1949,8 @@ async function activateUnranked() {
 async function adminSwitchOwnTier(code) {
   if (!assertAdmin() || !state.user || !TIERS[code] || code === "none") return;
   const email = state.user.email.toLowerCase();
-  if (state.backendOnline) {
-    const r = await apiCall("/api/admin/subscriptions", "POST", { email: email, tier: code });
-    if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
-  }
+  const r = await apiCall("/api/admin/subscriptions", "POST", { email: email, tier: code });
+  if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
   adminActivatePaidTier(email, code);
   updateChrome();
   renderTab();
@@ -1991,6 +2089,9 @@ function openCheckout(code) {
   toggleEl("coReceiptClear", false);
   renderCheckout();
   openModal("checkoutModal");
+  syncWithBackend().then(function () {
+    if (state.checkout) renderCheckout();
+  });
 }
 function renderCheckout() {
   const c = state.checkout;
@@ -2057,13 +2158,17 @@ function onReceiptFile(e) {
   };
   reader.readAsDataURL(f);
 }
-function applyVoucher() {
+async function applyVoucher() {
   const c = state.checkout;
   if (!c || c.busy) return;
   const code = ($("voucherInput") ? $("voucherInput").value : "").trim().toUpperCase();
   const vm = $("voucherMsg");
   if (!code) { if (vm) { vm.textContent = "Vui lòng nhập mã giảm giá."; vm.className = "voucher-msg bad"; } return; }
-  const v = getVouchers().filter(function (x) { return x.code.toUpperCase() === code; })[0];
+  let v = getVouchers().filter(function (x) { return x.code.toUpperCase() === code; })[0];
+  if (!v) {
+    await syncWithBackend();
+    v = getVouchers().filter(function (x) { return x.code.toUpperCase() === code; })[0];
+  }
   if (!v) { c.voucher = null; if (vm) { vm.textContent = "Mã giảm giá không hợp lệ hoặc đã bị xóa."; vm.className = "voucher-msg bad"; } renderCheckout(); return; }
   c.voucher = { code: v.code.toUpperCase(), discountPercent: clamp(Number(v.discountPercent), 1, 100) };
   if (vm) { vm.textContent = "Áp dụng thành công: giảm " + c.voucher.discountPercent + "%."; vm.className = "voucher-msg ok"; }
@@ -2101,10 +2206,8 @@ async function submitPaymentRequest() {
     rejectReason: ""
   };
   try {
-    if (state.backendOnline) {
-      const res = await apiCall("/api/payment-requests", "POST", reqObj);
-      if (res && res._err) { showToast("Không thể gửi yêu cầu: " + res._err, "error"); c.busy = false; renderCheckout(); return; }
-    }
+    const res = await apiCall("/api/payment-requests", "POST", reqObj);
+    if (res && res._err) { showToast("Không thể gửi yêu cầu: " + res._err, "error"); c.busy = false; renderCheckout(); return; }
     const list = loadArr(KEYS.payReqs);
     list.push(reqObj);
     if (!saveJSON(KEYS.payReqs, list)) { c.busy = false; renderCheckout(); return; }
@@ -2271,10 +2374,8 @@ async function approvePaymentRequest(id) {
   const req = list.filter(function (r) { return r && r.id === id; })[0];
   if (!req || req.status !== "pending") return;
   const now = new Date().toISOString();
-  if (state.backendOnline) {
-    const res = await apiCall("/api/admin/payment-requests/" + encodeURIComponent(id) + "/approve", "POST", {});
-    if (res && res._err) { showToast("Lỗi máy chủ: " + res._err, "error"); return; }
-  }
+  const res = await apiCall("/api/admin/payment-requests/" + encodeURIComponent(id) + "/approve", "POST", { request: req });
+  if (res && res._err) { showToast("Lỗi máy chủ: " + res._err, "error"); return; }
   if (!adminActivatePaidTier(req.userEmail, req.plan)) return;
   req.status = "approved";
   req.reviewedAt = now;
@@ -2294,10 +2395,8 @@ async function confirmRejectRequest() {
   const list = loadArr(KEYS.payReqs);
   const req = list.filter(function (r) { return r && r.id === id; })[0];
   if (!req || req.status !== "pending") { closeModal("rejectModal"); return; }
-  if (state.backendOnline) {
-    const res = await apiCall("/api/admin/payment-requests/" + encodeURIComponent(id) + "/reject", "POST", { rejectReason: reason });
-    if (res && res._err) { showToast("Lỗi máy chủ: " + res._err, "error"); return; }
-  }
+  const res = await apiCall("/api/admin/payment-requests/" + encodeURIComponent(id) + "/reject", "POST", { request: req, rejectReason: reason });
+  if (res && res._err) { showToast("Lỗi máy chủ: " + res._err, "error"); return; }
   req.status = "rejected";
   req.reviewedAt = new Date().toISOString();
   req.reviewedBy = state.user.email.toLowerCase();
@@ -2348,10 +2447,8 @@ async function onAdminClick(e) {
       const tier = $("grantTier") ? $("grantTier").value : "";
       if (!isValidEmail(email)) { showToast("Vui lòng nhập một địa chỉ email hợp lệ.", "warning"); return; }
       if (!TIERS[tier] || tier === "none") { showToast("Gói không hợp lệ.", "warning"); return; }
-      if (state.backendOnline) {
-        const r = await apiCall("/api/admin/subscriptions", "POST", { email: email, tier: tier });
-        if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
-      }
+      const r = await apiCall("/api/admin/subscriptions", "POST", { email: email, tier: tier });
+      if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
       if (!adminActivatePaidTier(email, tier)) return;
       showToast("Đã cấp gói " + TIERS[tier].name + " cho " + email + ".", "success");
       updateChrome(); renderAdmin();
@@ -2359,7 +2456,8 @@ async function onAdminClick(e) {
       const email = act === "revoke" ? b.getAttribute("data-email") : ($("grantEmail") ? $("grantEmail").value : "").trim().toLowerCase();
       if (!isValidEmail(email)) { showToast("Vui lòng nhập một địa chỉ email hợp lệ.", "warning"); return; }
       showConfirm("Thu hồi gói", "Bạn có chắc muốn thu hồi gói của " + email + "?", async function () {
-        if (state.backendOnline) await apiCall("/api/admin/subscriptions/" + encodeURIComponent(email), "DELETE");
+        const r = await apiCall("/api/admin/subscriptions/" + encodeURIComponent(email), "DELETE");
+        if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
         const s2 = loadObj(KEYS.subs); delete s2[email]; saveJSON(KEYS.subs, s2);
         showToast("Đã thu hồi gói của " + email + ".", "success");
         updateChrome(); renderTab();
@@ -2373,7 +2471,8 @@ async function onAdminClick(e) {
         showToast("Thông tin ngân hàng/STK chưa hợp lệ.", "warning"); return;
       }
       const cfg = { bankName: bankName, bankId: bankId, accountNo: acc, accountName: name };
-      if (state.backendOnline) await apiCall("/api/admin/payment-config", "PUT", cfg);
+      const r = await apiCall("/api/admin/payment-config", "PUT", cfg);
+      if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
       if (saveJSON(KEYS.payCfg, cfg)) showToast("Đã lưu cấu hình VietQR.", "success");
     } else if (act === "add-voucher") {
       const code = ($("vCode") ? $("vCode").value : "").trim().toUpperCase();
@@ -2382,12 +2481,14 @@ async function onAdminClick(e) {
       const list = getVouchers();
       if (list.some(function (v) { return v.code.toUpperCase() === code; })) { showToast("Mã giảm giá đã tồn tại.", "warning"); return; }
       list.push({ code: code, discountPercent: pct });
-      if (state.backendOnline) await apiCall("/api/admin/vouchers", "PUT", { vouchers: list });
-      if (saveJSON(KEYS.vouchers, list)) { showToast("Đã thêm mã giảm giá.", "success"); renderAdmin(); }
+      const r = await apiCall("/api/admin/vouchers", "PUT", { vouchers: list });
+      if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
+      if (saveJSON(KEYS.vouchers, list)) { showToast("Đã thêm mã giảm giá " + code + " (-" + pct + "%).", "success"); renderAdmin(); }
     } else if (act === "del-voucher") {
       const code = b.getAttribute("data-code");
       const list = getVouchers().filter(function (v) { return v.code !== code; });
-      if (state.backendOnline) await apiCall("/api/admin/vouchers", "PUT", { vouchers: list });
+      const r = await apiCall("/api/admin/vouchers", "PUT", { vouchers: list });
+      if (r && r._err) { showToast("Lỗi máy chủ: " + r._err, "error"); return; }
       saveJSON(KEYS.vouchers, list);
       showToast("Đã xóa mã giảm giá.", "success");
       renderAdmin();
