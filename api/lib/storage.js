@@ -18,6 +18,14 @@ const LOCAL_STORE_PATH = IS_SERVERLESS
 const KV_POOL_KEY = "aitutor:syskeys:pool:v1";
 const KV_ENV_STATE_KEY = "aitutor:syskeys:env_state:v1";
 const KV_AUDIT_KEY = "aitutor:syskeys:audit:v1";
+const KV_APP_DB_KEY = "aitutor:app_db:v1";
+const KV_NOTIFIED_PREFIX = "aitutor:notified:";
+const KV_SHARE_PREFIX = "aitutor:share:";
+const KV_CLOUD_PREFIX = "aitutor:cloud_user:";
+
+const LOCAL_APP_DB_PATH = IS_SERVERLESS
+  ? path.join(os.tmpdir(), "ai-tutor-db.json")
+  : path.join(__dirname, "..", "..", "data", "db.json");
 
 function getKvConfig() {
   const url = String(process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || "").trim().replace(/\/+$/, "");
@@ -227,7 +235,7 @@ async function getEnvKeyStates() {
       const rows = await sbFetch("/system_ai_env_state?select=*");
       const out = {};
       (Array.isArray(rows) ? rows : []).forEach(function (r) {
-        if (r && r.id && r.state_json) out[r.id] = r.state_json;
+        if (r && r.id && r.id.indexOf("__") !== 0 && r.state_json) out[r.id] = r.state_json;
       });
       return out;
     } catch (e) {
@@ -421,6 +429,206 @@ async function checkAdminActionCooldown(actionKey, cooldownSec) {
   return { allowed: true, retryAfterSec: 0 };
 }
 
+/* ---------- Persistent App DB, Shares, Cloud Sync & Atomic Notification Dedup ---------- */
+function readLocalAppDbFile() {
+  try {
+    if (fs.existsSync(LOCAL_APP_DB_PATH)) {
+      const raw = JSON.parse(fs.readFileSync(LOCAL_APP_DB_PATH, "utf8"));
+      if (raw && typeof raw === "object") {
+        global.__AI_TUTOR_DB__ = raw;
+        return raw;
+      }
+    }
+  } catch (e) { /* fallback */ }
+  if (global.__AI_TUTOR_DB__ && typeof global.__AI_TUTOR_DB__ === "object") {
+    return global.__AI_TUTOR_DB__;
+  }
+  return null;
+}
+
+function writeLocalAppDbFile(dbObj) {
+  global.__AI_TUTOR_DB__ = dbObj;
+  try {
+    fs.mkdirSync(path.dirname(LOCAL_APP_DB_PATH), { recursive: true });
+    fs.writeFileSync(LOCAL_APP_DB_PATH, JSON.stringify(dbObj, null, 2), "utf8");
+  } catch (e) { /* ignore if read-only */ }
+}
+
+async function loadAppDb() {
+  const info = getDriverInfo();
+  if (info.driver === "kv") {
+    try {
+      const remote = await kvGetJson(KV_APP_DB_KEY, null);
+      if (remote && typeof remote === "object") {
+        global.__AI_TUTOR_DB__ = remote;
+        return remote;
+      }
+    } catch (e) { /* fallback */ }
+  } else if (info.driver === "supabase") {
+    try {
+      const rows = await sbFetch("/system_ai_env_state?id=eq.__app_db__&select=state_json");
+      if (Array.isArray(rows) && rows[0] && rows[0].state_json && typeof rows[0].state_json === "object") {
+        global.__AI_TUTOR_DB__ = rows[0].state_json;
+        return rows[0].state_json;
+      }
+    } catch (e) { /* fallback */ }
+  }
+  return readLocalAppDbFile();
+}
+
+async function saveAppDb(dbObj) {
+  if (!dbObj || typeof dbObj !== "object") return;
+  writeLocalAppDbFile(dbObj);
+  const info = getDriverInfo();
+  if (info.driver === "kv" || info.driver === "supabase") {
+    // Store compact core DB remotely (shares & cloudUsers are persisted per key so app_db stays fast)
+    const compact = Object.assign({}, dbObj);
+    delete compact.shares;
+    delete compact.cloudUsers;
+    if (info.driver === "kv") {
+      try {
+        await kvSetJson(KV_APP_DB_KEY, compact);
+      } catch (e) { /* keep local cache */ }
+    } else if (info.driver === "supabase") {
+      try {
+        await sbFetch("/system_ai_env_state?on_conflict=id", {
+          method: "POST",
+          headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify({ id: "__app_db__", state_json: compact, updated_at: new Date().toISOString() })
+        });
+      } catch (e) { /* keep local cache */ }
+    }
+  }
+}
+
+async function claimNotificationOnce(eventKey) {
+  const cleanKey = String(eventKey || "").trim().toLowerCase().slice(0, 180);
+  if (!cleanKey) return false;
+  const nowIso = new Date().toISOString();
+  const info = getDriverInfo();
+
+  if (info.driver === "kv") {
+    try {
+      const res = await kvExec(["SET", KV_NOTIFIED_PREFIX + cleanKey, nowIso, "NX"]);
+      return res === "OK";
+    } catch (e) { /* fall through to local */ }
+  } else if (info.driver === "supabase") {
+    const cfg = getSupabaseConfig();
+    if (cfg) {
+      try {
+        const resp = await fetch(cfg.url + "/rest/v1/system_ai_env_state", {
+          method: "POST",
+          headers: {
+            "apikey": cfg.key,
+            "Authorization": "Bearer " + cfg.key,
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+          },
+          body: JSON.stringify({
+            id: "__notified__:" + cleanKey,
+            state_json: { claimedAt: nowIso },
+            updated_at: nowIso
+          })
+        });
+        if (resp.ok) return true;
+        if (resp.status === 409) return false;
+      } catch (e) { /* fall through to local */ }
+    }
+  }
+
+  // Local file / memory fallback
+  if (!global.__AI_TUTOR_NOTIFIED__) global.__AI_TUTOR_NOTIFIED__ = {};
+  const dbLocal = readLocalAppDbFile() || {};
+  if (!dbLocal.notifiedEvents || typeof dbLocal.notifiedEvents !== "object") dbLocal.notifiedEvents = {};
+  if (global.__AI_TUTOR_NOTIFIED__[cleanKey] || dbLocal.notifiedEvents[cleanKey]) {
+    return false;
+  }
+  global.__AI_TUTOR_NOTIFIED__[cleanKey] = nowIso;
+  dbLocal.notifiedEvents[cleanKey] = nowIso;
+  writeLocalAppDbFile(dbLocal);
+  return true;
+}
+
+async function getShareByCode(code) {
+  const clean = String(code || "").trim().toUpperCase();
+  if (!clean) return null;
+  const info = getDriverInfo();
+  if (info.driver === "kv") {
+    try {
+      const v = await kvGetJson(KV_SHARE_PREFIX + clean, null);
+      if (v) return v;
+    } catch (e) { /* fallback */ }
+  } else if (info.driver === "supabase") {
+    try {
+      const rows = await sbFetch("/system_ai_env_state?id=eq." + encodeURIComponent("__share__:" + clean) + "&select=state_json");
+      if (Array.isArray(rows) && rows[0] && rows[0].state_json) return rows[0].state_json;
+    } catch (e) { /* fallback */ }
+  }
+  const local = readLocalAppDbFile();
+  return (local && local.shares && local.shares[clean]) || null;
+}
+
+async function saveShareByCode(code, entry) {
+  const clean = String(code || "").trim().toUpperCase();
+  if (!clean || !entry) return;
+  const info = getDriverInfo();
+  if (info.driver === "kv") {
+    try { await kvSetJson(KV_SHARE_PREFIX + clean, entry); } catch (e) { /* fallback */ }
+  } else if (info.driver === "supabase") {
+    try {
+      await sbFetch("/system_ai_env_state?on_conflict=id", {
+        method: "POST",
+        headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ id: "__share__:" + clean, state_json: entry, updated_at: new Date().toISOString() })
+      });
+    } catch (e) { /* fallback */ }
+  }
+  const local = readLocalAppDbFile() || {};
+  if (!local.shares || typeof local.shares !== "object") local.shares = {};
+  local.shares[clean] = entry;
+  writeLocalAppDbFile(local);
+}
+
+async function getCloudUser(email) {
+  const clean = String(email || "").trim().toLowerCase();
+  if (!clean) return null;
+  const info = getDriverInfo();
+  if (info.driver === "kv") {
+    try {
+      const v = await kvGetJson(KV_CLOUD_PREFIX + clean, null);
+      if (v) return v;
+    } catch (e) { /* fallback */ }
+  } else if (info.driver === "supabase") {
+    try {
+      const rows = await sbFetch("/system_ai_env_state?id=eq." + encodeURIComponent("__cloud_user__:" + clean) + "&select=state_json");
+      if (Array.isArray(rows) && rows[0] && rows[0].state_json) return rows[0].state_json;
+    } catch (e) { /* fallback */ }
+  }
+  const local = readLocalAppDbFile();
+  return (local && local.cloudUsers && local.cloudUsers[clean]) || null;
+}
+
+async function saveCloudUser(email, data) {
+  const clean = String(email || "").trim().toLowerCase();
+  if (!clean || !data) return;
+  const info = getDriverInfo();
+  if (info.driver === "kv") {
+    try { await kvSetJson(KV_CLOUD_PREFIX + clean, data); } catch (e) { /* fallback */ }
+  } else if (info.driver === "supabase") {
+    try {
+      await sbFetch("/system_ai_env_state?on_conflict=id", {
+        method: "POST",
+        headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ id: "__cloud_user__:" + clean, state_json: data, updated_at: new Date().toISOString() })
+      });
+    } catch (e) { /* fallback */ }
+  }
+  const local = readLocalAppDbFile() || {};
+  if (!local.cloudUsers || typeof local.cloudUsers !== "object") local.cloudUsers = {};
+  local.cloudUsers[clean] = data;
+  writeLocalAppDbFile(local);
+}
+
 module.exports = {
   getDriverInfo: getDriverInfo,
   listStoredKeys: listStoredKeys,
@@ -431,5 +639,12 @@ module.exports = {
   appendAuditLog: appendAuditLog,
   listAuditLogs: listAuditLogs,
   consumeRateLimit: consumeRateLimit,
-  checkAdminActionCooldown: checkAdminActionCooldown
+  checkAdminActionCooldown: checkAdminActionCooldown,
+  loadAppDb: loadAppDb,
+  saveAppDb: saveAppDb,
+  claimNotificationOnce: claimNotificationOnce,
+  getShareByCode: getShareByCode,
+  saveShareByCode: saveShareByCode,
+  getCloudUser: getCloudUser,
+  saveCloudUser: saveCloudUser
 };

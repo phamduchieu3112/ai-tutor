@@ -4,12 +4,13 @@
    ============================================================ */
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
+const net = require("net");
 const tls = require("tls");
 const { maskApiKey, encryptSecret, isEncryptionConfigured } = require("./lib/crypto");
 const { handleAiProxy } = require("./lib/ai-proxy");
 const { handleAdminSystemKeys, handleAdminMe } = require("./lib/admin-keys");
 const { verifyAdminRequest } = require("./lib/auth");
+const storage = require("./lib/storage");
 
 // Load local .env if present (zero-dependency)
 (function loadDotEnv() {
@@ -50,11 +51,6 @@ const PLAN_LABELS = {
   diamond: "Diamond"
 };
 
-const IS_SERVERLESS = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-const DB_PATH = IS_SERVERLESS
-  ? path.join(os.tmpdir(), "ai-tutor-db.json")
-  : path.join(__dirname, "..", "data", "db.json");
-
 function defaultDb() {
   return {
     registeredUsers: {},
@@ -68,8 +64,31 @@ function defaultDb() {
     deletedVouchers: {},
     shares: {},
     cloudUsers: {},
-    notificationLogs: []
+    notificationLogs: [],
+    notifiedEvents: {}
   };
+}
+
+function escHtml(str) {
+  return String(str === null || str === undefined ? "" : str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function findRegisteredUserKey(db, rawEmail) {
+  if (!db || !db.registeredUsers || typeof db.registeredUsers !== "object") return "";
+  const em = String(rawEmail || "").trim().toLowerCase();
+  if (!em) return "";
+  if (db.registeredUsers[em]) return em;
+  const canonical = normalizeGmail(em);
+  const keys = Object.keys(db.registeredUsers);
+  for (let i = 0; i < keys.length; i++) {
+    if (normalizeGmail(keys[i]) === canonical) return keys[i];
+  }
+  return "";
 }
 
 function backfillRegisteredUsers(db) {
@@ -77,7 +96,8 @@ function backfillRegisteredUsers(db) {
   const ensureUser = function (rawEmail, nameHint, createdHint, pictureHint) {
     const em = String(rawEmail || "").trim().toLowerCase();
     if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return;
-    if (!db.registeredUsers[em]) {
+    const existingKey = findRegisteredUserKey(db, em);
+    if (!existingKey) {
       const ts = createdHint || new Date().toISOString();
       db.registeredUsers[em] = {
         uid: em,
@@ -90,11 +110,12 @@ function backfillRegisteredUsers(db) {
         notifiedNewUser: true
       };
     } else {
-      if (nameHint && (!db.registeredUsers[em].name || db.registeredUsers[em].name === em)) {
-        db.registeredUsers[em].name = String(nameHint);
+      const target = db.registeredUsers[existingKey];
+      if (nameHint && (!target.name || target.name === existingKey || target.name === em)) {
+        target.name = String(nameHint);
       }
-      if (pictureHint && !db.registeredUsers[em].picture) {
-        db.registeredUsers[em].picture = String(pictureHint);
+      if (pictureHint && !target.picture) {
+        target.picture = String(pictureHint);
       }
     }
   };
@@ -117,38 +138,35 @@ function backfillRegisteredUsers(db) {
   });
 }
 
-function loadDb() {
+async function loadDb() {
   const def = defaultDb();
   try {
-    if (fs.existsSync(DB_PATH)) {
-      const raw = JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
+    const raw = await storage.loadAppDb();
+    if (raw && typeof raw === "object") {
       const merged = Object.assign(def, raw);
       backfillRegisteredUsers(merged);
       global.__AI_TUTOR_DB__ = merged;
       return merged;
     }
-  } catch (e) { /* fallback to memory */ }
-  if (global.__AI_TUTOR_DB__ && typeof global.__AI_TUTOR_DB__ === "object") {
-    const merged = Object.assign(def, global.__AI_TUTOR_DB__);
-    backfillRegisteredUsers(merged);
-    return merged;
-  }
+  } catch (e) { /* fallback */ }
   backfillRegisteredUsers(def);
   global.__AI_TUTOR_DB__ = def;
   return def;
 }
 
-function saveDb(db) {
+async function saveDb(db) {
   global.__AI_TUTOR_DB__ = db;
   try {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), "utf8");
+    await storage.saveAppDb(db);
   } catch (e) { /* keep in memory on read-only fallback */ }
 }
 
 /* ============================================================
-   Asynchronous Non-Blocking Email Notification Service
-   Supports: Resend API, Direct Gmail/SMTP over TLS, or Webhook
+   Awaited Serverless-Safe Email Notification Service
+   Supports: Direct Gmail/SMTP (port 465 TLS & 587 STARTTLS),
+             Resend API, or Custom Webhook.
+   ALWAYS awaited before res.end() so Vercel Serverless never
+   kills the socket mid-handshake.
    ============================================================ */
 function getAdminNotificationEmail() {
   return String(process.env.ADMIN_NOTIFICATION_EMAIL || DEFAULT_ADMIN_NOTIFY_EMAIL).trim();
@@ -158,31 +176,61 @@ function sendSmtpTlsEmail(opts) {
   return new Promise(function (resolve, reject) {
     const host = String(process.env.SMTP_HOST || "smtp.gmail.com").trim();
     const port = Number(process.env.SMTP_PORT || 465);
-    const user = String(process.env.SMTP_USER || "").trim();
-    const pass = String(process.env.SMTP_PASS || "").trim();
+    const user = String(process.env.SMTP_USER || "").replace(/[\r\n<>]/g, "").trim();
+    const rawPass = String(process.env.SMTP_PASS || "").trim();
+    // Gmail App Passwords are often pasted with spaces ("xxxx xxxx xxxx xxxx"); normalize safely
+    const pass = (host.toLowerCase().indexOf("gmail") !== -1 && rawPass.replace(/\s+/g, "").length === 16)
+      ? rawPass.replace(/\s+/g, "")
+      : rawPass;
+    const toAddr = String((opts && opts.to) || "").replace(/[\r\n<>]/g, "").trim();
+
     if (!user || !pass) return reject(new Error("SMTP_USER or SMTP_PASS not configured"));
+    if (!toAddr) return reject(new Error("Recipient email missing"));
 
-    const socket = tls.connect(port, host, { servername: host, rejectUnauthorized: false });
-    let step = 0;
+    const useStartTls = (port === 587 || port === 25 || String(process.env.SMTP_SECURE || "").toLowerCase() === "false") && port !== 465;
+    let sock = useStartTls
+      ? net.connect({ host: host, port: port })
+      : tls.connect({ host: host, port: port, servername: host });
+
+    let phase = "greeting";
     let buffer = "";
-    const timeout = setTimeout(function () {
-      try { socket.destroy(); } catch (e) { /* */ }
-      reject(new Error("SMTP timeout"));
-    }, 8000);
+    let settled = false;
 
-    const finish = function (err, info) {
+    const timeout = setTimeout(function () {
+      finish(new Error("SMTP timeout (" + host + ":" + port + ", phase=" + phase + ")"));
+    }, 10000);
+
+    function finish(err, info) {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
-      try { socket.end(); } catch (e) { /* */ }
+      try {
+        if (sock && !sock.destroyed) {
+          if (err) sock.destroy();
+          else sock.end();
+        }
+      } catch (e) { /* ignore */ }
       if (err) reject(err);
       else resolve(info);
-    };
+    }
 
-    const sendLine = function (line) {
-      socket.write(line + "\r\n");
-    };
+    function sendLine(line) {
+      if (!settled && sock && !sock.destroyed) {
+        sock.write(line + "\r\n");
+      }
+    }
 
-    socket.on("error", function (err) { finish(err); });
-    socket.on("data", function (chunk) {
+    function onSocketError(err) {
+      finish(err || new Error("SMTP socket error"));
+    }
+
+    function onSocketClose() {
+      if (!settled && phase !== "quit") {
+        finish(new Error("SMTP connection closed unexpectedly (phase=" + phase + ")"));
+      }
+    }
+
+    function onSocketData(chunk) {
       buffer += chunk.toString("utf8");
       const lines = buffer.split(/\r?\n/);
       buffer = lines.pop() || "";
@@ -191,51 +239,83 @@ function sendSmtpTlsEmail(opts) {
         if (!line || line.length < 3) continue;
         if (line[3] === "-") continue; // multi-line response continuation
         const code = parseInt(line.slice(0, 3), 10);
+        if (isNaN(code)) continue;
         if (code >= 400) {
-          return finish(new Error("SMTP error " + code + ": " + line));
+          return finish(new Error("SMTP error " + code + " (" + phase + "): " + line));
         }
-        if (step === 0 && code === 220) {
-          step = 1;
-          sendLine("EHLO ai-tutor.local");
-        } else if (step === 1 && code === 250) {
-          step = 2;
+
+        if (phase === "greeting" && code === 220) {
+          phase = useStartTls ? "ehlo_plain" : "ehlo_tls";
+          sendLine("EHLO ai-tutor.phamduchieu.site");
+        } else if (phase === "ehlo_plain" && code === 250) {
+          phase = "starttls";
+          sendLine("STARTTLS");
+        } else if (phase === "starttls" && code === 220) {
+          const plainSock = sock;
+          plainSock.removeListener("data", onSocketData);
+          plainSock.removeListener("error", onSocketError);
+          plainSock.removeListener("close", onSocketClose);
+          buffer = "";
+          phase = "tls_handshake";
+          sock = tls.connect({ socket: plainSock, servername: host });
+          sock.on("data", onSocketData);
+          sock.on("error", onSocketError);
+          sock.on("close", onSocketClose);
+          sock.once("secureConnect", function () {
+            phase = "ehlo_tls";
+            sendLine("EHLO ai-tutor.phamduchieu.site");
+          });
+        } else if (phase === "ehlo_tls" && code === 250) {
+          phase = "auth_user";
           sendLine("AUTH LOGIN");
-        } else if (step === 2 && code === 334) {
-          step = 3;
+        } else if (phase === "auth_user" && code === 334) {
+          phase = "auth_pass";
           sendLine(Buffer.from(user, "utf8").toString("base64"));
-        } else if (step === 3 && code === 334) {
-          step = 4;
+        } else if (phase === "auth_pass" && code === 334) {
+          phase = "auth_done";
           sendLine(Buffer.from(pass, "utf8").toString("base64"));
-        } else if (step === 4 && code === 235) {
-          step = 5;
+        } else if (phase === "auth_done" && code === 235) {
+          phase = "mail_from";
           sendLine("MAIL FROM:<" + user + ">");
-        } else if (step === 5 && code === 250) {
-          step = 6;
-          sendLine("RCPT TO:<" + opts.to + ">");
-        } else if (step === 6 && code === 250) {
-          step = 7;
+        } else if (phase === "mail_from" && code === 250) {
+          phase = "rcpt_to";
+          sendLine("RCPT TO:<" + toAddr + ">");
+        } else if (phase === "rcpt_to" && code === 250) {
+          phase = "data_cmd";
           sendLine("DATA");
-        } else if (step === 7 && code === 354) {
-          step = 8;
-          const subjB64 = Buffer.from(opts.subject, "utf8").toString("base64");
+        } else if (phase === "data_cmd" && code === 354) {
+          phase = "data_body";
+          const subjB64 = Buffer.from(String(opts.subject || ""), "utf8").toString("base64");
+          const htmlB64 = Buffer.from(String(opts.html || ""), "utf8")
+            .toString("base64")
+            .replace(/.{1,76}/g, "$&\r\n")
+            .trimEnd();
+          const msgId = "<" + Date.now() + "." + Math.random().toString(36).slice(2, 10) + "@ai-tutor.phamduchieu.site>";
           const msg = [
             "From: \"AI Tutor Notification\" <" + user + ">",
-            "To: <" + opts.to + ">",
+            "To: <" + toAddr + ">",
             "Subject: =?UTF-8?B?" + subjB64 + "?=",
+            "Date: " + new Date().toUTCString(),
+            "Message-ID: " + msgId,
             "MIME-Version: 1.0",
             "Content-Type: text/html; charset=UTF-8",
+            "Content-Transfer-Encoding: base64",
             "",
-            opts.html,
+            htmlB64,
             "."
           ].join("\r\n");
           sendLine(msg);
-        } else if (step === 8 && code === 250) {
-          step = 9;
+        } else if (phase === "data_body" && code === 250) {
+          phase = "quit";
           sendLine("QUIT");
-          return finish(null, { provider: "smtp", to: opts.to });
+          return finish(null, { provider: "smtp", host: host, port: port, to: toAddr });
         }
       }
-    });
+    }
+
+    sock.on("data", onSocketData);
+    sock.on("error", onSocketError);
+    sock.on("close", onSocketClose);
   });
 }
 
@@ -282,7 +362,7 @@ async function sendAdminNotificationEmail(notification) {
       logEntry.error = "Resend HTTP " + resp.status + ": " + errTxt.slice(0, 200);
     }
 
-    // 2. Try Direct SMTP over TLS if SMTP_USER and SMTP_PASS are configured
+    // 2. Try Direct SMTP (Gmail TLS 465 / STARTTLS 587) if SMTP_USER and SMTP_PASS are configured
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       await sendSmtpTlsEmail({ to: to, subject: subject, html: html, text: text });
       logEntry.status = "sent";
@@ -313,19 +393,35 @@ async function sendAdminNotificationEmail(notification) {
 
     if (!logEntry.error) {
       logEntry.status = "logged_no_provider";
-      logEntry.error = "No email provider env configured (set RESEND_API_KEY or SMTP_USER/SMTP_PASS or EMAIL_WEBHOOK_URL)";
+      logEntry.error = "No email provider env configured (set SMTP_USER/SMTP_PASS or RESEND_API_KEY or EMAIL_WEBHOOK_URL)";
     }
   } catch (err) {
     logEntry.status = "failed";
     logEntry.error = (err && err.message) || "Email send error";
+    console.error("[AI Tutor Email] Delivery failed (" + eventType + "):", logEntry.error);
   }
   return logEntry;
 }
 
-function triggerNewUserEmailAsync(db, userRec) {
-  if (!userRec || !userRec.email) return;
-  const displayName = String(userRec.name || userRec.email);
-  const email = String(userRec.email);
+function appendNotificationLog(db, entry) {
+  if (!db || !entry) return;
+  if (!Array.isArray(db.notificationLogs)) db.notificationLogs = [];
+  db.notificationLogs.push(entry);
+  if (db.notificationLogs.length > 100) db.notificationLogs = db.notificationLogs.slice(-100);
+}
+
+async function sendNewUserNotification(db, userRec) {
+  if (!userRec || !userRec.email) return null;
+  const email = String(userRec.email).trim().toLowerCase();
+  const canonical = normalizeGmail(email);
+  // Never spam "New User Registered" for the site admin's own account
+  if (canonical === ADMIN_EMAIL) return null;
+
+  // Atomic one-time dedup across all browsers, devices & Vercel serverless containers
+  const claimed = await storage.claimNotificationOnce("new_user:" + canonical);
+  if (!claimed) return null;
+
+  const displayName = String(userRec.name || email);
   const regTime = String(userRec.createdAt || new Date().toISOString());
   const adminLink = PUBLIC_SITE_URL + "/admin/members";
   const subject = "[AI Tutor] New User Registered: " + (displayName !== email ? (displayName + " (" + email + ")") : email);
@@ -334,11 +430,11 @@ function triggerNewUserEmailAsync(db, userRec) {
       '<h2 style="margin:0 0 12px;color:#5347CD">AI Tutor - New User Registered</h2>' +
       '<p style="margin:0 0 12px">A new user has registered an account on <strong>AI Tutor</strong>:</p>' +
       '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
-        '<tr><td style="padding:6px 0;color:#64748b;width:160px">Display Name:</td><td style="padding:6px 0;font-weight:700">' + displayName + '</td></tr>' +
-        '<tr><td style="padding:6px 0;color:#64748b">User Email:</td><td style="padding:6px 0;font-weight:700">' + email + '</td></tr>' +
-        '<tr><td style="padding:6px 0;color:#64748b">Registered At:</td><td style="padding:6px 0">' + regTime + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b;width:160px">Display Name:</td><td style="padding:6px 0;font-weight:700">' + escHtml(displayName) + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">User Email:</td><td style="padding:6px 0;font-weight:700">' + escHtml(email) + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">Registered At:</td><td style="padding:6px 0">' + escHtml(regTime) + '</td></tr>' +
       '</table>' +
-      '<a href="' + adminLink + '" style="display:inline-block;background:#5347CD;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:700">Open Admin Panel (Members &amp; Plans)</a>' +
+      '<a href="' + escHtml(adminLink) + '" style="display:inline-block;background:#5347CD;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:700">Open Admin Panel (Members &amp; Plans)</a>' +
     '</div>';
   const text =
     "AI Tutor - New User Registered\n" +
@@ -347,27 +443,24 @@ function triggerNewUserEmailAsync(db, userRec) {
     "Registered At: " + regTime + "\n" +
     "Admin Panel: " + adminLink;
 
-  // Non-blocking execution
-  Promise.resolve().then(function () {
-    return sendAdminNotificationEmail({
-      eventType: "new_user",
-      subject: subject,
-      html: html,
-      text: text,
-      payload: { name: displayName, email: email, createdAt: regTime, adminUrl: adminLink }
-    });
-  }).then(function (entry) {
-    try {
-      if (!Array.isArray(db.notificationLogs)) db.notificationLogs = [];
-      db.notificationLogs.push(entry);
-      if (db.notificationLogs.length > 100) db.notificationLogs = db.notificationLogs.slice(-100);
-      saveDb(db);
-    } catch (e) { /* ignore */ }
-  }).catch(function () { /* non-blocking */ });
+  const entry = await sendAdminNotificationEmail({
+    eventType: "new_user",
+    subject: subject,
+    html: html,
+    text: text,
+    payload: { name: displayName, email: email, createdAt: regTime, adminUrl: adminLink }
+  });
+  appendNotificationLog(db, entry);
+  await saveDb(db);
+  return entry;
 }
 
-function triggerPaymentRequestEmailAsync(db, reqRec) {
-  if (!reqRec || !reqRec.userEmail) return;
+async function sendPaymentRequestNotification(db, reqRec) {
+  if (!reqRec || !reqRec.userEmail) return null;
+  const reqId = String(reqRec.id || (reqRec.userEmail + "_" + reqRec.plan + "_" + reqRec.createdAt));
+  const claimed = await storage.claimNotificationOnce("payreq:" + reqId);
+  if (!claimed) return null;
+
   const userName = String(reqRec.userName || reqRec.userEmail);
   const userEmail = String(reqRec.userEmail);
   const planName = PLAN_LABELS[reqRec.plan] || String(reqRec.plan || "").toUpperCase();
@@ -381,14 +474,14 @@ function triggerPaymentRequestEmailAsync(db, reqRec) {
       '<h2 style="margin:0 0 12px;color:#059669">AI Tutor - New Payment Confirmation Request</h2>' +
       '<p style="margin:0 0 12px">A user has submitted a payment confirmation request awaiting your approval:</p>' +
       '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">' +
-        '<tr><td style="padding:6px 0;color:#64748b;width:160px">User Name:</td><td style="padding:6px 0;font-weight:700">' + userName + '</td></tr>' +
-        '<tr><td style="padding:6px 0;color:#64748b">User Email:</td><td style="padding:6px 0;font-weight:700">' + userEmail + '</td></tr>' +
-        '<tr><td style="padding:6px 0;color:#64748b">Selected Plan:</td><td style="padding:6px 0;font-weight:700;color:#5347CD">' + planName + '</td></tr>' +
-        '<tr><td style="padding:6px 0;color:#64748b">Amount:</td><td style="padding:6px 0;font-weight:700;color:#059669">' + amountStr + '</td></tr>' +
-        '<tr><td style="padding:6px 0;color:#64748b">Transfer Reference:</td><td style="padding:6px 0">' + refStr + '</td></tr>' +
-        '<tr><td style="padding:6px 0;color:#64748b">Submitted At:</td><td style="padding:6px 0">' + subTime + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b;width:160px">User Name:</td><td style="padding:6px 0;font-weight:700">' + escHtml(userName) + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">User Email:</td><td style="padding:6px 0;font-weight:700">' + escHtml(userEmail) + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">Selected Plan:</td><td style="padding:6px 0;font-weight:700;color:#5347CD">' + escHtml(planName) + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">Amount:</td><td style="padding:6px 0;font-weight:700;color:#059669">' + escHtml(amountStr) + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">Transfer Reference:</td><td style="padding:6px 0">' + escHtml(refStr) + '</td></tr>' +
+        '<tr><td style="padding:6px 0;color:#64748b">Submitted At:</td><td style="padding:6px 0">' + escHtml(subTime) + '</td></tr>' +
       '</table>' +
-      '<a href="' + adminLink + '" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:700">Review &amp; Approve Payment in Admin Panel</a>' +
+      '<a href="' + escHtml(adminLink) + '" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-weight:700">Review &amp; Approve Payment in Admin Panel</a>' +
     '</div>';
   const text =
     "AI Tutor - New Payment Confirmation Request\n" +
@@ -400,41 +493,36 @@ function triggerPaymentRequestEmailAsync(db, reqRec) {
     "Submitted At: " + subTime + "\n" +
     "Payment Approvals: " + adminLink;
 
-  // Non-blocking execution
-  Promise.resolve().then(function () {
-    return sendAdminNotificationEmail({
-      eventType: "payment_request",
-      subject: subject,
-      html: html,
-      text: text,
-      payload: {
-        id: reqRec.id,
-        userName: userName,
-        userEmail: userEmail,
-        plan: planName,
-        amount: reqRec.amount,
-        transferReference: refStr,
-        createdAt: subTime,
-        adminUrl: adminLink
-      }
-    });
-  }).then(function (entry) {
-    try {
-      if (!Array.isArray(db.notificationLogs)) db.notificationLogs = [];
-      db.notificationLogs.push(entry);
-      if (db.notificationLogs.length > 100) db.notificationLogs = db.notificationLogs.slice(-100);
-      saveDb(db);
-    } catch (e) { /* ignore */ }
-  }).catch(function () { /* non-blocking */ });
+  const entry = await sendAdminNotificationEmail({
+    eventType: "payment_request",
+    subject: subject,
+    html: html,
+    text: text,
+    payload: {
+      id: reqRec.id,
+      userName: userName,
+      userEmail: userEmail,
+      plan: planName,
+      amount: reqRec.amount,
+      transferReference: refStr,
+      createdAt: subTime,
+      adminUrl: adminLink
+    }
+  });
+  appendNotificationLog(db, entry);
+  await saveDb(db);
+  return entry;
 }
 
 function upsertRegisteredUser(db, userInput, opts) {
   if (!db.registeredUsers || typeof db.registeredUsers !== "object") db.registeredUsers = {};
   const em = String((userInput && userInput.email) || "").trim().toLowerCase();
-  if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return { isNew: false, user: null };
+  if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return { isNew: false, shouldNotify: false, user: null };
   const nowIso = new Date().toISOString();
-  const existing = db.registeredUsers[em];
+  const existingKey = findRegisteredUserKey(db, em);
+  const existing = existingKey ? db.registeredUsers[existingKey] : null;
   if (!existing) {
+    const isAdminSelf = normalizeGmail(em) === ADMIN_EMAIL;
     const newUser = {
       uid: String(userInput.uid || em),
       email: em,
@@ -446,10 +534,8 @@ function upsertRegisteredUser(db, userInput, opts) {
       notifiedNewUser: true
     };
     db.registeredUsers[em] = newUser;
-    if (!opts || opts.suppressEmail !== true) {
-      triggerNewUserEmailAsync(db, newUser);
-    }
-    return { isNew: true, user: newUser };
+    const shouldNotify = !isAdminSelf && (!opts || opts.suppressEmail !== true);
+    return { isNew: true, shouldNotify: shouldNotify, user: newUser };
   }
   if (userInput.name && String(userInput.name).trim()) existing.name = String(userInput.name).trim();
   if (userInput.picture && String(userInput.picture).trim()) existing.picture = String(userInput.picture).trim();
@@ -460,7 +546,7 @@ function upsertRegisteredUser(db, userInput, opts) {
   } else if (userInput.lastLoginAt && String(userInput.lastLoginAt) > String(existing.lastLoginAt || "")) {
     existing.lastLoginAt = String(userInput.lastLoginAt);
   }
-  return { isNew: false, user: existing };
+  return { isNew: false, shouldNotify: false, user: existing };
 }
 
 function decodeJwtEmail(authHeader) {
@@ -541,8 +627,10 @@ function resolveApiPath(req) {
 }
 
 function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
-  if (!body || typeof body !== "object") return false;
+  if (!body || typeof body !== "object") return { changed: false, newUsers: [], newPaymentReqs: [] };
   let changed = false;
+  const newUsers = [];
+  const newPaymentReqs = [];
   if (!db.revokedSubscriptions || typeof db.revokedSubscriptions !== "object") db.revokedSubscriptions = {};
   if (!db.deletedVouchers || typeof db.deletedVouchers !== "object") db.deletedVouchers = {};
   if (!db.registeredUsers || typeof db.registeredUsers !== "object") db.registeredUsers = {};
@@ -550,9 +638,12 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
   // 0. Merge currentUser or registeredUsers
   if (body.currentUser && typeof body.currentUser === "object" && body.currentUser.email) {
     const uEm = String(body.currentUser.email).trim().toLowerCase();
-    if (isAdminCaller || uEm === callerEmail) {
+    if (isAdminCaller || normalizeGmail(uEm) === normalizeGmail(callerEmail)) {
       const r = upsertRegisteredUser(db, body.currentUser, { bumpLogin: false });
-      if (r.isNew) changed = true;
+      if (r.isNew) {
+        changed = true;
+        if (r.shouldNotify && r.user) newUsers.push(r.user);
+      }
     }
   }
   if (isAdminCaller && body.registeredUsers && typeof body.registeredUsers === "object") {
@@ -630,7 +721,7 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
         byId[rec.id] = rec;
         upsertRegisteredUser(db, { email: rEmail, name: rec.userName, createdAt: rec.createdAt }, { suppressEmail: true });
         if (rec.status === "pending" && !r.notifiedEmail) {
-          triggerPaymentRequestEmailAsync(db, rec);
+          newPaymentReqs.push(rec);
         }
         changed = true;
       } else if (isAdminCaller && existing.status === "pending" && (r.status === "approved" || r.status === "rejected")) {
@@ -704,7 +795,7 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
     });
   }
 
-  return changed;
+  return { changed: changed, newUsers: newUsers, newPaymentReqs: newPaymentReqs };
 }
 
 function toSafeMaskedUserApisMap(rawMap) {
@@ -743,7 +834,8 @@ function buildBillingResponse(db, isAdminCaller, caller) {
       vouchers: db.vouchers,
       deletedVouchers: db.deletedVouchers || {},
       notificationLogs: (db.notificationLogs || []).slice(-30),
-      adminNotificationEmail: getAdminNotificationEmail()
+      adminNotificationEmail: getAdminNotificationEmail(),
+      storageDriver: storage.getDriverInfo()
     };
   }
   const ownSubs = {};
@@ -802,15 +894,28 @@ module.exports = async function apiHandler(req, res) {
       if (!caller || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(caller)) {
         return sendJson(res, 400, { error: "Email kh\u00f4ng h\u1ee3p l\u1ec7." });
       }
-      const db = loadDb();
+      const db = await loadDb();
       const result = upsertRegisteredUser(db, {
         uid: (body && body.uid) || caller,
         email: caller,
         name: (body && body.name) || caller.split("@")[0],
         picture: (body && body.picture) || ""
       }, { bumpLogin: true });
-      saveDb(db);
-      return sendJson(res, 200, { ok: true, isNewUser: result.isNew, user: result.user });
+      await saveDb(db);
+      let emailNotification = null;
+      if (result.shouldNotify && result.user) {
+        try {
+          emailNotification = await sendNewUserNotification(db, result.user);
+        } catch (mailErr) {
+          console.error("[AI Tutor Email] /api/users/register notify error:", mailErr && mailErr.message);
+        }
+      }
+      return sendJson(res, 200, {
+        ok: true,
+        isNewUser: result.isNew,
+        user: result.user,
+        emailStatus: emailNotification ? emailNotification.status : (result.isNew ? "skipped" : "already_registered")
+      });
     }
 
     /* ---------- Public Share Link / Short Code API ---------- */
@@ -819,27 +924,29 @@ module.exports = async function apiHandler(req, res) {
       if (!body || !body.deck || !Array.isArray(body.deck.questions) || body.deck.questions.length === 0) {
         return sendJson(res, 400, { error: "B\u1ed9 \u0111\u1ec1 chia s\u1ebb kh\u00f4ng h\u1ee3p l\u1ec7." });
       }
-      const db = loadDb();
       let code = String(body.code || "").trim().toUpperCase();
       if (!/^AIT-\d{4,6}$/.test(code)) {
         code = "AIT-" + Math.floor(1000 + Math.random() * 9000);
-        while (db.shares[code]) code = "AIT-" + Math.floor(1000 + Math.random() * 9000);
+        for (let tries = 0; tries < 8; tries++) {
+          const exists = await storage.getShareByCode(code);
+          if (!exists) break;
+          code = "AIT-" + Math.floor(1000 + Math.random() * 9000);
+        }
       }
-      db.shares[code] = {
+      const entry = {
         code: code,
         deck: body.deck,
         createdBy: getCallerEmail(req) || "guest",
         createdAt: new Date().toISOString()
       };
-      saveDb(db);
+      await storage.saveShareByCode(code, entry);
       return sendJson(res, 201, { ok: true, code: code });
     }
 
     const shareGet = p.match(/^\/api\/shares\/([^/]+)$/);
     if (shareGet && method === "GET") {
       const code = decodeURIComponent(shareGet[1]).trim().toUpperCase();
-      const db = loadDb();
-      const entry = db.shares[code];
+      const entry = await storage.getShareByCode(code);
       if (!entry) return sendJson(res, 404, { error: "Kh\u00f4ng t\u00ecm th\u1ea5y m\u00e3 \u0111\u1ec1 " + code });
       return sendJson(res, 200, { ok: true, share: entry });
     }
@@ -848,23 +955,23 @@ module.exports = async function apiHandler(req, res) {
     if (p === "/api/cloud/sync" && method === "GET") {
       const caller = getCallerEmail(req);
       if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
-      const db = loadDb();
-      return sendJson(res, 200, { ok: true, data: db.cloudUsers[caller] || null });
+      const data = await storage.getCloudUser(caller);
+      return sendJson(res, 200, { ok: true, data: data || null });
     }
     if (p === "/api/cloud/sync" && method === "PUT") {
       const caller = getCallerEmail(req);
       if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
       const body = await readBody(req);
-      const db = loadDb();
-      db.cloudUsers[caller] = Object.assign({}, db.cloudUsers[caller] || {}, body, { updatedAt: new Date().toISOString() });
-      saveDb(db);
-      return sendJson(res, 200, { ok: true, updatedAt: db.cloudUsers[caller].updatedAt });
+      const prev = await storage.getCloudUser(caller);
+      const next = Object.assign({}, prev || {}, body, { updatedAt: new Date().toISOString() });
+      await storage.saveCloudUser(caller, next);
+      return sendJson(res, 200, { ok: true, updatedAt: next.updatedAt });
     }
 
     /* ---------- Billing State & Bidirectional Sync ---------- */
     if (p === "/api/billing/state" && method === "GET") {
       const caller = getCallerEmail(req);
-      const db = loadDb();
+      const db = await loadDb();
       return sendJson(res, 200, buildBillingResponse(db, isCallerAdmin(req), caller));
     }
 
@@ -872,9 +979,16 @@ module.exports = async function apiHandler(req, res) {
       const caller = getCallerEmail(req);
       const isAdminCaller = isCallerAdmin(req);
       const body = await readBody(req);
-      const db = loadDb();
-      if (mergeClientSnapshot(db, body, isAdminCaller, caller)) {
-        saveDb(db);
+      const db = await loadDb();
+      const merged = mergeClientSnapshot(db, body, isAdminCaller, caller);
+      if (merged.changed) {
+        await saveDb(db);
+      }
+      for (let i = 0; i < merged.newUsers.length; i++) {
+        try { await sendNewUserNotification(db, merged.newUsers[i]); } catch (e) { /* safe */ }
+      }
+      for (let j = 0; j < merged.newPaymentReqs.length; j++) {
+        try { await sendPaymentRequestNotification(db, merged.newPaymentReqs[j]); } catch (e) { /* safe */ }
       }
       return sendJson(res, 200, buildBillingResponse(db, isAdminCaller, caller));
     }
@@ -883,7 +997,7 @@ module.exports = async function apiHandler(req, res) {
       const body = await readBody(req);
       const caller = getCallerEmail(req) || String((body && body.email) || "").trim().toLowerCase();
       if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
-      const db = loadDb();
+      const db = await loadDb();
       const cur = db.subscriptions[caller];
       if (cur && PAID_PLANS.includes(cur.tier) && Number(cur.expires) > Date.now()) {
         return sendJson(res, 400, { error: "B\u1ea1n \u0111ang c\u00f3 g\u00f3i cao h\u01a1n Unranked." });
@@ -891,8 +1005,11 @@ module.exports = async function apiHandler(req, res) {
       const now = Date.now();
       db.subscriptions[caller] = { tier: "unranked", since: now, expires: now + 365 * DAY_MS };
       if (db.revokedSubscriptions) delete db.revokedSubscriptions[caller];
-      upsertRegisteredUser(db, { email: caller, name: (body && body.name) || caller.split("@")[0] });
-      saveDb(db);
+      const uRes = upsertRegisteredUser(db, { email: caller, name: (body && body.name) || caller.split("@")[0] });
+      await saveDb(db);
+      if (uRes.shouldNotify && uRes.user) {
+        try { await sendNewUserNotification(db, uRes.user); } catch (e) { /* safe */ }
+      }
       return sendJson(res, 200, { ok: true, subscription: db.subscriptions[caller] });
     }
 
@@ -901,7 +1018,7 @@ module.exports = async function apiHandler(req, res) {
       const caller = getCallerEmail(req) || String((body && body.userEmail) || "").trim().toLowerCase();
       if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
       if (!body || !PAID_PLANS.includes(body.plan)) return sendJson(res, 400, { error: "G\u00f3i thanh to\u00e1n kh\u00f4ng h\u1ee3p l\u1ec7." });
-      const db = loadDb();
+      const db = await loadDb();
       const dup = db.payment_requests.some(function (r) {
         return r && String(r.userEmail || "").toLowerCase() === caller && r.plan === body.plan && r.status === "pending";
       });
@@ -925,10 +1042,19 @@ module.exports = async function apiHandler(req, res) {
         notifiedEmail: true
       };
       db.payment_requests.push(rec);
-      upsertRegisteredUser(db, { email: caller, name: rec.userName });
-      saveDb(db);
-      triggerPaymentRequestEmailAsync(db, rec);
-      return sendJson(res, 201, { ok: true, request: rec });
+      upsertRegisteredUser(db, { email: caller, name: rec.userName }, { suppressEmail: true });
+      await saveDb(db);
+      let emailNotification = null;
+      try {
+        emailNotification = await sendPaymentRequestNotification(db, rec);
+      } catch (mailErr) {
+        console.error("[AI Tutor Email] /api/payment-requests notify error:", mailErr && mailErr.message);
+      }
+      return sendJson(res, 201, {
+        ok: true,
+        request: rec,
+        emailStatus: emailNotification ? emailNotification.status : "skipped"
+      });
     }
 
     /* ---------- Strict Admin Routes ---------- */
@@ -936,13 +1062,42 @@ module.exports = async function apiHandler(req, res) {
       if (!isCallerAdmin(req)) {
         return sendJson(res, 403, { error: "Forbidden: Ch\u1ec9 t\u00e0i kho\u1ea3n phamduchieurobotics@gmail.com c\u00f3 quy\u1ec1n qu\u1ea3n tr\u1ecb." });
       }
-      const db = loadDb();
+      const db = await loadDb();
       if (!db.revokedSubscriptions) db.revokedSubscriptions = {};
       if (!db.deletedVouchers) db.deletedVouchers = {};
       if (!db.registeredUsers) db.registeredUsers = {};
 
       if (p === "/api/admin/users" && method === "GET") {
-        return sendJson(res, 200, { ok: true, users: db.registeredUsers });
+        return sendJson(res, 200, { ok: true, users: db.registeredUsers, storageDriver: storage.getDriverInfo() });
+      }
+
+      if (p === "/api/admin/test-email" && method === "POST") {
+        try {
+          await verifyAdminRequest(req);
+        } catch (authErr) {
+          return sendJson(res, authErr.status || 403, { error: authErr.message });
+        }
+        const nowIso = new Date().toISOString();
+        const drv = storage.getDriverInfo();
+        const entry = await sendAdminNotificationEmail({
+          eventType: "admin_test",
+          subject: "[AI Tutor] Test Email Notification (SMTP Check)",
+          html:
+            '<div style="font-family:sans-serif;max-width:560px;line-height:1.6;color:#1e293b;border:1px solid #e2e8f0;border-radius:12px;padding:20px">' +
+              '<h2 style="margin:0 0 12px;color:#5347CD">AI Tutor - SMTP Test Successful</h2>' +
+              '<p>H\u1ec7 th\u1ed1ng g\u1eedi th\u00f4ng b\u00e1o email t\u1ef1 \u0111\u1ed9ng (Google SMTP) \u0111ang ho\u1ea1t \u0111\u1ed9ng b\u00ecnh th\u01b0\u1eddng.</p>' +
+              '<p style="font-size:13px;color:#64748b">Storage driver: <strong>' + escHtml(drv.label) + '</strong><br>Timestamp: ' + escHtml(nowIso) + '</p>' +
+            '</div>',
+          text: "AI Tutor SMTP Test Successful. Storage: " + drv.label + " at " + nowIso
+        });
+        appendNotificationLog(db, entry);
+        await saveDb(db);
+        return sendJson(res, entry.status === "sent" ? 200 : 500, {
+          ok: entry.status === "sent",
+          emailNotification: entry,
+          storageDriver: drv,
+          error: entry.status === "sent" ? "" : (entry.error || "Email delivery failed")
+        });
       }
 
       const approveMatch = p.match(/^\/api\/admin\/payment-requests\/([^/]+)\/approve$/);
@@ -966,7 +1121,7 @@ module.exports = async function apiHandler(req, res) {
         db.subscriptions[userEmail] = { tier: rec.plan, since: now, expires: start + 365 * DAY_MS };
         delete db.revokedSubscriptions[userEmail];
         upsertRegisteredUser(db, { email: userEmail, name: rec.userName }, { suppressEmail: true });
-        saveDb(db);
+        await saveDb(db);
         return sendJson(res, 200, { ok: true, request: rec, subscription: db.subscriptions[userEmail] });
       }
 
@@ -984,7 +1139,7 @@ module.exports = async function apiHandler(req, res) {
         rec.reviewedAt = new Date().toISOString();
         rec.reviewedBy = ADMIN_EMAIL;
         rec.rejectReason = String((body && body.rejectReason) || "Y\u00eau c\u1ea7u b\u1ecb t\u1eeb ch\u1ed1i").trim();
-        saveDb(db);
+        await saveDb(db);
         return sendJson(res, 200, { ok: true, request: rec });
       }
 
@@ -996,7 +1151,7 @@ module.exports = async function apiHandler(req, res) {
         db.subscriptions[em] = { tier: body.tier, since: now, expires: now + 365 * DAY_MS };
         delete db.revokedSubscriptions[em];
         upsertRegisteredUser(db, { email: em }, { suppressEmail: true });
-        saveDb(db);
+        await saveDb(db);
         return sendJson(res, 200, { ok: true, subscription: db.subscriptions[em] });
       }
 
@@ -1005,7 +1160,7 @@ module.exports = async function apiHandler(req, res) {
         const em = decodeURIComponent(delSubMatch[1]).trim().toLowerCase();
         delete db.subscriptions[em];
         db.revokedSubscriptions[em] = Date.now();
-        saveDb(db);
+        await saveDb(db);
         return sendJson(res, 200, { ok: true });
       }
 
@@ -1017,7 +1172,7 @@ module.exports = async function apiHandler(req, res) {
           accountNo: String((body && body.accountNo) || "31122007").trim(),
           accountName: String((body && body.accountName) || "PHAM DUC HIEU").trim().toUpperCase()
         };
-        saveDb(db);
+        await saveDb(db);
         return sendJson(res, 200, { ok: true, paymentConfig: db.paymentConfig });
       }
 
@@ -1044,7 +1199,7 @@ module.exports = async function apiHandler(req, res) {
           });
           db.vouchers = clean;
         }
-        saveDb(db);
+        await saveDb(db);
         return sendJson(res, 200, { ok: true, vouchers: db.vouchers });
       }
 
@@ -1078,7 +1233,7 @@ module.exports = async function apiHandler(req, res) {
         };
         delete db.revokedUserApis[em];
         upsertRegisteredUser(db, { email: em }, { suppressEmail: true });
-        saveDb(db);
+        await saveDb(db);
         const safeMap = toSafeMaskedUserApisMap(db.userApis);
         return sendJson(res, 200, { ok: true, entry: safeMap[em], userApis: safeMap });
       }
@@ -1093,7 +1248,7 @@ module.exports = async function apiHandler(req, res) {
         const em = decodeURIComponent(delApiMatch[1]).trim().toLowerCase();
         delete db.userApis[em];
         db.revokedUserApis[em] = Date.now();
-        saveDb(db);
+        await saveDb(db);
         return sendJson(res, 200, { ok: true, userApis: toSafeMaskedUserApisMap(db.userApis) });
       }
 

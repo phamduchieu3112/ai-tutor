@@ -151,7 +151,10 @@ const state = {
   adminPlanFilter: "all",
   adminQuery: "",
   adminMemberQuery: "",
-  adminMemberSort: "newest"
+  adminMemberSort: "newest",
+  registeredSessionEmail: "",
+  adminStorageDriver: null,
+  adminNotificationLogs: []
 };
 
 /* ------------------------------ Utilities ------------------------------ */
@@ -461,6 +464,12 @@ function mergeRemoteBillingSnap(snap) {
     });
     saveJSON(KEYS.users, mergedUsers);
   }
+  if (snap.storageDriver && typeof snap.storageDriver === "object") {
+    state.adminStorageDriver = snap.storageDriver;
+  }
+  if (Array.isArray(snap.notificationLogs)) {
+    state.adminNotificationLogs = snap.notificationLogs;
+  }
   return changed;
 }
 
@@ -507,12 +516,19 @@ async function syncWithBackend() {
     }
     state.backendOnline = true;
     if (state.user && state.user.email) {
-      apiCall("/api/users/register", "POST", {
-        uid: state.user.uid || state.user.email,
-        email: state.user.email,
-        name: state.user.name,
-        picture: state.user.picture
-      }).catch(function () { /* non-blocking */ });
+      const curEm = String(state.user.email).trim().toLowerCase();
+      if (state.registeredSessionEmail !== curEm) {
+        // Await registration BEFORE billing/sync to avoid parallel race conditions & let Vercel finish SMTP delivery
+        const regResp = await apiCall("/api/users/register", "POST", {
+          uid: state.user.uid || curEm,
+          email: curEm,
+          name: state.user.name,
+          picture: state.user.picture
+        });
+        if (regResp && !regResp._err) {
+          state.registeredSessionEmail = curEm;
+        }
+      }
     }
     const localUsers = loadObj(KEYS.users);
     const curUserRec = state.user && state.user.email ? (localUsers[state.user.email.toLowerCase()] || state.user) : undefined;
@@ -711,6 +727,7 @@ function logout() {
   closeDrawer();
   state.session = null; state.flash = null; state.user = null; state.checkout = null;
   state.decks = []; state.manifestDecks = [];
+  state.registeredSessionEmail = ""; state.adminStorageDriver = null; state.adminNotificationLogs = [];
   if (typeof sysKeysState !== "undefined") {
     sysKeysState.loaded = false; sysKeysState.keys = []; sysKeysState.envKeys = []; sysKeysState.preview = null; sysKeysState.rawDraft = "";
   }
@@ -2752,8 +2769,19 @@ function adminMembersHTML() {
       '</div></td></tr>';
   }).join("") : '<tr><td colspan="5" class="muted">Ch\u01b0a c\u00f3 t\u00e0i kho\u1ea3n n\u00e0o \u0111\u01b0\u1ee3c Admin g\u00e1n Gemini API Key.</td></tr>';
 
+  const drvWarn = (state.adminStorageDriver && !state.adminStorageDriver.persistentAcrossDeploys)
+    ? '<div class="pending-banner" style="border-color:var(--amber);margin-bottom:12px"><span>⚠️ <strong>L\u01b0u \u00fd l\u01b0u tr\u1eef:</strong> M\u00e1y ch\u1ee7 \u0111ang d\u00f9ng <code>' + esc(state.adminStorageDriver.label || "/tmp JSON") + '</code> (kh\u00f4ng b\u1ec1n v\u1eefng qua cold-start/deploy). H\u00e3y c\u1ea5u h\u00ecnh <code>KV_REST_API_URL</code>/<code>UPSTASH_REDIS_REST_URL</code> ho\u1eb7c <code>SUPABASE_URL</code> + <code>SUPABASE_SERVICE_ROLE_KEY</code> tr\u00ean Vercel \u0111\u1ec3 danh s\u00e1ch ng\u01b0\u1eddi d\u00f9ng &amp; ch\u1ed1ng tr\u00f9ng email t\u1ed3n t\u1ea1i v\u0129nh vi\u1ec5n.</span></div>'
+    : "";
+  const lastLog = (Array.isArray(state.adminNotificationLogs) && state.adminNotificationLogs.length)
+    ? state.adminNotificationLogs[state.adminNotificationLogs.length - 1]
+    : null;
+  const mailStatusLine = lastLog
+    ? ('<div class="muted" style="font-size:.76rem;margin:-4px 0 10px">📬 Email g\u1ea7n nh\u1ea5t: <code>' + esc(lastLog.status || "") + '</code> (' + esc(lastLog.provider || "none") + ') \u2014 ' + esc(lastLog.subject || "") + (lastLog.error ? (' <span style="color:var(--rose)">(' + esc(lastLog.error) + ')</span>') : "") + '</div>')
+    : "";
+
   return '<h3>Danh s\u00e1ch t\u1ea5t c\u1ea3 ng\u01b0\u1eddi d\u00f9ng \u0111\u00e3 \u0111\u0103ng k\u00fd (' + allUsers.length + ')</h3>' +
     '<p class="muted" style="font-size:.82rem;margin:0 0 10px">Hi\u1ec3n th\u1ecb to\u00e0n b\u1ed9 t\u00e0i kho\u1ea3n \u0111\u00e3 \u0111\u0103ng k\u00fd tr\u00ean h\u1ec7 th\u1ed1ng. Khi c\u00f3 ng\u01b0\u1eddi d\u00f9ng m\u1edbi \u0111\u0103ng k\u00fd ho\u1eb7c g\u1eedi y\u00eau c\u1ea7u x\u00e1c nh\u1eadn thanh to\u00e1n, h\u1ec7 th\u1ed1ng s\u1ebd t\u1ef1 \u0111\u1ed9ng g\u1eedi th\u00f4ng b\u00e1o v\u1ec1 email qu\u1ea3n tr\u1ecb (<strong>phamduchieu.robotics@gmail.com</strong>).</p>' +
+    drvWarn + mailStatusLine +
     '<div class="filter-bar">' +
       '<input type="search" id="admMemberQuery" placeholder="T\u00ecm ng\u01b0\u1eddi d\u00f9ng theo email ho\u1eb7c t\u00ean..." value="' + esc(state.adminMemberQuery) + '" style="flex:1;min-width:220px">' +
       '<select id="admMemberSort" aria-label="S\u1eafp x\u1ebfp ng\u01b0\u1eddi d\u00f9ng">' +
@@ -2762,6 +2790,7 @@ function adminMembersHTML() {
         '<option value="tier"' + (state.adminMemberSort === "tier" ? " selected" : "") + '>H\u1ea1ng g\u00f3i cao nh\u1ea5t</option>' +
         '<option value="email"' + (state.adminMemberSort === "email" ? " selected" : "") + '>Email (A-Z)</option>' +
       '</select>' +
+      '<button type="button" class="btn btn-outline btn-sm" data-act="test-admin-email">✉️ Test Email SMTP</button>' +
     '</div>' +
     '<div class="table-scroll" id="admAllUsersTableWrap" style="margin-bottom:24px"></div>' +
 
@@ -3219,6 +3248,32 @@ async function onAdminClick(e) {
         const k = resp.data.key || {};
         showToast("Live Health Check " + (k.maskedKey || "") + ": " + (k.status || "done").toUpperCase() + (k.lastError ? (" (" + k.lastError + ")") : " (OK)"), k.status === "healthy" ? "success" : "warning");
       }
+      renderAdmin();
+    } else if (act === "test-admin-email") {
+      b.disabled = true;
+      showToast("\u0110ang g\u1eedi email ki\u1ec3m tra SMTP...", "info");
+      try {
+        const resp = await fetch("/api/admin/test-email", {
+          method: "POST",
+          headers: authHeaders(),
+          body: "{}",
+          cache: "no-store"
+        });
+        const data = await resp.json().catch(function () { return null; });
+        if (resp.ok && data && data.ok) {
+          if (data.storageDriver) state.adminStorageDriver = data.storageDriver;
+          if (data.emailNotification) {
+            state.adminNotificationLogs = (state.adminNotificationLogs || []).concat([data.emailNotification]).slice(-30);
+          }
+          showToast("✅ \u0110\u00e3 g\u1eedi email test SMTP th\u00e0nh c\u00f4ng t\u1edbi " + (data.emailNotification && data.emailNotification.to ? data.emailNotification.to : "Admin") + "!", "success");
+        } else {
+          const errMsg = (data && (data.error || (data.emailNotification && data.emailNotification.error))) || ("HTTP " + resp.status);
+          showToast("❌ L\u1ed7i g\u1eedi email SMTP: " + errMsg, "error");
+        }
+      } catch (e) {
+        showToast("❌ Kh\u00f4ng th\u1ec3 g\u1ecdi /api/admin/test-email.", "error");
+      }
+      b.disabled = false;
       renderAdmin();
     } else if (act === "syskey-refresh") {
       await loadAdminSysKeys(true);
