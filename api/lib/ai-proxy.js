@@ -72,6 +72,7 @@ async function loadSystemKeyPool() {
   const envKeyStates = await storage.getEnvKeyStates();
   const pool = [];
   const secrets = [];
+  const seenHashes = new Set();
 
   for (let i = 0; i < storedRecords.length; i++) {
     const rec = storedRecords[i];
@@ -79,6 +80,11 @@ async function loadSystemKeyPool() {
     try {
       const rawKey = decryptSecret(rec);
       secrets.push(rawKey);
+      const h = rec.keyHash || (isEncryptionConfigured()
+        ? hmacKeyHash(rec.provider, rawKey)
+        : crypto.createHash("sha256").update(rec.provider + ":" + rawKey).digest("hex"));
+      if (seenHashes.has(h)) continue;
+      seenHashes.add(h);
       pool.push({
         id: rec.id,
         source: "db",
@@ -86,6 +92,7 @@ async function loadSystemKeyPool() {
         provider: rec.provider,
         rawKey: rawKey,
         maskedKey: rec.maskedKey,
+        keyHash: h,
         enabled: rec.enabled !== false,
         status: rec.status || "healthy",
         cooldownUntil: Number(rec.cooldownUntil) || 0,
@@ -100,12 +107,42 @@ async function loadSystemKeyPool() {
   const envKeys = getEnvDefaultKeys(envKeyStates);
   envKeys.forEach(function (ek) {
     secrets.push(ek.rawKey);
+    const h = isEncryptionConfigured()
+      ? hmacKeyHash(ek.provider, ek.rawKey)
+      : crypto.createHash("sha256").update(ek.provider + ":" + ek.rawKey).digest("hex");
+    if (seenHashes.has(h)) return;
+    seenHashes.add(h);
     if (ek.enabled !== false && ek.status !== "invalid") {
+      ek.keyHash = h;
       pool.push(ek);
     }
   });
 
   return { pool: pool, storedRecords: storedRecords, envKeyStates: envKeyStates, secrets: secrets };
+}
+
+function validateInlineMediaSizes(body) {
+  const MAX_SINGLE_B64 = 3.2 * 1024 * 1024;
+  const MAX_TOTAL_B64 = 3.5 * 1024 * 1024;
+  let total = 0;
+  const contents = Array.isArray(body && body.contents) ? body.contents : [];
+  for (let i = 0; i < contents.length; i++) {
+    const parts = (contents[i] && contents[i].parts) || [];
+    for (let j = 0; j < parts.length; j++) {
+      const pt = parts[j];
+      if (pt && pt.inlineData && typeof pt.inlineData.data === "string") {
+        const len = pt.inlineData.data.length;
+        if (len > MAX_SINGLE_B64) {
+          return "T\u1ec7p \u1ea3nh / PDF v\u01b0\u1ee3t qu\u00e1 dung l\u01b0\u1ee3ng cho ph\u00e9p (t\u1ed1i \u0111a 2.4MB m\u1ed7i \u1ea3nh). H\u00e3y n\u00e9n nh\u1ecf \u1ea3nh tr\u01b0\u1edbc khi g\u1eedi.";
+        }
+        total += len;
+        if (total > MAX_TOTAL_B64) {
+          return "T\u1ed5ng dung l\u01b0\u1ee3ng \u1ea3nh / PDF trong m\u1ed9t l\u01b0\u1ee3t g\u1eedi qu\u00e1 l\u1edbn. H\u00e3y chia nh\u1ecf s\u1ed1 \u1ea3nh m\u1ed7i l\u1ea7n.";
+        }
+      }
+    }
+  }
+  return "";
 }
 
 function detectRequestCapabilities(body) {
@@ -320,16 +357,20 @@ function normalizeUpstreamJson(provider, data) {
   return { provider: provider, text: txt || "", raw: data };
 }
 
-async function persistKeyStateUpdates(storedRecords, envKeyStates, mutations) {
+async function persistKeyStateUpdates(mutations) {
   if (!mutations || mutations.size === 0) return;
   let dbDirty = false;
   let envDirty = false;
   const nowIso = new Date().toISOString();
 
+  // Re-read fresh storage snapshot before applying deltas to reduce concurrent-overwrite windows
+  const freshStored = await storage.listStoredKeys();
+  const freshEnvStates = await storage.getEnvKeyStates();
+
   mutations.forEach(function (delta, keyId) {
     if (delta.source === "env") {
-      const cur = envKeyStates[keyId] || {};
-      envKeyStates[keyId] = {
+      const cur = freshEnvStates[keyId] || {};
+      freshEnvStates[keyId] = {
         enabled: cur.enabled !== false,
         status: delta.status || cur.status || "healthy",
         cooldownUntil: typeof delta.cooldownUntil === "number" ? delta.cooldownUntil : (cur.cooldownUntil || 0),
@@ -340,7 +381,7 @@ async function persistKeyStateUpdates(storedRecords, envKeyStates, mutations) {
       };
       envDirty = true;
     } else {
-      const rec = storedRecords.find(function (r) { return r && r.id === keyId; });
+      const rec = freshStored.find(function (r) { return r && r.id === keyId; });
       if (rec) {
         if (delta.status) rec.status = delta.status;
         if (typeof delta.cooldownUntil === "number") rec.cooldownUntil = delta.cooldownUntil;
@@ -353,8 +394,8 @@ async function persistKeyStateUpdates(storedRecords, envKeyStates, mutations) {
     }
   });
 
-  if (dbDirty) await storage.saveStoredKeys(storedRecords);
-  if (envDirty) await storage.saveEnvKeyStates(envKeyStates);
+  if (dbDirty) await storage.saveStoredKeys(freshStored);
+  if (envDirty) await storage.saveEnvKeyStates(freshEnvStates);
 }
 
 async function handleAiProxy(req, res) {
@@ -384,23 +425,46 @@ async function handleAiProxy(req, res) {
     return sendJsonWithCors(res, bodyErr.status || 400, { error: bodyErr.message }, corsCheck);
   }
 
-  const requestedModelId = String((body && body.model) || "gemini-2.5-flash").trim();
+  // SSRF & Header-Injection Defense: never accept client-chosen upstream URL or custom headers
+  if (body && (body.upstreamUrl || body.baseUrl || body.endpoint || body.url || body.headers || body.customHeaders)) {
+    return sendJsonWithCors(res, 400, { error: "Y\u00eau c\u1ea7u ch\u1ee9a tr\u01b0\u1eddng \u0111\u1ecbnh tuy\u1ebfn / header kh\u00f4ng h\u1ee3p l\u1ec7." }, corsCheck);
+  }
+
+  const mediaSizeErr = validateInlineMediaSizes(body);
+  if (mediaSizeErr) {
+    return sendJsonWithCors(res, 413, { error: mediaSizeErr }, corsCheck);
+  }
+
+  const requestedModelId = String((body && body.model) || CONFIG.DEFAULT_MODEL_ID || "gemini-3.5-flash-lite").trim();
   if (!CONFIG.ALLOWED_MODELS[requestedModelId]) {
     return sendJsonWithCors(res, 400, { error: "Model AI \"" + requestedModelId + "\" kh\u00f4ng n\u1eb1m trong danh s\u00e1ch \u0111\u01b0\u1ee3c ph\u00e9p." }, corsCheck);
   }
 
-  // Fair-use rate limit per verified UID + IP (ONLY on System Default Pool requests)
-  const ipHash = crypto.createHash("sha256").update(getClientIp(req)).digest("hex").slice(0, 12);
+  // Dual Fair-Use Rate Limit (System Pool ONLY):
+  // 1) Per verified UID (prevents X-Forwarded-For spoofing completely)
+  // 2) Per trusted client IP (prevents multi-account spam from one IP)
+  const ipHash = crypto.createHash("sha256").update(getClientIp(req)).digest("hex").slice(0, 16);
   const hourBucket = Math.floor(Date.now() / 3600000);
-  const rlBucketKey = "aitutor:rl:" + user.uid + ":" + ipHash + ":" + hourBucket;
   const rateLimitPerHour = getRateLimitPerHour();
-  const rl = await storage.consumeRateLimit(rlBucketKey, rateLimitPerHour, 3600);
-  if (!rl.allowed) {
-    const minsLeft = Math.max(1, Math.ceil((rl.resetAt - Date.now()) / 60000));
+  const uidBucketKey = "aitutor:rl:uid:" + user.uid + ":" + hourBucket;
+  const ipBucketKey = "aitutor:rl:ip:" + ipHash + ":" + hourBucket;
+
+  const rlUid = await storage.consumeRateLimit(uidBucketKey, rateLimitPerHour, 3600);
+  if (!rlUid.allowed) {
+    const minsLeft = Math.max(1, Math.ceil((rlUid.resetAt - Date.now()) / 60000));
     return sendJsonWithCors(res, 429, {
-      error: "B\u1ea1n \u0111\u00e3 d\u00f9ng h\u1ebft gi\u1edbi h\u1ea1n c\u00f4ng b\u1eb1ng (" + rl.limit + " l\u01b0\u1ee3t/gi\u1edd) cho API H\u1ec7 th\u1ed1ng mi\u1ec5n ph\u00ed. Vui l\u00f2ng th\u1eed l\u1ea1i sau ~" + minsLeft + " ph\u00fat ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n t\u1ea1i C\u00e0i \u0111\u1eb7t API \u0111\u1ec3 kh\u00f4ng b\u1ecb gi\u1edbi h\u1ea1n."
+      error: "B\u1ea1n \u0111\u00e3 d\u00f9ng h\u1ebft gi\u1edbi h\u1ea1n c\u00f4ng b\u1eb1ng (" + rlUid.limit + " l\u01b0\u1ee3t/gi\u1edd) cho API H\u1ec7 th\u1ed1ng mi\u1ec5n ph\u00ed. Vui l\u00f2ng th\u1eed l\u1ea1i sau ~" + minsLeft + " ph\u00fat ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n t\u1ea1i C\u00e0i \u0111\u1eb7t API \u0111\u1ec3 kh\u00f4ng b\u1ecb gi\u1edbi h\u1ea1n."
     }, corsCheck);
   }
+  const ipCap = Math.max(rateLimitPerHour * 2, 40);
+  const rlIp = await storage.consumeRateLimit(ipBucketKey, ipCap, 3600);
+  if (!rlIp.allowed) {
+    const minsLeft = Math.max(1, Math.ceil((rlIp.resetAt - Date.now()) / 60000));
+    return sendJsonWithCors(res, 429, {
+      error: "\u0110\u1ecba ch\u1ec9 m\u1ea1ng c\u1ee7a b\u1ea1n \u0111\u00e3 ch\u1ea1m gi\u1edbi h\u1ea1n l\u01b0\u1ee3t d\u00f9ng chung trong gi\u1edd n\u00e0y. Vui l\u00f2ng th\u1eed l\u1ea1i sau ~" + minsLeft + " ph\u00fat ho\u1eb7c d\u00f9ng API Key c\u00e1 nh\u00e2n."
+    }, corsCheck);
+  }
+  const rl = rlUid;
 
   const caps = detectRequestCapabilities(body);
   const loaded = await loadSystemKeyPool();
@@ -410,8 +474,8 @@ async function handleAiProxy(req, res) {
     const errText = caps.hasPdf
       ? "Hi\u1ec7n kh\u00f4ng c\u00f3 Google Gemini Key h\u1ec7 th\u1ed1ng kh\u1ea3 d\u1ee5ng \u0111\u1ec3 \u0111\u1ecdc PDF scan. Vui l\u00f2ng th\u1eed l\u1ea1i sau ho\u1eb7c nh\u1eadp Gemini API Key c\u00e1 nh\u00e2n."
       : (caps.hasImage
-          ? "To\u00e0n b\u1ed9 API Key h\u1ec7 th\u1ed1ng h\u1ed7 tr\u1ee3 \u0111\u1ecdc \u1ea3nh (Vision) \u0111ang b\u1eadn ho\u1eb7c h\u1ebft l\u01b0\u1ee3t. Vui l\u00f2ng th\u1eed l\u1ea1i sau 1 ph\u00fat ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n mi\u1ec5n ph\u00ed (Groq / Gemini / OpenRouter)."
-          : "Hệ th\u1ed1ng t\u1ea1m th\u1eddi ch\u01b0a c\u00f3 API Key m\u1eb7c \u0111\u1ecbnh kh\u1ea3 d\u1ee5ng ho\u1eb7c t\u1ea5t c\u1ea3 \u0111ang ngh\u1ec9 ch\u1edd h\u1ed3i quota. Vui l\u00f2ng th\u1eed l\u1ea1i sau \u00edt ph\u00fat ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n.");
+          ? "To\u00e0n b\u1ed9 API Key h\u1ec7 th\u1ed1ng h\u1ed7 tr\u1ee3 \u0111\u1ecdc \u1ea3nh (Vision) \u0111ang b\u1eadn ho\u1eb7c kh\u00f4ng c\u00f3 model Vision kh\u1ea3 d\u1ee5ng. Vui l\u00f2ng th\u1eed l\u1ea1i sau 1 ph\u00fat ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n mi\u1ec5n ph\u00ed (Groq / Gemini / OpenRouter)."
+          : "H\u1ec7 th\u1ed1ng t\u1ea1m th\u1eddi ch\u01b0a c\u00f3 API Key m\u1eb7c \u0111\u1ecbnh kh\u1ea3 d\u1ee5ng ho\u1eb7c t\u1ea5t c\u1ea3 \u0111ang ngh\u1ec9 ch\u1edd h\u1ed3i quota. Vui l\u00f2ng th\u1eed l\u1ea1i sau \u00edt ph\u00fat ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n.");
     return sendJsonWithCors(res, 503, { error: errText }, corsCheck);
   }
 
@@ -420,6 +484,27 @@ async function handleAiProxy(req, res) {
   const wantStream = !!(body && body.stream === true);
   const mutations = new Map();
   let lastSanitizedErr = "";
+
+  // Wire client disconnect abort signal cleanly so aborted requests stop upstream immediately
+  let clientAborted = false;
+  const reqAbortCtrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const onClientClose = function () {
+    clientAborted = true;
+    if (reqAbortCtrl) {
+      try { reqAbortCtrl.abort(); } catch (e) { /* */ }
+    }
+  };
+  if (req && typeof req.on === "function") {
+    req.on("close", onClientClose);
+    req.on("aborted", onClientClose);
+  }
+
+  const cleanupReqListeners = function () {
+    if (req && typeof req.removeListener === "function") {
+      req.removeListener("close", onClientClose);
+      req.removeListener("aborted", onClientClose);
+    }
+  };
 
   const bumpMutation = function (entry, fields) {
     const prev = mutations.get(entry.id) || { source: entry.source, usageDelta: 0, errorDelta: 0 };
@@ -431,119 +516,174 @@ async function handleAiProxy(req, res) {
     mutations.set(entry.id, prev);
   };
 
-  for (let i = 0; i < plan.length; i++) {
-    const attempt = plan[i];
-    const entry = attempt.keyEntry;
-    const mInfo = attempt.modelInfo;
-    const provInfo = CONFIG.PROVIDER_MAP[mInfo.provider];
-    const isGemini = mInfo.provider === "gemini";
+  try {
+    for (let i = 0; i < plan.length; i++) {
+      if (clientAborted) break;
+      const attempt = plan[i];
+      const entry = attempt.keyEntry;
+      const mInfo = attempt.modelInfo;
+      const provInfo = CONFIG.PROVIDER_MAP[mInfo.provider];
+      const isGemini = mInfo.provider === "gemini";
 
-    // SECURITY RULE: Never put Gemini key in URL; always send via x-goog-api-key header.
-    const upstreamUrl = isGemini
-      ? (provInfo.endpoint + encodeURIComponent(mInfo.rawModel) + (wantStream ? ":streamGenerateContent?alt=sse" : ":generateContent"))
-      : provInfo.endpoint;
+      // SECURITY RULE: Never put Gemini key in URL; always send via x-goog-api-key header.
+      const upstreamUrl = isGemini
+        ? (provInfo.endpoint + encodeURIComponent(mInfo.rawModel) + (wantStream ? ":streamGenerateContent?alt=sse" : ":generateContent"))
+        : provInfo.endpoint;
 
-    const upstreamHeaders = { "Content-Type": "application/json" };
-    if (isGemini) {
-      upstreamHeaders["x-goog-api-key"] = entry.rawKey;
-    } else {
-      upstreamHeaders["Authorization"] = "Bearer " + entry.rawKey;
-    }
-
-    const upstreamBody = isGemini
-      ? buildGeminiUpstreamBody(body, maxTokensCap)
-      : buildOpenAICompatibleBody(mInfo.rawModel, body, maxTokensCap, wantStream);
-
-    let upRes;
-    try {
-      upRes = await fetch(upstreamUrl, {
-        method: "POST",
-        headers: upstreamHeaders,
-        body: JSON.stringify(upstreamBody)
-      });
-    } catch (netErr) {
-      lastSanitizedErr = sanitizeErrorMessage(netErr && netErr.message, loaded.secrets);
-      bumpMutation(entry, { errorDelta: 1, lastError: lastSanitizedErr });
-      continue;
-    }
-
-    if (upRes.ok) {
-      bumpMutation(entry, { status: "healthy", cooldownUntil: 0, usageDelta: 1, lastError: "" });
-      await persistKeyStateUpdates(loaded.storedRecords, loaded.envKeyStates, mutations);
-
-      const respHeaders = Object.assign({
-        "Cache-Control": "no-store, no-cache, must-revalidate",
-        "X-AI-RateLimit-Remaining": String(rl.remaining),
-        "X-AI-RateLimit-Limit": String(rl.limit)
-      }, buildCorsHeaders(corsCheck));
-
-      if (attempt.isFallback || mInfo.id !== requestedModelId) {
-        respHeaders["X-AI-Fallback-Provider"] = mInfo.provider;
-        respHeaders["X-AI-Fallback-Model"] = mInfo.rawModel;
+      const upstreamHeaders = { "Content-Type": "application/json" };
+      if (isGemini) {
+        upstreamHeaders["x-goog-api-key"] = entry.rawKey;
+      } else {
+        upstreamHeaders["Authorization"] = "Bearer " + entry.rawKey;
       }
 
-      if (wantStream && upRes.body) {
-        respHeaders["Content-Type"] = "text/event-stream; charset=utf-8";
-        respHeaders["Connection"] = "keep-alive";
-        res.writeHead(200, respHeaders);
+      const upstreamBody = isGemini
+        ? buildGeminiUpstreamBody(body, maxTokensCap)
+        : buildOpenAICompatibleBody(mInfo.rawModel, body, maxTokensCap, wantStream);
+
+      let upRes = null;
+      let netFailed = false;
+      for (let retry = 0; retry < 2; retry++) {
+        if (clientAborted) break;
+        const stepCtrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const stepTimer = stepCtrl ? setTimeout(function () { stepCtrl.abort(); }, 52000) : null;
+        const forwardAbort = function () { if (stepCtrl) stepCtrl.abort(); };
+        if (reqAbortCtrl && reqAbortCtrl.signal) {
+          reqAbortCtrl.signal.addEventListener("abort", forwardAbort, { once: true });
+        }
         try {
-          const reader = upRes.body.getReader();
-          while (true) {
-            const chunk = await reader.read();
-            if (chunk.done) break;
-            if (chunk.value) res.write(Buffer.from(chunk.value));
+          upRes = await fetch(upstreamUrl, {
+            method: "POST",
+            headers: upstreamHeaders,
+            body: JSON.stringify(upstreamBody),
+            signal: stepCtrl ? stepCtrl.signal : undefined
+          });
+          netFailed = false;
+        } catch (netErr) {
+          netFailed = true;
+          lastSanitizedErr = sanitizeErrorMessage(netErr && netErr.message, loaded.secrets);
+        } finally {
+          if (stepTimer) clearTimeout(stepTimer);
+          if (reqAbortCtrl && reqAbortCtrl.signal) {
+            reqAbortCtrl.signal.removeEventListener("abort", forwardAbort);
           }
-        } catch (streamErr) { /* finish stream */ }
-        return res.end();
+        }
+        if (clientAborted) break;
+        if (!netFailed && upRes && upRes.status !== 502 && upRes.status !== 503 && upRes.status !== 504) {
+          break;
+        }
+        if (retry === 0 && !clientAborted) {
+          await new Promise(function (r) { setTimeout(r, 400); });
+        }
       }
 
-      const data = await upRes.json().catch(function () { return {}; });
-      const normalized = normalizeUpstreamJson(mInfo.provider, data);
-      respHeaders["Content-Type"] = "application/json; charset=utf-8";
-      res.writeHead(200, respHeaders);
-      return res.end(JSON.stringify({
-        ok: true,
-        provider: normalized.provider,
-        model: mInfo.id,
-        rawModel: mInfo.rawModel,
-        fallbackUsed: attempt.isFallback || mInfo.id !== requestedModelId,
-        text: normalized.text,
-        candidates: isGemini ? data.candidates : undefined,
-        choices: !isGemini ? data.choices : undefined
-      }));
+      if (clientAborted) break;
+      if (netFailed || !upRes) {
+        bumpMutation(entry, { errorDelta: 1, lastError: lastSanitizedErr.slice(0, 140) });
+        continue;
+      }
+
+      if (upRes.ok) {
+        bumpMutation(entry, { status: "healthy", cooldownUntil: 0, usageDelta: 1, lastError: "" });
+        await persistKeyStateUpdates(mutations);
+
+        const respHeaders = Object.assign({
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          "X-AI-RateLimit-Remaining": String(rl.remaining),
+          "X-AI-RateLimit-Limit": String(rl.limit)
+        }, buildCorsHeaders(corsCheck));
+
+        if (attempt.isFallback || mInfo.id !== requestedModelId) {
+          respHeaders["X-AI-Fallback-Provider"] = mInfo.provider;
+          respHeaders["X-AI-Fallback-Model"] = mInfo.rawModel;
+        }
+
+        if (wantStream && upRes.body) {
+          respHeaders["Content-Type"] = "text/event-stream; charset=utf-8";
+          respHeaders["Connection"] = "keep-alive";
+          respHeaders["X-Accel-Buffering"] = "no";
+          res.writeHead(200, respHeaders);
+          let reader = null;
+          try {
+            reader = upRes.body.getReader();
+            while (!clientAborted) {
+              const chunk = await reader.read();
+              if (chunk.done) break;
+              if (chunk.value && !clientAborted) res.write(Buffer.from(chunk.value));
+            }
+          } catch (streamErr) {
+            if (!clientAborted) {
+              try {
+                res.write("event: error\ndata: " + JSON.stringify({ error: sanitizeErrorMessage(streamErr && streamErr.message, loaded.secrets) }) + "\n\n");
+              } catch (e) { /* */ }
+            }
+          } finally {
+            if (reader && typeof reader.cancel === "function") {
+              try { await reader.cancel(); } catch (e) { /* */ }
+            }
+            cleanupReqListeners();
+          }
+          return res.end();
+        }
+
+        const data = (typeof upRes.json === "function")
+          ? await upRes.json().catch(function () { return {}; })
+          : {};
+        const normalized = normalizeUpstreamJson(mInfo.provider, data);
+        respHeaders["Content-Type"] = "application/json; charset=utf-8";
+        res.writeHead(200, respHeaders);
+        cleanupReqListeners();
+        return res.end(JSON.stringify({
+          ok: true,
+          provider: normalized.provider,
+          model: mInfo.id,
+          rawModel: mInfo.rawModel,
+          fallbackUsed: attempt.isFallback || mInfo.id !== requestedModelId,
+          text: normalized.text,
+          candidates: isGemini ? data.candidates : undefined,
+          choices: !isGemini ? data.choices : undefined
+        }));
+      }
+
+      const errJson = (typeof upRes.json === "function")
+        ? await upRes.json().catch(function () { return {}; })
+        : {};
+      const rawMsg = (errJson && errJson.error && errJson.error.message) || ("HTTP " + upRes.status);
+      lastSanitizedErr = sanitizeErrorMessage(rawMsg, loaded.secrets);
+
+      if (upRes.status === 429) {
+        bumpMutation(entry, {
+          status: "cooldown",
+          cooldownUntil: Date.now() + cooldownMs,
+          errorDelta: 1,
+          lastError: "429: " + lastSanitizedErr.slice(0, 140)
+        });
+        continue;
+      }
+
+      if (upRes.status === 401 || upRes.status === 403) {
+        bumpMutation(entry, {
+          status: "invalid",
+          cooldownUntil: 0,
+          errorDelta: 1,
+          lastError: upRes.status + ": Invalid API Key"
+        });
+        continue;
+      }
+
+      bumpMutation(entry, { errorDelta: 1, lastError: lastSanitizedErr.slice(0, 140) });
     }
 
-    const errJson = await upRes.json().catch(function () { return {}; });
-    const rawMsg = (errJson && errJson.error && errJson.error.message) || ("HTTP " + upRes.status);
-    lastSanitizedErr = sanitizeErrorMessage(rawMsg, loaded.secrets);
-
-    if (upRes.status === 429) {
-      bumpMutation(entry, {
-        status: "cooldown",
-        cooldownUntil: Date.now() + cooldownMs,
-        errorDelta: 1,
-        lastError: "429: " + lastSanitizedErr.slice(0, 140)
-      });
-      continue;
+    await persistKeyStateUpdates(mutations);
+    if (clientAborted) {
+      return res.end();
     }
-
-    if (upRes.status === 401 || upRes.status === 403) {
-      bumpMutation(entry, {
-        status: "invalid",
-        cooldownUntil: 0,
-        errorDelta: 1,
-        lastError: upRes.status + ": Invalid API Key"
-      });
-      continue;
-    }
-
-    bumpMutation(entry, { errorDelta: 1, lastError: lastSanitizedErr.slice(0, 140) });
+    return sendJsonWithCors(res, 503, {
+      error: "To\u00e0n b\u1ed9 API Key h\u1ec7 th\u1ed1ng hi\u1ec7n \u0111ang b\u1eadn ho\u1eb7c h\u1ebft h\u1ea1n m\u1ee9c t\u1ea1m th\u1eddi. Vui l\u00f2ng th\u1eed l\u1ea1i sau 1 ph\u00fat ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n trong C\u00e0i \u0111\u1eb7t API. (" + sanitizeErrorMessage(lastSanitizedErr, loaded.secrets) + ")"
+    }, corsCheck);
+  } finally {
+    cleanupReqListeners();
   }
-
-  await persistKeyStateUpdates(loaded.storedRecords, loaded.envKeyStates, mutations);
-  return sendJsonWithCors(res, 503, {
-    error: "To\u00e0n b\u1ed9 API Key h\u1ec7 th\u1ed1ng hi\u1ec7n \u0111ang b\u1eadn ho\u1eb7c h\u1ebft h\u1ea1n m\u1ee9c t\u1ea1m th\u1eddi. Vui l\u00f2ng th\u1eed l\u1ea1i sau 1 ph\u00fat ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n trong C\u00e0i \u0111\u1eb7t API. (" + sanitizeErrorMessage(lastSanitizedErr, loaded.secrets) + ")"
-  }, corsCheck);
 }
 
 module.exports = {

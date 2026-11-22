@@ -126,9 +126,18 @@ function readBoundedJsonBody(req, maxBytes) {
 
 function getClientIp(req) {
   const headers = (req && req.headers) || {};
-  const xff = String(headers["x-forwarded-for"] || headers["x-real-ip"] || "").split(",")[0].trim();
+  // Prefer platform-set proxy headers (cannot be spoofed by end-user clients on Vercel/Cloudflare)
+  const vercelIp = String(headers["x-vercel-forwarded-for"] || "").split(",")[0].trim();
+  if (vercelIp) return vercelIp;
+  const cfIp = String(headers["cf-connecting-ip"] || "").trim();
+  if (cfIp) return cfIp;
+  const realIp = String(headers["x-real-ip"] || "").trim();
+  if (realIp) return realIp;
   const sock = (req && req.socket && req.socket.remoteAddress) || "";
-  return xff || sock || "unknown";
+  if (sock) return sock;
+  // Last resort only: take the rightmost entry of x-forwarded-for (appended by edge proxy)
+  const xffParts = String(headers["x-forwarded-for"] || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+  return xffParts.length ? xffParts[xffParts.length - 1] : "unknown";
 }
 
 module.exports = {

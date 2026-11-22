@@ -40,13 +40,22 @@
     steps: [],              // [{ id, label, status: 'pending'|'active'|'done'|'skip' }]
     lastSummary: "",
     apiStatus: "none",      // none | saved | ok | error
-    apiStatusMsg: "Ch\u01b0a c\u1ea5u h\u00ecnh",
+    apiStatusMsg: "",
     mounted: false,
     apiMounted: false,
     disclaimerDismissed: false,
     activeProvTab: "",
     testResults: null,
-    fallbackToastShownFor: ""
+    fallbackToastShownFor: "",
+    adminVerifyToken: "",
+    adminVerifyState: "idle", // idle | loading | verified | denied
+    adminSysKeys: [],
+    adminSysEnvKeys: [],
+    adminSysPreview: null,
+    adminSysRawDraft: "",
+    adminSysBusy: false,
+    adminSysError: "",
+    adminSysEncReady: false
   };
 
   const API_POOL_KEY = "uet_master_api_pool";
@@ -61,11 +70,11 @@
   }
 
   const FALLBACK_PROVIDER_INFO = {
-    gemini: { name: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/", testEndpoint: "https://generativelanguage.googleapis.com/v1beta/models", prefixHint: "AIza...", keyUrl: "https://aistudio.google.com/app/apikey", models: [{ id: "gemini-2.5-flash", rawModel: "gemini-2.5-flash", label: "Gemini 2.5 Flash (Nhanh)", vision: true, pdf: true, free: true }] },
-    groq: { name: "Groq Cloud", endpoint: "https://api.groq.com/openai/v1/chat/completions", testEndpoint: "https://api.groq.com/openai/v1/models", prefixHint: "gsk_...", keyUrl: "https://console.groq.com/keys", models: [{ id: "groq:meta-llama/llama-4-scout-17b-16e-instruct", rawModel: "meta-llama/llama-4-scout-17b-16e-instruct", label: "Groq Llama 4 Scout 17B (Mi\u1ec5n ph\u00ed & Vision)", vision: true, pdf: false, free: true }] },
+    gemini: { name: "Google AI Studio (Gemini)", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/", testEndpoint: "https://generativelanguage.googleapis.com/v1beta/models", prefixHint: "AIza...", keyUrl: "https://aistudio.google.com/apikey", models: [{ id: "gemini-3.5-flash-lite", rawModel: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", vision: true, pdf: true, free: true }] },
+    groq: { name: "Groq Cloud", endpoint: "https://api.groq.com/openai/v1/chat/completions", testEndpoint: "https://api.groq.com/openai/v1/models", prefixHint: "gsk_...", keyUrl: "https://console.groq.com/keys", models: [{ id: "groq:qwen/qwen3.6-27b", rawModel: "qwen/qwen3.6-27b", label: "Groq Qwen 3.6 27B (Mi\u1ec5n ph\u00ed & Vision)", vision: true, pdf: false, free: true }] },
     openrouter: { name: "OpenRouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", testEndpoint: "https://openrouter.ai/api/v1/models", prefixHint: "sk-or-...", keyUrl: "https://openrouter.ai/keys", models: [{ id: "openrouter:openrouter/free", rawModel: "openrouter/free", label: "OpenRouter Auto Free Router (:free & Vision)", vision: true, pdf: false, free: true }] },
-    openai: { name: "OpenAI", endpoint: "https://api.openai.com/v1/chat/completions", testEndpoint: "https://api.openai.com/v1/models", prefixHint: "sk-...", keyUrl: "https://platform.openai.com/api-keys", models: [{ id: "openai:gpt-4o-mini", rawModel: "gpt-4o-mini", label: "OpenAI GPT-4o Mini (Nhanh & Vision)", vision: true, pdf: false, free: false }] },
-    deepseek: { name: "DeepSeek", endpoint: "https://api.deepseek.com/chat/completions", testEndpoint: "https://api.deepseek.com/models", prefixHint: "sk-...", keyUrl: "https://platform.deepseek.com/api_keys", models: [{ id: "deepseek:deepseek-chat", rawModel: "deepseek-chat", label: "DeepSeek V3 Chat", vision: false, pdf: false, free: false }] }
+    openai: { name: "OpenAI", endpoint: "https://api.openai.com/v1/chat/completions", testEndpoint: "https://api.openai.com/v1/models", prefixHint: "sk-...", keyUrl: "https://platform.openai.com/api-keys", models: [{ id: "openai:gpt-4.1-mini", rawModel: "gpt-4.1-mini", label: "OpenAI GPT-4.1 Mini (Vision)", vision: true, pdf: false, free: false }] },
+    deepseek: { name: "DeepSeek", endpoint: "https://api.deepseek.com/chat/completions", testEndpoint: "https://api.deepseek.com/models", prefixHint: "sk-...", keyUrl: "https://platform.deepseek.com/api_keys", models: [{ id: "deepseek:deepseek-chat", rawModel: "deepseek-chat", label: "DeepSeek Chat V3", vision: false, pdf: false, free: false }] }
   };
 
   function getProviderMap() {
@@ -254,11 +263,13 @@
   }
 
   function getApiModel() {
+    const c = CFG();
+    const defModel = (c && c.DEFAULT_MODEL_ID) ? c.DEFAULT_MODEL_ID : "gemini-3.5-flash-lite";
     try {
       const saved = localStorage.getItem(U().KEYS.apiModel);
-      if (saved) return saved;
+      if (saved && (!c || !c.ALLOWED_MODELS || c.ALLOWED_MODELS[saved])) return saved;
     } catch (e) { /* */ }
-    return "gemini-2.5-flash";
+    return defModel;
   }
 
   function setApiModel(m) {
@@ -335,6 +346,197 @@
     return store;
   }
 
+  async function converterAdminApiFetch(url, method, bodyObj) {
+    const token = getUserIdToken();
+    if (!token) return { _err: "Thi\u1ebfu ph\u00ean \u0111\u0103ng nh\u1eadp Google.", _status: 401 };
+    try {
+      const res = await fetch(url, {
+        method: method || "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + token
+        },
+        body: bodyObj !== undefined ? JSON.stringify(bodyObj) : undefined
+      });
+      const ct = String((res.headers && res.headers.get && res.headers.get("content-type")) || "").toLowerCase();
+      if (ct.indexOf("application/json") === -1) {
+        return { _err: "M\u00e1y ch\u1ee7 API kh\u00f4ng kh\u1ea3 d\u1ee5ng (HTTP " + res.status + ").", _status: res.status };
+      }
+      const data = await res.json().catch(function () { return null; });
+      if (!res.ok) {
+        return { _err: (data && data.error) || ("HTTP " + res.status), _status: res.status, data: data };
+      }
+      return { ok: true, data: data };
+    } catch (err) {
+      return { _err: (err && err.message) || "L\u1ed7i k\u1ebft n\u1ed1i m\u00e1y ch\u1ee7.", _status: 0 };
+    }
+  }
+
+  async function refreshSectionBSystemKeys() {
+    if (cState.adminVerifyState !== "verified") return;
+    const resp = await converterAdminApiFetch("/api/admin/system-keys", "GET");
+    if (resp && resp.ok && resp.data) {
+      cState.adminSysKeys = Array.isArray(resp.data.keys) ? resp.data.keys : [];
+      cState.adminSysEnvKeys = Array.isArray(resp.data.envKeys) ? resp.data.envKeys : [];
+      cState.adminSysEncReady = !!resp.data.encryptionConfigured;
+      cState.adminSysError = "";
+    } else if (resp && resp._err) {
+      cState.adminSysError = resp._err;
+    }
+    if (U().state && U().state.tab === "api") renderApiPage();
+  }
+
+  async function verifyServerAdminForApiPage() {
+    const token = getUserIdToken();
+    if (!token) {
+      cState.adminVerifyToken = "";
+      cState.adminVerifyState = "denied";
+      cState.adminSysKeys = [];
+      cState.adminSysEnvKeys = [];
+      return;
+    }
+    if (cState.adminVerifyToken === token && (cState.adminVerifyState === "verified" || cState.adminVerifyState === "denied" || cState.adminVerifyState === "loading")) {
+      return;
+    }
+    cState.adminVerifyToken = token;
+    cState.adminVerifyState = "loading";
+    cState.adminSysKeys = [];
+    cState.adminSysEnvKeys = [];
+    const check = await converterAdminApiFetch("/api/admin/me", "GET");
+    if (getUserIdToken() !== token) return;
+    if (check && check.ok && check.data && check.data.isAdmin === true) {
+      cState.adminVerifyState = "verified";
+      await refreshSectionBSystemKeys();
+    } else {
+      cState.adminVerifyState = "denied";
+      cState.adminSysKeys = [];
+      cState.adminSysEnvKeys = [];
+    }
+  }
+
+  function openTypedDeleteAllModal(keyCount, onConfirm) {
+    const host = U().$("extraModals");
+    if (!host) return;
+    const countLabel = String(Number(keyCount) || 0);
+    host.innerHTML =
+      '<div class="modal-overlay" id="typedDeleteAllOverlay" role="alertdialog" aria-modal="true" aria-labelledby="typedDeleteAllTitle">' +
+        '<div class="modal modal-sm">' +
+          '<h3 id="typedDeleteAllTitle" style="color:var(--rose)">⚠️ X\u00f3a to\u00e0n b\u1ed9 Key H\u1ec7 th\u1ed1ng</h3>' +
+          '<p style="font-size:.86rem;line-height:1.55;margin:0 0 8px">B\u1ea1n s\u1eafp x\u00f3a v\u0129nh vi\u1ec5n to\u00e0n b\u1ed9 <strong>' + U().esc(countLabel) + ' API Key H\u1ec7 th\u1ed1ng</strong> \u0111ang l\u01b0u tr\u00ean m\u00e1y ch\u1ee7. Thao t\u00e1c n\u00e0y kh\u00f4ng th\u1ec3 ho\u00e0n t\u00e1c v\u00e0 s\u1ebd \u0111\u01b0\u1ee3c ghi v\u00e0o nh\u1eadt k\u00fd qu\u1ea3n tr\u1ecb.</p>' +
+          '<label class="field" style="margin:8px 0 12px">Nh\u1eadp ch\u00ednh x\u00e1c <code>XOA</code> \u0111\u1ec3 b\u1eadt n\u00fat x\u00e1c nh\u1eadn:' +
+            '<input type="text" id="typedDeleteAllInput" class="typed-confirm-input" autocomplete="off" spellcheck="false" placeholder="Nh\u1eadp XOA">' +
+          '</label>' +
+          '<div class="modal-actions">' +
+            '<button type="button" class="btn btn-outline" id="typedDeleteAllCancel">H\u1ee7y</button>' +
+            '<button type="button" class="btn btn-danger" id="typedDeleteAllOk" disabled>X\u00e1c nh\u1eadn x\u00f3a to\u00e0n b\u1ed9 (' + U().esc(countLabel) + ' Key)</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    const inp = U().$("typedDeleteAllInput");
+    const okBtn = U().$("typedDeleteAllOk");
+    const cancelBtn = U().$("typedDeleteAllCancel");
+    const closeModal = function () { host.innerHTML = ""; };
+    if (inp) {
+      inp.focus();
+      inp.addEventListener("input", function () {
+        if (okBtn) okBtn.disabled = inp.value.trim().toUpperCase() !== "XOA";
+      });
+    }
+    if (cancelBtn) cancelBtn.addEventListener("click", closeModal);
+    if (okBtn) {
+      okBtn.addEventListener("click", function () {
+        if (!inp || inp.value.trim().toUpperCase() !== "XOA") return;
+        closeModal();
+        if (typeof onConfirm === "function") onConfirm();
+      });
+    }
+    if (typeof U().applyI18n === "function") U().applyI18n(host);
+  }
+
+  function renderSectionBAdminHtml() {
+    // STRICT SECURITY UX RULE: Render NOTHING AT ALL for non-admins or while verifying with server!
+    const token = getUserIdToken();
+    if (!token || cState.adminVerifyToken !== token || cState.adminVerifyState !== "verified") {
+      return "";
+    }
+    const dbKeys = cState.adminSysKeys || [];
+    const envKeys = cState.adminSysEnvKeys || [];
+    const allKeys = dbKeys.concat(envKeys);
+
+    let previewHtml = "";
+    if (cState.adminSysPreview) {
+      const p = cState.adminSysPreview;
+      const provSummary = Object.keys(p.summaryByProvider || {})
+        .filter(function (k) { return p.summaryByProvider[k] > 0; })
+        .map(function (k) { return k + ": " + p.summaryByProvider[k]; })
+        .join(" \u2022 ") || "0";
+      const accArr = Array.isArray(p.summaryByAccount)
+        ? p.summaryByAccount
+        : Object.keys(p.summaryByAccount || {}).map(function (k) { return { accountLabel: k, count: p.summaryByAccount[k] }; });
+      const accSummary = accArr.map(function (a) { return U().esc(a.accountLabel) + " (" + a.count + ")"; }).join(" \u2022 ");
+      const itemsHtml = (p.previewItems || []).map(function (it) {
+        return '<li><strong>' + U().esc(it.accountLabel) + '</strong> \u2014 <code>' + U().esc(it.provider) + '</code>: <code>' + U().esc(it.maskedKey) + '</code></li>';
+      }).join("");
+      const misHtml = (p.mismatches && p.mismatches.length)
+        ? '<div style="margin-top:6px;color:var(--rose);font-size:.78rem"><strong>⚠️ L\u1ec7ch ti\u1ec1n t\u1ed1 (' + p.mismatches.length + '):</strong><ul>' +
+            p.mismatches.map(function (m) { return '<li>' + U().esc(m.accountLabel || "") + ' (' + U().esc(m.maskedKey || "") + '): ' + U().esc(m.reason || "") + '</li>'; }).join("") +
+          '</ul></div>'
+        : "";
+      const dupHtml = (p.duplicates && p.duplicates.length)
+        ? '<div class="muted" style="font-size:.76rem;margin-top:4px">🔁 Tr\u00f9ng l\u1eb7p b\u1ecf qua: ' + p.duplicates.length + '</div>'
+        : "";
+      const skipHtml = (p.skipped && p.skipped.length)
+        ? '<div class="muted" style="font-size:.76rem;margin-top:4px">⏭️ B\u1ecf qua d\u00f2ng tr\u1ed1ng / kh\u00f4ng h\u1ee3p l\u1ec7: ' + p.skipped.length + '</div>'
+        : "";
+
+      previewHtml =
+        '<div class="syskey-preview-box" id="sysSecPreviewBox">' +
+          '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
+            '<strong>📋 Xem tr\u01b0\u1edbc (Preview): ' + p.totalValid + ' Key h\u1ee3p l\u1ec7</strong>' +
+            '<span class="muted" style="font-size:.78rem">' + U().esc(provSummary) + '</span>' +
+          '</div>' +
+          (accSummary ? '<div class="muted" style="font-size:.76rem;margin:4px 0">T\u00e0i kho\u1ea3n: ' + accSummary + '</div>' : '') +
+          (itemsHtml ? '<ul style="margin:6px 0 8px 18px;font-size:.78rem;max-height:160px;overflow:auto">' + itemsHtml + '</ul>' : '') +
+          misHtml + dupHtml + skipHtml +
+          '<div class="deck-actions" style="margin-top:10px">' +
+            '<button type="button" class="btn btn-emerald btn-sm" id="sysSecConfirmImportBtn"' + ((cState.adminSysBusy || !p.totalValid) ? " disabled" : "") + '>X\u00e1c nh\u1eadn</button>' +
+            '<button type="button" class="btn btn-outline btn-sm" id="sysSecCancelPreviewBtn"' + (cState.adminSysBusy ? " disabled" : "") + '>H\u1ee7y</button>' +
+          '</div>' +
+        '</div>';
+    }
+
+    const listRows = allKeys.length ? allKeys.map(function (k) {
+      const isEnv = k.source === "env";
+      const stCls = k.enabled === false ? "disabled" : (k.status || "healthy");
+      const stLabel = k.enabled === false ? "Disabled" : (k.status === "invalid" ? "Invalid" : (k.status === "cooldown" ? "Cooldown" : "Healthy"));
+      return '<tr>' +
+        '<td><strong>' + U().esc(k.accountLabel) + '</strong> ' + (isEnv ? '<span class="badge" style="font-size:.66rem">ENV</span>' : '<span class="badge badge-ok" style="font-size:.66rem">DB</span>') + '</td>' +
+        '<td><code>' + U().esc(k.provider) + '</code></td>' +
+        '<td><code>' + U().esc(k.maskedKey) + '</code></td>' +
+        '<td><span class="syskey-status ' + U().esc(stCls) + '">' + U().esc(stLabel) + '</span></td>' +
+        '<td>' + (Number(k.usageCount) || 0) + ' OK / ' + (Number(k.errorCount) || 0) + ' Err</td>' +
+        '<td>' + (isEnv
+          ? '<span class="muted" style="font-size:.74rem">Qu\u1ea3n l\u00fd qua ENV</span>'
+          : '<button type="button" class="btn btn-danger btn-sm" data-sys-del="' + U().esc(k.id) + '" data-sys-masked="' + U().esc(k.maskedKey) + '"' + (cState.adminSysBusy ? " disabled" : "") + '>X\u00f3a</button>') +
+        '</td>' +
+      '</tr>';
+    }).join("") : '<tr><td colspan="6" class="muted">Ch\u01b0a c\u00f3 Key H\u1ec7 th\u1ed1ng n\u00e0o \u0111\u01b0\u1ee3c l\u01b0u tr\u00ean m\u00e1y ch\u1ee7.</td></tr>';
+
+    return '<div class="api-section-box api-section-admin" id="apiSectionBAdmin">' +
+      '<h3 class="api-section-title">🛡️ Kho API Key H\u1ec7 th\u1ed1ng (L\u01b0u l\u00ean Server \u2014 D\u00f9ng chung cho to\u00e0n b\u1ed9 ng\u01b0\u1eddi d\u00f9ng)</h3>' +
+      '<p class="muted" style="margin:0 0 10px;font-size:.8rem">Ch\u1ec9 hi\u1ec3n th\u1ecb sau khi m\u00e1y ch\u1ee7 x\u00e1c th\u1ef1c quy\u1ec1n Qu\u1ea3n tr\u1ecb vi\u00ean (<code>/api/admin/me</code>). M\u1ecdi Key l\u01b0u t\u1ea1i \u0111\u00e2y \u0111\u01b0\u1ee3c m\u00e3 h\u00f3a AES-256-GCM tr\u00ean server v\u00e0 kh\u00f4ng bao gi\u1edd tr\u1ea3 key th\u00f4 v\u1ec1 tr\u00ecnh duy\u1ec7t.</p>' +
+      (cState.adminSysError ? '<div class="pending-banner" style="border-color:var(--rose);margin-bottom:10px"><span>❌ ' + U().esc(cState.adminSysError) + '</span></div>' : '') +
+      '<textarea id="sysSecRawTextarea" class="multi-key-textarea" rows="5" spellcheck="false" autocomplete="off" placeholder="D\u00e1n danh s\u00e1ch theo nh\u00f3m t\u00e0i kho\u1ea3n:\n1. T\u00ean \u2014 email@gmail.com\n  - Google AI Studio (Gemini): AIza...\n  - Groq Cloud (gsk_...): gsk_...\n  - OpenRouter (sk-or-...): sk-or-...">' + U().esc(cState.adminSysRawDraft) + '</textarea>' +
+      '<div class="deck-actions" style="margin:10px 0">' +
+        '<button type="button" class="btn btn-primary" id="sysSecPreviewBtn"' + (cState.adminSysBusy ? " disabled" : "") + '>L\u01b0u v\u00e0o Kho H\u1ec7 th\u1ed1ng (D\u00f9ng chung)</button>' +
+        '<button type="button" class="btn btn-danger" id="sysSecDeleteAllBtn"' + ((cState.adminSysBusy || dbKeys.length === 0) ? " disabled" : "") + '>X\u00f3a to\u00e0n b\u1ed9 Key H\u1ec7 th\u1ed1ng</button>' +
+      '</div>' +
+      previewHtml +
+      '<div class="table-scroll" style="margin-top:10px"><table class="data-table"><thead><tr><th>T\u00e0i kho\u1ea3n</th><th>H\u00e3ng</th><th>Key (\u1ea8n)</th><th>Tr\u1ea1ng th\u00e1i</th><th>Th\u1ed1ng k\u00ea</th><th>H\u00e0nh \u0111\u1ed9ng</th></tr></thead><tbody>' + listRows + '</tbody></table></div>' +
+    '</div>';
+  }
+
   function renderApiPage() {
     const root = U().$("apiSettingsRoot");
     if (!root) return;
@@ -350,23 +552,26 @@
     const activeProvObj = providersList.find(function (p) { return p.id === activeProv; }) || providersList[0];
     const personalCount = countPersonalKeys();
     const hasPersonal = personalCount > 0;
-    const isSignedIn = !!getUserIdToken();
     const curLang = (U() && typeof U().getLang === "function") ? U().getLang() : "vi";
 
-    if (hasPersonal) {
-      if (cState.apiStatus !== "ok" && cState.apiStatus !== "error") {
-        cState.apiStatus = "ok";
-        cState.apiStatusMsg = "🔑 \u0110ang d\u00f9ng " + personalCount + " Key c\u00e1 nh\u00e2n";
-      }
-    } else if (isSignedIn) {
-      cState.apiStatus = "saved";
-      cState.apiStatusMsg = "🌐 System Pool (M\u1eb7c \u0111\u1ecbnh)";
-    } else {
-      cState.apiStatus = "none";
-      cState.apiStatusMsg = "Ch\u01b0a c\u1ea5u h\u00ecnh";
+    // Trigger server-verified admin check for Section B (renders nothing while loading or non-admin)
+    if (getUserIdToken() && cState.adminVerifyToken !== getUserIdToken()) {
+      setTimeout(function () { verifyServerAdminForApiPage(); }, 0);
+    } else if (!getUserIdToken() && cState.adminVerifyState !== "denied") {
+      cState.adminVerifyToken = "";
+      cState.adminVerifyState = "denied";
+      cState.adminSysKeys = [];
+      cState.adminSysEnvKeys = [];
     }
 
-    const badgeCls = cState.apiStatus === "ok" ? "badge-ok" : (cState.apiStatus === "error" ? "badge-bad" : (cState.apiStatus === "saved" ? "" : "badge-warn"));
+    // Status badge at top of card (exact Section 1B labels)
+    const statusBadgeClass = hasPersonal ? "badge-ok" : "badge-sys";
+    const statusBadgeText = hasPersonal
+      ? "\u0110ang d\u00f9ng: API Key c\u00e1 nh\u00e2n (C\u1ee5c b\u1ed9)"
+      : "\u0110ang d\u00f9ng: API Key H\u1ec7 th\u1ed1ng m\u1eb7c \u0111\u1ecbnh (D\u00f9ng chung)";
+    cState.apiStatus = hasPersonal ? "ok" : "saved";
+    cState.apiStatusMsg = statusBadgeText;
+
     const activeKeys = store.keysByProvider[activeProv] || [];
     const activeTextareaVal = activeKeys.join("\n");
 
@@ -376,7 +581,7 @@
         if (m.free) caps.push("Free");
         if (m.vision) caps.push("Vision");
         if (m.pdf) caps.push("PDF");
-        const suffix = caps.length ? " [" + caps.join(" • ") + "]" : "";
+        const suffix = caps.length ? " [" + caps.join(" \u2022 ") + "]" : "";
         return '<option value="' + U().esc(m.id) + '"' + (model === m.id ? " selected" : "") + '>' + U().esc(m.label + suffix) + '</option>';
       }).join("");
       return '<optgroup label="' + U().esc(p.name + " (" + (p.prefixHint || "") + ")") + '">' + opts + '</optgroup>';
@@ -394,14 +599,14 @@
 
     const summaryChips = providersList.filter(function (p) { return (store.keysByProvider[p.id] || []).length > 0; }).map(function (p) {
       return p.name + " (" + store.keysByProvider[p.id].length + ")";
-    }).join(" • ");
+    }).join(" \u2022 ");
 
     let testResultsHtml = "";
     if (Array.isArray(cState.testResults) && cState.testResults.length > 0) {
       testResultsHtml = '<div class="test-results-box" id="uetTestResultsBox">' +
         '<strong>K\u1ebft qu\u1ea3 ki\u1ec3m tra t\u1eebng Key:</strong>' +
         '<ul>' + cState.testResults.map(function (r) {
-          return '<li class="' + U().esc(r.status) + '"><code>' + U().esc(r.provider) + '</code> • <code>' + U().esc(r.masked) + '</code>: ' + U().esc(r.message) + '</li>';
+          return '<li class="' + U().esc(r.status) + '"><code>' + U().esc(r.provider) + '</code> \u2022 <code>' + U().esc(r.masked) + '</code>: ' + U().esc(r.message) + '</li>';
         }).join("") + '</ul></div>';
     }
 
@@ -410,58 +615,61 @@
         '<section class="panel">' +
           '<div class="panel-head">' +
             '<div>' +
-              '<h2>C\u00e0i \u0111\u1eb7t \u0110a N\u1ec1n t\u1ea3ng AI &amp; API Key C\u00e1 nh\u00e2n</h2>' +
-              '<p class="muted" style="margin:0;font-size:.84rem">M\u1eb7c \u0111\u1ecbnh h\u1ec7 th\u1ed1ng d\u00f9ng <strong>System Key Pool</strong> an to\u00e0n qua m\u00e1y ch\u1ee7 <code>/api/ai/proxy</code> (n\u1ebfu \u0111\u00e3 \u0111\u0103ng nh\u1eadp Google). Khi b\u1ea1n nh\u1eadp Key c\u00e1 nh\u00e2n, m\u1ecdi y\u00eau c\u1ea7u AI s\u1ebd g\u1ecdi <strong>tr\u1ef1c ti\u1ebfp</strong> b\u1eb1ng Key c\u1ee7a b\u1ea1n (kh\u00f4ng qua h\u1ea1n m\u1ee9c chung).</p>' +
+              '<h2>C\u00e0i \u0111\u1eb7t API &amp; Ng\u00f4n ng\u1eef</h2>' +
+              '<p class="muted" style="margin:0;font-size:.84rem">H\u1ed7 tr\u1ee3 \u0111a n\u1ec1n t\u1ea3ng AI (Groq Cloud, OpenRouter, Google Gemini, OpenAI, DeepSeek). Khi b\u1ea1n l\u01b0u Key c\u00e1 nh\u00e2n, m\u1ecdi y\u00eau c\u1ea7u g\u1ecdi tr\u1ef1c ti\u1ebfp t\u1edbi h\u00e3ng AI b\u1eb1ng Key c\u1ee7a b\u1ea1n.</p>' +
             '</div>' +
-            '<span class="badge ' + badgeCls + '" id="apiPageBadge">' + U().esc(cState.apiStatusMsg) + '</span>' +
+            '<span class="badge ' + statusBadgeClass + '" id="apiPageBadge">' + U().esc(statusBadgeText) + '</span>' +
           '</div>' +
-
-          (!hasPersonal
-            ? '<div class="pending-banner" style="margin-bottom:14px">' +
-                '<span>🌐 <strong>Ch\u1ebf \u0111\u1ed9 hi\u1ec7n t\u1ea1i:</strong> ' +
-                  (isSignedIn
-                    ? '\u0110ang d\u00f9ng System Default Key Pool mi\u1ec5n ph\u00ed qua <code>/api/ai/proxy</code> (gi\u1edbi h\u1ea1n c\u00f4ng b\u1eb1ng m\u1eb7c \u0111\u1ecbnh theo gi\u1edd). Khuy\u00ean d\u00f9ng l\u1ea5y Key c\u00e1 nh\u00e2n mi\u1ec5n ph\u00ed \u0111\u1ec3 t\u1ed1c \u0111\u1ed9 nhanh &amp; kh\u00f4ng ch\u1edd \u0111\u1ee3i!'
-                    : 'B\u1ea1n ch\u01b0a \u0111\u0103ng nh\u1eadp v\u00e0 ch\u01b0a c\u00f3 Key c\u00e1 nh\u00e2n. H\u00e3y \u0111\u0103ng nh\u1eadp Google ho\u1eb7c th\u00eam API Key c\u00e1 nh\u00e2n mi\u1ec5n ph\u00ed b\u00ean d\u01b0\u1edbi.') +
-                '</span>' +
-                '<button type="button" class="btn btn-outline btn-sm" id="uetApiGoGuideBtn">📖 Xem h\u01b0\u1edbng d\u1eabn l\u1ea5y Key →</button>' +
-              '</div>'
-            : '<div class="checkout-notice" style="margin-bottom:14px;border-color:var(--emerald);background:var(--emerald-soft)">' +
-                '🔑 <strong>\u0110ang k\u00edch ho\u1ea1t ' + personalCount + ' Key c\u00e1 nh\u00e2n:</strong> ' + U().esc(summaryChips) + '. Key ch\u1ec9 l\u01b0u c\u1ee5c b\u1ed9 trong tr\u00ecnh duy\u1ec7t c\u1ee7a b\u1ea1n v\u00e0 kh\u00f4ng t\u1ef1 \u0111\u1ed9ng ch\u1ea1y ng\u1ea7m v\u00e0o System Pool n\u1ebfu Key b\u1ecb l\u1ed7i/h\u1ebft h\u1ea1n m\u1ee9c.' +
-              '</div>') +
 
           '<label class="field">Ch\u1ecdn N\u1ec1n t\u1ea3ng &amp; Model AI ch\u1ee7 \u0111\u1ea1o' +
             '<select id="uetApiModelSelect">' + modelOptsHtml + '</select>' +
           '</label>' +
 
-          '<div class="field" style="margin-top:12px">' +
-            '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">' +
-              '<span>Nh\u1eadp API Key theo t\u1eebng nh\u00e0 cung c\u1ea5p (ch\u1ecdn h\u00e3ng tr\u00e1nh nh\u1ea7m ti\u1ec1n t\u1ed1 <code>sk-</code> OpenAI / DeepSeek)</span>' +
-              '<a href="' + U().esc(activeProvObj.keyUrl) + '" target="_blank" rel="noopener noreferrer" class="muted" style="font-size:.78rem">L\u1ea5y Key ' + U().esc(activeProvObj.name) + ' ↗</a>' +
+          '<div class="free-api-callout" id="freeApiWarningCallout">' +
+            '<span class="free-api-callout-icon" aria-hidden="true">⚠️</span>' +
+            '<p class="free-api-callout-text"><strong>L\u01b0u \u00fd khi d\u00f9ng API Free / Flash:</strong> T\u1ed1c \u0111\u1ed9 nhanh &amp; mi\u1ec5n ph\u00ed, nh\u01b0ng b\u1ea1n n\u00ean m\u1edf <strong>Ch\u1ebf \u0111\u1ed9 Ki\u1ec3m duy\u1ec7t song song (Split-Screen Review)</strong> ho\u1eb7c ch\u1ea1y <strong>AI Double-Check</strong> sau khi \u0111\u1ecdc \u0111\u1ec1 \u0111\u1ec3 \u0111\u1ea3m b\u1ea3o \u0111\u00e1p \u00e1n chu\u1ea9n 100%.</p>' +
+          '</div>' +
+
+          '<div class="api-section-box" id="apiSectionAPersonal">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">' +
+              '<h3 class="api-section-title" style="margin:0">🔑 C\u00e0i \u0111\u1eb7t API Key C\u00e1 nh\u00e2n (Ch\u1ec9 l\u01b0u c\u1ee5c b\u1ed9 tr\u00ean tr\u00ecnh duy\u1ec7t n\u00e0y)</h3>' +
+              '<button type="button" class="btn btn-outline btn-sm" id="uetApiGoGuideBtn">📖 Xem h\u01b0\u1edbng d\u1eabn l\u1ea5y Key →</button>' +
             '</div>' +
-            '<div class="provider-tabs" id="uetProviderTabs" role="tablist">' + provTabsHtml + '</div>' +
-            '<div class="prov-editor-card">' +
-              '<div class="prov-editor-head">' +
-                '<strong>' + U().esc(activeProvObj.name) + '</strong>' +
-                '<span class="pill-code">Ti\u1ec1n t\u1ed1: <code>' + U().esc(activeProvObj.prefixHint) + '</code></span>' +
-                (activeProvObj.badgeText ? '<span class="muted" style="font-size:.78rem">' + U().esc(activeProvObj.badgeText) + '</span>' : '') +
+            (hasPersonal
+              ? '<p class="muted" style="font-size:.8rem;margin:0 0 10px">✅ \u0110ang k\u00edch ho\u1ea1t <strong>' + personalCount + ' Key c\u00e1 nh\u00e2n</strong>: ' + U().esc(summaryChips) + '.</p>'
+              : '<p class="muted" style="font-size:.8rem;margin:0 0 10px">Ch\u01b0a l\u01b0u Key c\u00e1 nh\u00e2n \u2014 h\u1ec7 th\u1ed1ng s\u1ebd d\u00f9ng <strong>API Key H\u1ec7 th\u1ed1ng m\u1eb7c \u0111\u1ecbnh</strong> qua <code>/api/ai/proxy</code> khi b\u1ea1n \u0111\u0103ng nh\u1eadp Google.</p>') +
+
+            '<div class="field">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">' +
+                '<span>Ch\u1ecdn h\u00e3ng AI c\u1ee5 th\u1ec3 (tr\u00e1nh nh\u1ea7m ti\u1ec1n t\u1ed1 <code>sk-</code> gi\u1eefa OpenAI v\u00e0 DeepSeek):</span>' +
+                '<a href="' + U().esc(activeProvObj.keyUrl) + '" target="_blank" rel="noopener noreferrer" class="muted" style="font-size:.78rem">L\u1ea5y Key ' + U().esc(activeProvObj.name) + ' ↗</a>' +
               '</div>' +
-              '<textarea id="uetProvKeyTextarea" rows="4" spellcheck="false" autocomplete="off" placeholder="D\u00e1n 1 ho\u1eb7c nhi\u1ec1u API Key c\u1ee7a ' + U().esc(activeProvObj.name) + ' (' + U().esc(activeProvObj.prefixHint) + '), m\u1ed7i Key 1 d\u00f2ng ho\u1eb7c c\u00e1ch nhau b\u1eb1ng d\u1ea5u ph\u1ea9y...">' + U().esc(activeTextareaVal) + '</textarea>' +
-              '<div class="key-validation-list" id="uetProvValidationChips">' + buildValidationChipsHtml(activeProv, activeTextareaVal) + '</div>' +
+              '<div class="provider-tabs" id="uetProviderTabs" role="tablist">' + provTabsHtml + '</div>' +
+              '<div class="prov-editor-card">' +
+                '<div class="prov-editor-head" style="margin-bottom:6px">' +
+                  '<strong>' + U().esc(activeProvObj.name) + '</strong> ' +
+                  '<span class="pill-code">Ti\u1ec1n t\u1ed1: <code>' + U().esc(activeProvObj.prefixHint) + '</code></span> ' +
+                  (activeProvObj.badgeText ? '<span class="muted" style="font-size:.78rem">' + U().esc(activeProvObj.badgeText) + '</span>' : '') +
+                '</div>' +
+                '<textarea id="uetProvKeyTextarea" class="multi-key-textarea" rows="5" spellcheck="false" autocomplete="off" placeholder="D\u00e1n 1 ho\u1eb7c nhi\u1ec1u API Key c\u1ee7a ' + U().esc(activeProvObj.name) + ' (' + U().esc(activeProvObj.prefixHint) + ')\nM\u1ed7i d\u00f2ng 1 Key ho\u1eb7c c\u00e1ch nhau b\u1eb1ng d\u1ea5u ph\u1ea9y...">' + U().esc(activeTextareaVal) + '</textarea>' +
+                '<div class="key-validation-list" id="uetProvValidationChips">' + buildValidationChipsHtml(activeProv, activeTextareaVal) + '</div>' +
+              '</div>' +
             '</div>' +
+
+            '<div class="deck-actions" style="margin:14px 0 8px">' +
+              '<button type="button" class="btn btn-primary" id="uetApiSaveBtn">L\u01b0u Key c\u00e1 nh\u00e2n (C\u1ee5c b\u1ed9)</button>' +
+              '<button type="button" class="btn btn-emerald" id="uetApiTestBtn">Ki\u1ec3m tra k\u1ebft n\u1ed1i (Test API)</button>' +
+              '<button type="button" class="btn btn-outline" id="uetApiDelBtn">X\u00f3a Key c\u00e1 nh\u00e2n</button>' +
+              '<button type="button" class="btn btn-outline btn-sm" id="uetApiExportBtn">📤 Xu\u1ea5t JSON</button>' +
+              '<button type="button" class="btn btn-outline btn-sm" id="uetApiImportBtn">📥 Nh\u1eadp JSON</button>' +
+              '<input type="file" id="uetApiImportFile" accept=".json,application/json" style="display:none">' +
+            '</div>' +
+            testResultsHtml +
           '</div>' +
 
-          '<div class="deck-actions" style="margin:14px 0">' +
-            '<button type="button" class="btn btn-primary" id="uetApiSaveBtn">💾 L\u01b0u t\u1ea5t c\u1ea3 Key c\u00e1 nh\u00e2n</button>' +
-            '<button type="button" class="btn btn-emerald" id="uetApiTestBtn">🧪 Test Keys</button>' +
-            '<button type="button" class="btn btn-outline" id="uetApiExportBtn">📤 Xu\u1ea5t JSON</button>' +
-            '<button type="button" class="btn btn-outline" id="uetApiImportBtn">📥 Nh\u1eadp JSON</button>' +
-            '<input type="file" id="uetApiImportFile" accept=".json,application/json" style="display:none">' +
-            '<button type="button" class="btn btn-outline" id="uetApiDelBtn">🗑️ X\u00f3a to\u00e0n b\u1ed9 Key c\u00e1 nh\u00e2n</button>' +
-          '</div>' +
+          renderSectionBAdminHtml() +
 
-          testResultsHtml +
-
-          '<div class="pro-tip-box" style="margin:12px 0 16px">' +
+          '<div class="pro-tip-box" style="margin:14px 0 16px">' +
             '<strong>💡 ' + U().esc((CFG() && CFG().PRO_TIP && CFG().PRO_TIP.title) || "M\u1eb9o hay (Pro Tip)") + '</strong>' +
             '<p style="margin:6px 0 0;font-size:.82rem">' + U().esc((CFG() && CFG().PRO_TIP && CFG().PRO_TIP.body) || "") + '</p>' +
           '</div>' +
@@ -701,7 +909,7 @@
     reader.readAsText(file);
   }
 
-  function onApiPageClick(e) {
+  async function onApiPageClick(e) {
     const langBtn = e.target.closest ? e.target.closest("[data-lang-set]") : null;
     if (langBtn && typeof U().setLang === "function") {
       U().setLang(langBtn.getAttribute("data-lang-set"));
@@ -719,18 +927,43 @@
       }
       return;
     }
+    const delOneBtn = e.target.closest ? e.target.closest("[data-sys-del]") : null;
+    if (delOneBtn) {
+      if (cState.adminVerifyState !== "verified") return;
+      const kid = delOneBtn.getAttribute("data-sys-del");
+      const kmask = delOneBtn.getAttribute("data-sys-masked") || kid;
+      if (!kid) return;
+      U().showConfirm("X\u00f3a Key H\u1ec7 th\u1ed1ng", "X\u00f3a v\u0129nh vi\u1ec5n Key H\u1ec7 th\u1ed1ng " + kmask + " kh\u1ecfi m\u00e1y ch\u1ee7?", async function () {
+        cState.adminSysBusy = true;
+        renderApiPage();
+        const resp = await converterAdminApiFetch("/api/admin/system-keys/" + encodeURIComponent(kid), "DELETE");
+        cState.adminSysBusy = false;
+        if (resp._err) {
+          cState.adminSysError = resp._err;
+          U().showToast("L\u1ed7i x\u00f3a Key H\u1ec7 th\u1ed1ng: " + resp._err, "error");
+        } else if (resp.data) {
+          cState.adminSysError = "";
+          cState.adminSysKeys = Array.isArray(resp.data.keys) ? resp.data.keys : [];
+          U().showToast("\u0110\u00e3 x\u00f3a Key H\u1ec7 th\u1ed1ng " + kmask + ".", "info");
+        }
+        renderApiPage();
+      });
+      return;
+    }
     const t = e.target.closest ? e.target.closest("button") : null;
     if (!t) return;
     if (t.id === "uetApiGoGuideBtn") {
       U().showTab("guide");
     } else if (t.id === "uetApiSaveBtn") {
+      // STRICT SECTION A RULE: Writes ONLY to browser localStorage; NEVER calls any server/admin route
       const store = syncActiveTextareaToStore(loadPersonalKeyStore());
       savePersonalKeyStore(store);
       cState.testResults = null;
       const total = countPersonalKeys();
-      cState.apiStatus = total > 0 ? "ok" : "saved";
-      cState.apiStatusMsg = total > 0 ? ("🔑 " + total + " Key c\u00e1 nh\u00e2n") : "🌐 System Pool";
-      U().showToast(total > 0 ? ("\u0110\u00e3 l\u01b0u " + total + " API Key c\u00e1 nh\u00e2n v\u00e0o tr\u00ecnh duy\u1ec7t.") : "\u0110\u00e3 chuy\u1ec3n v\u1ec1 ch\u1ebf \u0111\u1ed9 System Pool m\u1eb7c \u0111\u1ecbnh.", "success");
+      if (total > 0) cState.disclaimerDismissed = false;
+      U().showToast(total > 0
+        ? ("\u0110\u00e3 l\u01b0u " + total + " API Key c\u00e1 nh\u00e2n (c\u1ee5c b\u1ed9 tr\u00ean tr\u00ecnh duy\u1ec7t n\u00e0y).")
+        : "\u0110\u00e3 chuy\u1ec3n sang d\u00f9ng API Key H\u1ec7 th\u1ed1ng m\u1eb7c \u0111\u1ecbnh.", "success");
       renderApiPage();
     } else if (t.id === "uetApiTestBtn") {
       testPersonalKeys();
@@ -740,12 +973,75 @@
       const fi = U().$("uetApiImportFile");
       if (fi) { fi.value = ""; fi.click(); }
     } else if (t.id === "uetApiDelBtn") {
-      U().showConfirm("X\u00f3a to\u00e0n b\u1ed9 Key c\u00e1 nh\u00e2n", "X\u00f3a t\u1ea5t c\u1ea3 API Key c\u00e1 nh\u00e2n \u0111\u00e3 l\u01b0u? Sau khi x\u00f3a, h\u1ec7 th\u1ed1ng s\u1ebd quay v\u1ec1 d\u00f9ng System Default Key Pool n\u1ebfu b\u1ea1n \u0111\u0103ng nh\u1eadp Google.", function () {
+      U().showConfirm("X\u00f3a Key c\u00e1 nh\u00e2n", "B\u1ea1n c\u00f3 ch\u1eafc mu\u1ed1n x\u00f3a to\u00e0n b\u1ed9 API Key c\u00e1 nh\u00e2n kh\u1ecfi tr\u00ecnh duy\u1ec7t n\u00e0y? Sau khi x\u00f3a, h\u1ec7 th\u1ed1ng s\u1ebd quay v\u1ec1 d\u00f9ng API Key H\u1ec7 th\u1ed1ng m\u1eb7c \u0111\u1ecbnh (D\u00f9ng chung).", function () {
         savePersonalKeyStore(emptyPersonalStore());
         cState.testResults = null;
-        cState.apiStatus = getUserIdToken() ? "saved" : "none";
-        cState.apiStatusMsg = getUserIdToken() ? "🌐 System Pool" : "Ch\u01b0a c\u1ea5u h\u00ecnh";
-        U().showToast("\u0110\u00e3 x\u00f3a to\u00e0n b\u1ed9 Key c\u00e1 nh\u00e2n.", "info");
+        cState.disclaimerDismissed = false;
+        U().showToast("\u0110\u00e3 x\u00f3a Key c\u00e1 nh\u00e2n v\u00e0 quay v\u1ec1 API Key H\u1ec7 th\u1ed1ng m\u1eb7c \u0111\u1ecbnh.", "info");
+        renderApiPage();
+      });
+    } else if (t.id === "sysSecPreviewBtn") {
+      if (cState.adminVerifyState !== "verified") return;
+      const ta = U().$("sysSecRawTextarea");
+      const rawText = ta ? ta.value : cState.adminSysRawDraft;
+      cState.adminSysRawDraft = rawText;
+      if (!String(rawText || "").trim()) {
+        U().showToast("Vui l\u00f2ng d\u00e1n danh s\u00e1ch API Key H\u1ec7 th\u1ed1ng tr\u01b0\u1edbc khi xem tr\u01b0\u1edbc.", "warning");
+        return;
+      }
+      cState.adminSysBusy = true;
+      renderApiPage();
+      const resp = await converterAdminApiFetch("/api/admin/system-keys/preview", "POST", { rawText: rawText });
+      cState.adminSysBusy = false;
+      if (resp._err) {
+        cState.adminSysError = resp._err;
+        U().showToast("L\u1ed7i ph\u00e2n t\u00edch: " + resp._err, "error");
+      } else if (resp.data) {
+        cState.adminSysError = "";
+        cState.adminSysPreview = resp.data;
+      }
+      renderApiPage();
+    } else if (t.id === "sysSecCancelPreviewBtn") {
+      cState.adminSysPreview = null;
+      renderApiPage();
+    } else if (t.id === "sysSecConfirmImportBtn") {
+      if (cState.adminVerifyState !== "verified") return;
+      const ta = U().$("sysSecRawTextarea");
+      const rawText = cState.adminSysRawDraft || (ta ? ta.value : "");
+      if (!String(rawText || "").trim()) return;
+      cState.adminSysBusy = true;
+      renderApiPage();
+      const resp = await converterAdminApiFetch("/api/admin/system-keys/import", "POST", { rawText: rawText });
+      cState.adminSysBusy = false;
+      if (resp._err) {
+        cState.adminSysError = resp._err;
+        U().showToast("L\u1ed7i l\u01b0u Kho H\u1ec7 th\u1ed1ng: " + resp._err, "error");
+      } else if (resp.data) {
+        cState.adminSysError = "";
+        cState.adminSysRawDraft = "";
+        cState.adminSysPreview = null;
+        cState.adminSysKeys = Array.isArray(resp.data.keys) ? resp.data.keys : cState.adminSysKeys;
+        U().showToast("\u0110\u00e3 m\u00e3 h\u00f3a & l\u01b0u " + (resp.data.importedCount || 0) + " Key v\u00e0o Kho H\u1ec7 th\u1ed1ng!", "success");
+      }
+      renderApiPage();
+    } else if (t.id === "sysSecDeleteAllBtn") {
+      if (cState.adminVerifyState !== "verified") return;
+      const cnt = (cState.adminSysKeys || []).length;
+      if (cnt === 0) return;
+      openTypedDeleteAllModal(cnt, async function () {
+        cState.adminSysBusy = true;
+        renderApiPage();
+        const resp = await converterAdminApiFetch("/api/admin/system-keys", "DELETE", { confirm: "XOA" });
+        cState.adminSysBusy = false;
+        if (resp._err) {
+          cState.adminSysError = resp._err;
+          U().showToast("L\u1ed7i x\u00f3a to\u00e0n b\u1ed9 Key H\u1ec7 th\u1ed1ng: " + resp._err, "error");
+        } else if (resp.data) {
+          cState.adminSysError = "";
+          cState.adminSysKeys = [];
+          cState.adminSysPreview = null;
+          U().showToast("\u0110\u00e3 x\u00f3a to\u00e0n b\u1ed9 " + (resp.data.deletedCount || cnt) + " Key H\u1ec7 th\u1ed1ng.", "info");
+        }
         renderApiPage();
       });
     }
@@ -756,6 +1052,8 @@
       const chips = U().$("uetProvValidationChips");
       const prov = cState.activeProvTab || "groq";
       if (chips) chips.innerHTML = buildValidationChipsHtml(prov, e.target.value);
+    } else if (e.target && e.target.id === "sysSecRawTextarea") {
+      cState.adminSysRawDraft = e.target.value;
     }
   }
 
@@ -2315,12 +2613,14 @@
     let h = "";
     if (!hasPersonal && !cState.disclaimerDismissed) {
       h += '<div class="sys-disclaimer-banner" id="sysDisclaimerBanner">' +
-        '<div class="sys-disclaimer-body">' +
-          '<span style="font-size:1.1rem;line-height:1.2">ℹ️</span>' +
+        '<div class="sys-disclaimer-body" style="display:flex;align-items:flex-start;gap:10px">' +
+          '<span style="font-size:1.1rem;line-height:1.3;flex-shrink:0" aria-hidden="true">💡</span>' +
           '<div>' +
-            '<div>' + U().esc(disclaimerTxt) + '</div>' +
+            '<div style="line-height:1.55">' + U().esc(disclaimerTxt) + ' ' +
+              '<button type="button" class="sys-disclaimer-link" data-cact="go-guide">Xem h\u01b0\u1edbng d\u1eabn l\u1ea5y API Key mi\u1ec5n ph\u00ed →</button>' +
+            '</div>' +
             (!isSignedIn ? '<div class="muted" style="font-size:.78rem;margin-top:4px">💡 <em>G\u1ee3i \u00fd: \u0110\u0103ng nh\u1eadp Google \u1edf g\u00f3c tr\u00ean \u0111\u1ec3 k\u00edch ho\u1ea1t System Pool mi\u1ec5n ph\u00ed, ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n \u0111\u1ec3 d\u00f9ng ngay kh\u00f4ng c\u1ea7n ch\u1edd.</em></div>' : '') +
-            '<div class="sys-disclaimer-actions">' +
+            '<div class="sys-disclaimer-actions" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' +
               '<button type="button" class="btn btn-primary btn-sm" data-cact="go-guide">Xem h\u01b0\u1edbng d\u1eabn l\u1ea5y API Key mi\u1ec5n ph\u00ed →</button>' +
               '<button type="button" class="btn btn-outline btn-sm" data-cact="go-api">Nh\u1eadp Key c\u00e1 nh\u00e2n</button>' +
             '</div>' +
@@ -2766,11 +3066,23 @@
     }
   }
 
+  function resetAdminVerifyCache() {
+    cState.adminVerifyToken = "";
+    cState.adminVerifyState = "idle";
+    cState.adminSysKeys = [];
+    cState.adminSysEnvKeys = [];
+    cState.adminSysPreview = null;
+    cState.adminSysRawDraft = "";
+    cState.adminSysError = "";
+  }
+
   window.UETConverter = {
     renderConverter: renderConverter,
     renderApiPage: renderApiPage,
     renderApiGuide: renderApiGuide,
     hasPersonalKeys: hasPersonalKeys,
+    openTypedDeleteAllModal: openTypedDeleteAllModal,
+    resetAdminVerifyCache: resetAdminVerifyCache,
     applySubRoute: applySubRoute,
     getValidQuestions: function () { return validateAll().validItems; }
   };

@@ -116,8 +116,11 @@ async function pingSingleKey(provider, rawKey) {
   const headers = provider === "gemini"
     ? { "x-goog-api-key": rawKey }
     : { "Authorization": "Bearer " + rawKey };
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 10000) : null;
   try {
-    const resp = await fetch(url, { method: "GET", headers: headers });
+    const resp = await fetch(url, { method: "GET", headers: headers, signal: ctrl ? ctrl.signal : undefined });
+    if (timer) clearTimeout(timer);
     if (resp.ok) {
       return { status: "healthy", message: "OK" };
     }
@@ -129,7 +132,37 @@ async function pingSingleKey(provider, rawKey) {
     }
     return { status: "healthy", message: "HTTP " + resp.status };
   } catch (err) {
+    if (timer) clearTimeout(timer);
     return { status: "cooldown", message: sanitizeErrorMessage(err && err.message, [rawKey]) };
+  }
+}
+
+async function handleAdminMe(req, res) {
+  const corsCheck = isOriginAllowed(req);
+  if (req.method === "OPTIONS") {
+    res.writeHead(corsCheck.allowed ? 204 : 403, buildCorsHeaders(corsCheck));
+    return res.end();
+  }
+  if (!corsCheck.allowed) {
+    return sendJsonWithCors(res, 403, { ok: false, isAdmin: false, error: "Origin not allowed." }, corsCheck);
+  }
+  if (String(req.method || "GET").toUpperCase() !== "GET") {
+    return sendJsonWithCors(res, 405, { ok: false, isAdmin: false, error: "Method Not Allowed." }, corsCheck);
+  }
+  try {
+    const admin = await verifyAdminRequest(req);
+    return sendJsonWithCors(res, 200, {
+      ok: true,
+      isAdmin: true,
+      email: admin.email,
+      uid: admin.uid
+    }, corsCheck);
+  } catch (authErr) {
+    return sendJsonWithCors(res, authErr.status || 403, {
+      ok: false,
+      isAdmin: false,
+      error: authErr.message
+    }, corsCheck);
   }
 }
 
@@ -225,6 +258,7 @@ async function handleAdminSystemKeys(req, res, cleanPath) {
         iv: enc.iv,
         authTag: enc.authTag,
         keyVersion: enc.keyVersion,
+        kdf: enc.kdf,
         enabled: true,
         status: "healthy",
         cooldownUntil: 0,
@@ -361,6 +395,34 @@ async function handleAdminSystemKeys(req, res, cleanPath) {
     }, corsCheck);
   }
 
+  // DELETE /api/admin/system-keys OR POST /api/admin/system-keys/delete-all (requires confirm: "XOA")
+  if ((!sub && method === "DELETE") || (sub === "delete-all" && method === "POST")) {
+    let body = {};
+    try {
+      body = await readBoundedJsonBody(req, 16 * 1024);
+    } catch (e) {
+      return sendJsonWithCors(res, e.status || 400, { error: e.message }, corsCheck);
+    }
+    const confWord = String((body && body.confirm) || "").trim().toUpperCase();
+    if (confWord !== "XOA") {
+      return sendJsonWithCors(res, 400, {
+        error: "Vui l\u00f2ng x\u00e1c nh\u1eadn b\u1eb1ng c\u00e1ch nh\u1eadp ch\u00ednh x\u00e1c t\u1eeb kh\u00f3a XOA tr\u01b0\u1edbc khi x\u00f3a to\u00e0n b\u1ed9 Key H\u1ec7 th\u1ed1ng."
+      }, corsCheck);
+    }
+    const deletedCount = await storage.clearAllStoredKeys();
+    await storage.appendAuditLog({
+      adminEmail: admin.email,
+      action: "delete_all",
+      detail: "Deleted all " + deletedCount + " DB system key(s)"
+    });
+    return sendJsonWithCors(res, 200, {
+      ok: true,
+      deletedCount: deletedCount,
+      keys: [],
+      auditLogs: await storage.listAuditLogs(50)
+    }, corsCheck);
+  }
+
   // DELETE /api/admin/system-keys/:id
   if (sub && sub.indexOf("/") === -1 && method === "DELETE") {
     const id = decodeURIComponent(sub);
@@ -387,6 +449,7 @@ async function handleAdminSystemKeys(req, res, cleanPath) {
 }
 
 module.exports = {
+  handleAdminMe: handleAdminMe,
   handleAdminSystemKeys: handleAdminSystemKeys,
   getEnvMaskedSummary: getEnvMaskedSummary,
   toPublicKeyRecord: toPublicKeyRecord

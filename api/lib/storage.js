@@ -209,11 +209,30 @@ async function saveStoredKeys(keys) {
   writeFileStore(st);
 }
 
+async function clearAllStoredKeys() {
+  const existing = await listStoredKeys();
+  const count = existing.length;
+  await saveStoredKeys([]);
+  return count;
+}
+
 async function getEnvKeyStates() {
   const info = getDriverInfo();
   if (info.driver === "kv") {
     const obj = await kvGetJson(KV_ENV_STATE_KEY, {});
     return obj && typeof obj === "object" ? obj : {};
+  }
+  if (info.driver === "supabase") {
+    try {
+      const rows = await sbFetch("/system_ai_env_state?select=*");
+      const out = {};
+      (Array.isArray(rows) ? rows : []).forEach(function (r) {
+        if (r && r.id && r.state_json) out[r.id] = r.state_json;
+      });
+      return out;
+    } catch (e) {
+      return {};
+    }
   }
   const st = readFileStore();
   return st.envState && typeof st.envState === "object" ? st.envState : {};
@@ -224,6 +243,19 @@ async function saveEnvKeyStates(envState) {
   const info = getDriverInfo();
   if (info.driver === "kv") {
     await kvSetJson(KV_ENV_STATE_KEY, clean);
+    return;
+  }
+  if (info.driver === "supabase") {
+    const rows = Object.keys(clean).map(function (id) {
+      return { id: id, state_json: clean[id], updated_at: new Date().toISOString() };
+    });
+    if (rows.length > 0) {
+      await sbFetch("/system_ai_env_state?on_conflict=id", {
+        method: "POST",
+        headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(rows)
+      });
+    }
     return;
   }
   const st = readFileStore();
@@ -364,6 +396,20 @@ async function checkAdminActionCooldown(actionKey, cooldownSec) {
     return { allowed: true, retryAfterSec: 0 };
   }
 
+  if (info.driver === "supabase") {
+    const existing = await sbFetch("/ai_proxy_rate_limits?bucket_key=eq." + encodeURIComponent(bucketKey));
+    const cur = Array.isArray(existing) && existing[0] ? existing[0] : null;
+    if (cur && Number(cur.expires_at) > now) {
+      return { allowed: false, retryAfterSec: Math.max(1, Math.ceil((Number(cur.expires_at) - now) / 1000)) };
+    }
+    await sbFetch("/ai_proxy_rate_limits?on_conflict=bucket_key", {
+      method: "POST",
+      headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({ bucket_key: bucketKey, count: 1, expires_at: now + waitMs })
+    });
+    return { allowed: true, retryAfterSec: 0 };
+  }
+
   const st = readFileStore();
   if (!st.adminActions || typeof st.adminActions !== "object") st.adminActions = {};
   const exp = Number(st.adminActions[bucketKey]) || 0;
@@ -379,6 +425,7 @@ module.exports = {
   getDriverInfo: getDriverInfo,
   listStoredKeys: listStoredKeys,
   saveStoredKeys: saveStoredKeys,
+  clearAllStoredKeys: clearAllStoredKeys,
   getEnvKeyStates: getEnvKeyStates,
   saveEnvKeyStates: saveEnvKeyStates,
   appendAuditLog: appendAuditLog,

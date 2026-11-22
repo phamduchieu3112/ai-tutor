@@ -708,6 +708,47 @@ button, input, select, textarea { font-family: inherit; }
 }
 .audit-log-row:last-child { border-bottom: none; }
 
+/* Section 1B: Fixed Warning Callout (Left-aligned, Natural Single-Paragraph Flow, No Justify) */
+.free-api-callout {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: var(--amber-soft); border: 1px solid var(--amber); border-radius: 12px;
+  padding: 12px 14px; margin: 12px 0 16px;
+  font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: .84rem; color: var(--text); text-align: left;
+}
+.free-api-callout-icon {
+  flex-shrink: 0; margin-top: 2px; line-height: 1.4; font-size: 1rem;
+}
+.free-api-callout-text {
+  margin: 0; text-align: left; line-height: 1.65; word-spacing: normal; letter-spacing: normal;
+  font-weight: 400;
+}
+
+.multi-key-textarea {
+  width: 100%; padding: 10px 12px !important; min-height: 128px; line-height: 1.5;
+  resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .82rem; box-sizing: border-box;
+}
+
+.badge-sys {
+  background: var(--brand-soft); color: var(--brand); border: 1px solid var(--brand);
+}
+
+.api-section-box {
+  border: 1px solid var(--border); border-radius: 14px; padding: 16px; margin-top: 14px;
+  background: var(--surface);
+}
+.api-section-admin {
+  border-color: var(--amber); background: var(--bg2);
+}
+.api-section-title {
+  margin: 0 0 8px; font-size: 1.02rem; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.typed-confirm-input {
+  width: 100%; padding: 9px 12px; border-radius: 8px; border: 1.5px solid var(--rose);
+  font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin-top: 8px;
+}
+
 /* ==================== PRINT-READY A4 PDF ==================== */
 .print-only { display: none; }
 @media print {

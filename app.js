@@ -711,6 +711,12 @@ function logout() {
   closeDrawer();
   state.session = null; state.flash = null; state.user = null; state.checkout = null;
   state.decks = []; state.manifestDecks = [];
+  if (typeof sysKeysState !== "undefined") {
+    sysKeysState.loaded = false; sysKeysState.keys = []; sysKeysState.envKeys = []; sysKeysState.preview = null; sysKeysState.rawDraft = "";
+  }
+  if (window.UETConverter && typeof window.UETConverter.resetAdminVerifyCache === "function") {
+    window.UETConverter.resetAdminVerifyCache();
+  }
   removeKey(KEYS.auth);
   try { if (typeof google !== "undefined" && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect(); } catch (e) { /* b\u1ecf qua */ }
   ["userChip", "navTabs", "hamburgerBtn", "syncStatusChip", "tierBadge", "appShell"].forEach(function (id) { toggleEl(id, false); });
@@ -2780,38 +2786,18 @@ function adminMembersHTML() {
           '</div>' +
         '</label>' +
         '<label class="field">Model m\u1eb7c \u0111\u1ecbnh<select id="assignApiModel">' +
-          '<optgroup label="Google Gemini (AIza...)">' +
-            '<option value="gemini-2.5-flash">Gemini 2.5 Flash (Nhanh)</option>' +
-            '<option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite (Si\u00eau nhanh / Quota l\u1edbn)</option>' +
-            '<option value="gemini-2.0-flash">Gemini 2.0 Flash (\u1ed4n \u0111\u1ecbnh)</option>' +
-            '<option value="gemini-2.5-pro">Gemini 2.5 Pro (Ch\u00ednh x\u00e1c cao)</option>' +
-            '<option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>' +
-          '</optgroup>' +
-          '<optgroup label="Groq Cloud – Mi\u1ec5n ph\u00ed &amp; Si\u00eau t\u1ed1c (gsk_...)">' +
-            '<option value="groq:meta-llama/llama-4-scout-17b-16e-instruct">Groq Llama 4 Scout 17B (Mi\u1ec5n ph\u00ed &amp; Vision)</option>' +
-            '<option value="groq:meta-llama/llama-4-maverick-17b-128e-instruct">Groq Llama 4 Maverick 17B (Vision)</option>' +
-            '<option value="groq:llama-3.3-70b-versatile">Groq Llama 3.3 70B (Si\u00eau t\u1ed1c)</option>' +
-          '</optgroup>' +
-          '<optgroup label="OpenAI ChatGPT API (sk-...)">' +
-            '<option value="openai:gpt-4o-mini">OpenAI GPT-4o Mini (Nhanh &amp; Vision)</option>' +
-            '<option value="openai:gpt-4o">OpenAI GPT-4o (Ch\u00ednh x\u00e1c cao &amp; Vision)</option>' +
-            '<option value="openai:gpt-4.1-mini">OpenAI GPT-4.1 Mini (Vision)</option>' +
-          '</optgroup>' +
-          '<optgroup label="OpenRouter – \u0110a Model Free &amp; Pro (sk-or-...)">' +
-            '<option value="openrouter:openrouter/free">OpenRouter Auto Free Router (:free &amp; Vision)</option>' +
-            '<option value="openrouter:google/gemini-2.0-flash-exp:free">OpenRouter: Gemini 2.0 Flash (Free &amp; Vision)</option>' +
-            '<option value="openrouter:qwen/qwen2.5-vl-72b-instruct:free">OpenRouter: Qwen 2.5 VL 72B (Free &amp; Vision)</option>' +
-            '<option value="openrouter:google/gemini-2.5-flash">OpenRouter: Gemini 2.5 Flash (Vision)</option>' +
-            '<option value="openrouter:deepseek/deepseek-chat-v3-0324:free">OpenRouter: DeepSeek V3 (Free)</option>' +
-            '<option value="openrouter:openai/gpt-4o-mini">OpenRouter: GPT-4o Mini (Vision)</option>' +
-          '</optgroup>' +
-          '<optgroup label="DeepSeek API (deepseek:sk-...)">' +
-            '<option value="deepseek:deepseek-chat">DeepSeek V3 Chat (Gi\u1ea3i \u0111\u1ec1 &amp; Chu\u1ea9n h\u00f3a)</option>' +
-            '<option value="deepseek:deepseek-reasoner">DeepSeek R1 Reasoner (To\u00e1n/L\u00fd/H\u00f3a chuy\u00ean s\u00e2u)</option>' +
-          '</optgroup>' +
+          ((window.AI_PROVIDERS_CONFIG && Array.isArray(window.AI_PROVIDERS_CONFIG.PROVIDERS))
+            ? window.AI_PROVIDERS_CONFIG.PROVIDERS.map(function (p) {
+                return '<optgroup label="' + esc(p.name + " (" + (p.prefixHint || "") + ")") + '">' +
+                  (p.models || []).map(function (m) {
+                    return '<option value="' + esc(m.id) + '">' + esc(m.label) + '</option>';
+                  }).join("") +
+                '</optgroup>';
+              }).join("")
+            : '<option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite</option>') +
         '</select></label>' +
         '<label class="field" style="width:100%;flex-basis:100%">📦 H\u1ed9p ch\u1ee9a nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng g\u00e1n cho ng\u01b0\u1eddi d\u00f9ng (t\u00f9y ch\u1ecdn – m\u1ed7i d\u00f2ng 1 Key ho\u1eb7c c\u00e1ch b\u1eb1ng d\u1ea5u ph\u1ea9y)' +
-          '<textarea id="assignApiPool" rows="3" spellcheck="false" placeholder="D\u00e1n th\u00eam nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng (AIza..., gsk_..., sk-or-..., sk-...) \u0111\u1ec3 t\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng khi Key ch\u00ednh h\u1ebft Quota 429"></textarea>' +
+          '<textarea id="assignApiPool" class="multi-key-textarea" rows="5" spellcheck="false" placeholder="D\u00e1n th\u00eam nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng (AIza..., gsk_..., sk-or-..., sk-...) \u0111\u1ec3 t\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng khi Key ch\u00ednh h\u1ebft Quota 429"></textarea>' +
         '</label>' +
         '<button type="button" class="btn btn-primary" data-act="assign-user-api">🔑 G\u00e1n API cho Email</button>' +
         '<button type="button" class="btn btn-danger" data-act="revoke-user-api-form">Thu h\u1ed3i API</button>' +
@@ -2928,7 +2914,7 @@ function adminSysKeysHTML() {
     '<div style="margin-bottom:20px">' +
       '<h4>1. Nh\u1eadp h\u00e0ng lo\u1ea1t theo nh\u00f3m t\u00e0i kho\u1ea3n (2-Step Smart Importer)</h4>' +
       '<p class="muted" style="font-size:.8rem;margin:0 0 8px">D\u00e1n \u0111o\u1ea1n danh s\u00e1ch d\u1ea1ng <code>1. T\u00ean — email</code> + c\u00e1c d\u00f2ng g\u1ea1ch \u0111\u1ea7u d\u00f2ng (<code>Groq:</code>, <code>OpenRouter:</code>, <code>Gemini:</code>, <code>OpenAI:</code>, <code>DeepSeek:</code>). H\u1ec7 th\u1ed1ng t\u1ef1 lo\u1ea1i b\u1ecf m\u00e3 SV, b\u1ecf d\u00f2ng tr\u1ed1ng/"Ch\u01b0a t\u1ea1o", ki\u1ec3m tra ti\u1ec1n t\u1ed1 v\u00e0 ch\u1ed1ng tr\u00f9ng b\u1eb1ng HMAC-SHA256. V\u0103n b\u1ea3n d\u00e1n kh\u00f4ng bao gi\u1edd \u0111\u01b0\u1ee3c l\u01b0u hay ghi log.</p>' +
-      '<textarea id="sysKeysRawInput" rows="7" spellcheck="false" autocomplete="off" placeholder="1. T\u00e0i kho\u1ea3n 1 \u2014 example1@gmail.com&#10;- Groq: gsk_...&#10;- OpenRouter: sk-or-v1-...&#10;- Gemini: AIzaSy...">' + esc(s.rawDraft) + '</textarea>' +
+      '<textarea id="sysKeysRawInput" class="multi-key-textarea" rows="7" spellcheck="false" autocomplete="off" placeholder="1. T\u00e0i kho\u1ea3n 1 \u2014 example1@gmail.com&#10;- Groq: gsk_...&#10;- OpenRouter: sk-or-v1-...&#10;- Gemini: AIzaSy...">' + esc(s.rawDraft) + '</textarea>' +
       '<div class="deck-actions" style="margin-top:8px">' +
         '<button type="button" class="btn btn-primary" data-act="syskey-preview"' + (s.busy ? " disabled" : "") + '>🔍 Ph\u00e2n t\u00edch &amp; Xem tr\u01b0\u1edbc (Preview)</button>' +
         '<button type="button" class="btn btn-outline" data-act="syskey-clear-input"' + (s.busy ? " disabled" : "") + '>X\u00f3a \u00f4 d\u00e1n</button>' +
@@ -2943,6 +2929,7 @@ function adminSysKeysHTML() {
           '<button type="button" class="btn btn-outline btn-sm" data-act="syskey-refresh"' + (s.busy ? " disabled" : "") + '>🔄 T\u1ea3i l\u1ea1i</button>' +
           '<button type="button" class="btn btn-emerald btn-sm" data-act="syskey-test-all"' + (s.busy ? " disabled" : "") + '>🧪 Test All Keys</button>' +
           '<button type="button" class="btn btn-danger btn-sm" data-act="syskey-remove-invalid"' + (s.busy ? " disabled" : "") + '>🧹 Remove All Invalid Keys</button>' +
+          '<button type="button" class="btn btn-danger btn-sm" data-act="syskey-delete-all"' + ((s.busy || s.keys.length === 0) ? " disabled" : "") + '>🗑️ X\u00f3a to\u00e0n b\u1ed9 Key H\u1ec7 th\u1ed1ng</button>' +
         '</div>' +
       '</div>' +
       '<div class="table-scroll"><table class="data-table"><thead><tr><th>T\u00e0i kho\u1ea3n</th><th>H\u00e3ng</th><th>Key (\u1ea8n)</th><th>Tr\u1ea1ng th\u00e1i</th><th>Th\u1ed1ng k\u00ea</th><th>H\u00e0nh \u0111\u1ed9ng</th></tr></thead><tbody>' + keyTableRows + '</tbody></table></div>' +
@@ -3252,6 +3239,27 @@ async function onAdminClick(e) {
         }
         renderAdmin();
       });
+    } else if (act === "syskey-delete-all") {
+      const cnt = (sysKeysState.keys || []).length;
+      if (cnt === 0) { showToast("Kh\u00f4ng c\u00f3 Key H\u1ec7 th\u1ed1ng n\u00e0o trong DB \u0111\u1ec3 x\u00f3a.", "info"); return; }
+      const openModalFn = window.UETConverter && window.UETConverter.openTypedDeleteAllModal;
+      if (typeof openModalFn === "function") {
+        openModalFn(cnt, async function () {
+          sysKeysState.busy = true;
+          renderAdmin();
+          const resp = await adminSystemKeysFetch("", "DELETE", { confirm: "XOA" });
+          sysKeysState.busy = false;
+          if (resp._err) {
+            showToast("L\u1ed7i x\u00f3a to\u00e0n b\u1ed9 Key: " + resp._err, "error");
+          } else if (resp.data) {
+            sysKeysState.keys = [];
+            sysKeysState.preview = null;
+            sysKeysState.auditLogs = Array.isArray(resp.data.auditLogs) ? resp.data.auditLogs : sysKeysState.auditLogs;
+            showToast("\u0110\u00e3 x\u00f3a to\u00e0n b\u1ed9 " + (resp.data.deletedCount || cnt) + " Key H\u1ec7 th\u1ed1ng.", "info");
+          }
+          renderAdmin();
+        });
+      }
     } else if (act === "syskey-toggle") {
       const id = b.getAttribute("data-id");
       const curEn = b.getAttribute("data-enabled") === "1";
@@ -3593,6 +3601,7 @@ function onKeyDown(e) {
 }
 
 /* ------------------------------ Multi-Language Engine (VI / EN / JA - Zero Font Change) ------------------------------ */
+/* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
@@ -4665,7 +4674,16 @@ const I18N_MAP = {
   "Quản lý qua ENV": { vi: "Quản lý qua ENV", en: "Managed via ENV", ja: "ENV で管理" },
   "Chưa có System Key nào trong Pool.": { vi: "Chưa có System Key nào trong Pool.", en: "No System Keys in pool yet.", ja: "プールにシステム Key がまだ登録されていません。" },
   "3. Nhật ký Quản trị (Audit Log)": { vi: "3. Nhật ký Quản trị (Audit Log)", en: "3. Admin Audit Log", ja: "3. 管理者操作ログ (Audit Log)" },
-  "Chưa có nhật ký thao tác nào.": { vi: "Chưa có nhật ký thao tác nào.", en: "No audit logs recorded yet.", ja: "操作ログはまだありません。" }
+  "Chưa có nhật ký thao tác nào.": { vi: "Chưa có nhật ký thao tác nào.", en: "No audit logs recorded yet.", ja: "操作ログはまだありません。" },
+  "Đang dùng: API Key cá nhân (Cục bộ)": { vi: "Đang dùng: API Key cá nhân (Cục bộ)", en: "Active: Personal API Key (Local)", ja: "使用中: 個人 API Key（ローカル）" },
+  "Đang dùng: API Key Hệ thống mặc định (Dùng chung)": { vi: "Đang dùng: API Key Hệ thống mặc định (Dùng chung)", en: "Active: Default System API Key (Shared)", ja: "使用中: システム標準 API Key（共有）" },
+  "🔑 Cài đặt API Key Cá nhân (Chỉ lưu cục bộ trên trình duyệt này)": { vi: "🔑 Cài đặt API Key Cá nhân (Chỉ lưu cục bộ trên trình duyệt này)", en: "🔑 Personal API Key Settings (Stored Locally in This Browser Only)", ja: "🔑 個人 API Key 設定（このブラウザ内にのみ保存）" },
+  "Lưu Key cá nhân (Cục bộ)": { vi: "Lưu Key cá nhân (Cục bộ)", en: "Save Personal Key (Local)", ja: "個人 Key を保存（ローカル）" },
+  "🛡️ Kho API Key Hệ thống (Lưu lên Server — Dùng chung cho toàn bộ người dùng)": { vi: "🛡️ Kho API Key Hệ thống (Lưu lên Server — Dùng chung cho toàn bộ người dùng)", en: "🛡️ System API Key Pool (Saved on Server — Shared Across All Users)", ja: "🛡️ システム API Key プール（サーバー保存 — 全ユーザー共有）" },
+  "Lưu vào Kho Hệ thống (Dùng chung)": { vi: "Lưu vào Kho Hệ thống (Dùng chung)", en: "Save to System Pool (Shared)", ja: "システムプールに保存（共有）" },
+  "Xóa toàn bộ Key Hệ thống": { vi: "Xóa toàn bộ Key Hệ thống", en: "Delete All System Keys", ja: "システム Key をすべて削除" },
+  "🗑️ Xóa toàn bộ Key Hệ thống": { vi: "🗑️ Xóa toàn bộ Key Hệ thống", en: "🗑️ Delete All System Keys", ja: "🗑️ システム Key をすべて削除" },
+  "⚠️ Xóa toàn bộ Key Hệ thống": { vi: "⚠️ Xóa toàn bộ Key Hệ thống", en: "⚠️ Delete All System Keys", ja: "⚠️ システム Key をすべて削除" }
 };
 
 const I18N_PATTERNS = [
@@ -5744,7 +5762,7 @@ window.UET = {
   isAdmin: isAdmin, isAdminUser: isAdminUser, currentTier: currentTier, tierRank: tierRank, effectiveLimits: effectiveLimits,
   can: can, requireFeature: requireFeature, promptUpgrade: promptUpgrade,
   getAssignedApiForUser: getActiveUserAssignedApi, getAssignedApiForEmail: getAssignedApiForEmail,
-  getLang: getLang, setLang: setLang, applyI18n: applyI18n, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString,
+  getLang: getLang, setLang: setLang, applyI18n: applyI18n, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString,
   getDecks: function () { return state.decks; }, getUserDecks: getUserDecks, getDeck: getDeck,
   normalizeQuestion: normalizeQuestion, parseWorkbookRows: parseWorkbookRows, addOrMergeDeck: addOrMergeDeck,
   downloadTemplate: downloadTemplate, showTab: showTab, navigateTo: navigateTo, syncHistory: syncHistory, renderTab: renderTab, updateChrome: updateChrome,

@@ -27,18 +27,29 @@ function detectProviderByPrefix(rawKey) {
   return "unknown";
 }
 
+function sanitizeAccountLabel(str) {
+  return String(str || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/[<>`"'\\]/g, "")
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function extractShortAccountLabel(headerLine) {
-  let clean = String(headerLine || "")
+  let clean = sanitizeAccountLabel(headerLine)
     .replace(/^\s*\d{1,3}\s*[.)]\s*/, "")
     .trim();
   const emailMatch = clean.match(/[^\s@<>;:,()]+@[^\s@<>;:,()]+\.[^\s@<>;:,()]+/);
   if (emailMatch) {
-    return emailMatch[0].trim().toLowerCase().slice(0, 80);
+    return sanitizeAccountLabel(emailMatch[0]).toLowerCase().slice(0, 80);
   }
   // Strip any accidental MSSV / student IDs (6-12 digits) if no email is present
   clean = clean
     .replace(/\b(?:mssv|msv|id)\s*[:\-]?\s*\d{4,12}\b/gi, "")
+    .replace(/\b\d{6,12}\b/g, "")
     .split(/[\u2014\u2013|]/)[0]
+    .replace(/\s+/g, " ")
     .trim();
   return (clean || "Account").slice(0, 48);
 }
@@ -120,13 +131,13 @@ function parseAccountGroupedText(rawText, existingHashesSet) {
 
     // Normalize placeholder/empty values safely
     const keyVal = valPart.replace(/^<|>$/g, "").trim();
-    if (!keyVal || /^(?:empty|none|null|n\/a|trống|chưa có|-+|—+)$/i.test(keyVal)) {
-      skipped.push({ line: currentLineNum, accountLabel: currentAccount, provider: provider, reason: "Giá trị trống (bỏ qua)" });
+    if (!keyVal || /^(?:empty|none|null|n\/a|tr\u1ed1ng|ch\u01b0a c\u00f3|ch\u01b0a t\u1ea1o|chua tao|chua co|-+|\u2014+|\u2013+)$/i.test(keyVal)) {
+      skipped.push({ line: currentLineNum, accountLabel: currentAccount, provider: provider, label: labelPart, reason: "Gi\u00e1 tr\u1ecb tr\u1ed1ng (b\u1ecf qua)" });
       return;
     }
 
     if (/\s/.test(keyVal) || keyVal.length < 16) {
-      skipped.push({ line: currentLineNum, accountLabel: currentAccount, provider: provider, maskedKey: maskApiKey(keyVal), reason: "Chuỗi Key quá ngắn hoặc chứa khoảng trắng" });
+      skipped.push({ line: currentLineNum, accountLabel: currentAccount, provider: provider, label: labelPart, maskedKey: maskApiKey(keyVal), reason: "Chu\u1ed7i Key qu\u00e1 ng\u1eafn ho\u1eb7c ch\u1ee9a kho\u1ea3ng tr\u1eafng" });
       return;
     }
 
@@ -150,6 +161,7 @@ function parseAccountGroupedText(rawText, existingHashesSet) {
         line: currentLineNum,
         accountLabel: currentAccount,
         provider: provider,
+        label: labelPart,
         detectedPrefixProvider: detectedByPrefix,
         maskedKey: maskApiKey(keyVal),
         reason: mismatchMsg
@@ -164,7 +176,7 @@ function parseAccountGroupedText(rawText, existingHashesSet) {
         accountLabel: currentAccount,
         provider: provider,
         maskedKey: maskApiKey(keyVal),
-        reason: "Trùng lặp (Key đã tồn tại trong Hệ thống hoặc lặp lại trong danh sách dán)"
+        reason: "Tr\u00f9ng l\u1eb7p (Key \u0111\u00e3 t\u1ed3n t\u1ea1i trong H\u1ec7 th\u1ed1ng ho\u1eb7c l\u1eb7p l\u1ea1i trong danh s\u00e1ch d\u00e1n)"
       });
       return;
     }
@@ -183,6 +195,10 @@ function parseAccountGroupedText(rawText, existingHashesSet) {
     });
   });
 
+  const summaryByAccountList = Object.keys(summaryByAccount).map(function (acc) {
+    return { accountLabel: acc, count: summaryByAccount[acc] };
+  });
+
   return {
     validEntries: validEntries,
     previewItems: validEntries.map(function (item) {
@@ -197,7 +213,8 @@ function parseAccountGroupedText(rawText, existingHashesSet) {
     duplicates: duplicates,
     mismatches: mismatches,
     summaryByProvider: summaryByProvider,
-    summaryByAccount: summaryByAccount,
+    summaryByAccount: summaryByAccountList,
+    summaryByAccountMap: summaryByAccount,
     totalValid: validEntries.length
   };
 }

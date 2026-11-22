@@ -44,12 +44,18 @@ function isEncryptionConfigured() {
   return getCurrentSecret().length >= 16;
 }
 
+const HKDF_SALT = Buffer.from("ai-tutor:zero-exposure:kdf-salt:v1", "utf8");
+
 function deriveAesKey(secret) {
+  return Buffer.from(crypto.hkdfSync("sha256", Buffer.from(secret, "utf8"), HKDF_SALT, Buffer.from("aes-256-gcm", "utf8"), 32));
+}
+
+function deriveLegacySha256AesKey(secret) {
   return crypto.createHash("sha256").update("ai-tutor:aes-256-gcm:" + secret, "utf8").digest();
 }
 
 function deriveHmacKey(secret) {
-  return crypto.createHash("sha256").update("ai-tutor:hmac-sha256:" + secret, "utf8").digest();
+  return Buffer.from(crypto.hkdfSync("sha256", Buffer.from(secret, "utf8"), HKDF_SALT, Buffer.from("hmac-sha256-dedup", "utf8"), 32));
 }
 
 function resolveSecretForVersion(keyVersion) {
@@ -81,8 +87,23 @@ function encryptSecret(plaintext) {
     ciphertext: encrypted.toString("base64"),
     iv: iv.toString("base64"),
     authTag: authTag.toString("base64"),
-    keyVersion: getCurrentKeyVersion()
+    keyVersion: getCurrentKeyVersion(),
+    kdf: "hkdf-sha256"
   };
+}
+
+function decryptWithKeyBuffer(record, keyBuf) {
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    keyBuf,
+    Buffer.from(record.iv, "base64")
+  );
+  decipher.setAuthTag(Buffer.from(record.authTag, "base64"));
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(record.ciphertext, "base64")),
+    decipher.final()
+  ]);
+  return decrypted.toString("utf8");
 }
 
 function decryptSecret(record) {
@@ -93,17 +114,15 @@ function decryptSecret(record) {
   if (!secret || secret.length < 16) {
     throw new Error("ENCRYPTION_SECRET for keyVersion '" + String(record.keyVersion || "unknown") + "' is not configured.");
   }
-  const decipher = crypto.createDecipheriv(
-    "aes-256-gcm",
-    deriveAesKey(secret),
-    Buffer.from(record.iv, "base64")
-  );
-  decipher.setAuthTag(Buffer.from(record.authTag, "base64"));
-  const decrypted = Buffer.concat([
-    decipher.update(Buffer.from(record.ciphertext, "base64")),
-    decipher.final()
-  ]);
-  return decrypted.toString("utf8");
+  try {
+    return decryptWithKeyBuffer(record, deriveAesKey(secret));
+  } catch (hkdfErr) {
+    // Allow seamless decryption of pre-HKDF records only if kdf is not explicitly hkdf-sha256
+    if (record.kdf !== "hkdf-sha256") {
+      return decryptWithKeyBuffer(record, deriveLegacySha256AesKey(secret));
+    }
+    throw hkdfErr;
+  }
 }
 
 function hmacKeyHash(provider, rawKey) {

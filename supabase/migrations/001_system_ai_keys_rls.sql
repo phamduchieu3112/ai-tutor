@@ -40,14 +40,22 @@ CREATE TABLE IF NOT EXISTS public.ai_proxy_rate_limits (
   expires_at BIGINT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS public.system_ai_env_state (
+  id TEXT PRIMARY KEY,
+  state_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 ALTER TABLE public.system_ai_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_ai_audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_proxy_rate_limits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.system_ai_env_state ENABLE ROW LEVEL SECURITY;
 
 -- Force RLS even for table owners if non-superuser, while service_role bypasses RLS
 ALTER TABLE public.system_ai_keys FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.system_ai_audit_logs FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_proxy_rate_limits FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.system_ai_env_state FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS deny_all_client_system_ai_keys ON public.system_ai_keys;
 CREATE POLICY deny_all_client_system_ai_keys
@@ -76,6 +84,16 @@ CREATE POLICY deny_all_client_ai_proxy_rate_limits
   USING (FALSE)
   WITH CHECK (FALSE);
 
+DROP POLICY IF EXISTS deny_all_client_system_ai_env_state ON public.system_ai_env_state;
+CREATE POLICY deny_all_client_system_ai_env_state
+  ON public.system_ai_env_state
+  AS RESTRICTIVE
+  FOR ALL
+  TO anon, authenticated
+  USING (FALSE)
+  WITH CHECK (FALSE);
+
 REVOKE ALL ON TABLE public.system_ai_keys FROM anon, authenticated;
 REVOKE ALL ON TABLE public.system_ai_audit_logs FROM anon, authenticated;
 REVOKE ALL ON TABLE public.ai_proxy_rate_limits FROM anon, authenticated;
+REVOKE ALL ON TABLE public.system_ai_env_state FROM anon, authenticated;

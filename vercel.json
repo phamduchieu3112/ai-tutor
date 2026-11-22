@@ -6,7 +6,8 @@
   "functions": {
     "api/index.js": { "maxDuration": 60 },
     "api/ai/proxy.js": { "maxDuration": 60 },
-    "api/admin/system-keys.js": { "maxDuration": 30 }
+    "api/admin/system-keys.js": { "maxDuration": 30 },
+    "api/admin/me.js": { "maxDuration": 15 }
   },
   "headers": [
     {

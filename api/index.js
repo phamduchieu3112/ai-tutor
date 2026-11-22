@@ -8,7 +8,8 @@ const os = require("os");
 const tls = require("tls");
 const { maskApiKey, encryptSecret, isEncryptionConfigured } = require("./lib/crypto");
 const { handleAiProxy } = require("./lib/ai-proxy");
-const { handleAdminSystemKeys } = require("./lib/admin-keys");
+const { handleAdminSystemKeys, handleAdminMe } = require("./lib/admin-keys");
+const { verifyAdminRequest } = require("./lib/auth");
 
 // Load local .env if present (zero-dependency)
 (function loadDotEnv() {
@@ -772,6 +773,9 @@ module.exports = async function apiHandler(req, res) {
   if (p === "/api/ai/proxy") {
     return handleAiProxy(req, res);
   }
+  if (p === "/api/admin/me") {
+    return handleAdminMe(req, res);
+  }
   if (p === "/api/admin/system-keys" || p.indexOf("/api/admin/system-keys/") === 0) {
     return handleAdminSystemKeys(req, res, p);
   }
@@ -1048,11 +1052,16 @@ module.exports = async function apiHandler(req, res) {
       if (!db.revokedUserApis) db.revokedUserApis = {};
 
       if (p === "/api/admin/user-apis" && method === "POST") {
+        try {
+          await verifyAdminRequest(req);
+        } catch (authErr) {
+          return sendJson(res, authErr.status || 403, { error: authErr.message });
+        }
         const body = await readBody(req);
         const em = String((body && body.email) || "").trim().toLowerCase();
         const apiKey = String((body && body.apiKey) || "").trim();
         const apiPool = String((body && body.apiPool) || "").trim();
-        const model = String((body && body.model) || "gemini-2.5-flash").trim();
+        const model = String((body && body.model) || "gemini-3.5-flash-lite").trim();
         const primaryKey = apiKey || (apiPool.split(/[\r\n,;]+/).map(function (x) { return x.trim(); }).filter(Boolean)[0] || "");
         if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em) || !primaryKey) {
           return sendJson(res, 400, { error: "Email ho\u1eb7c Gemini API Key kh\u00f4ng h\u1ee3p l\u1ec7." });
@@ -1076,6 +1085,11 @@ module.exports = async function apiHandler(req, res) {
 
       const delApiMatch = p.match(/^\/api\/admin\/user-apis\/([^/]+)$/);
       if (delApiMatch && method === "DELETE") {
+        try {
+          await verifyAdminRequest(req);
+        } catch (authErr) {
+          return sendJson(res, authErr.status || 403, { error: authErr.message });
+        }
         const em = decodeURIComponent(delApiMatch[1]).trim().toLowerCase();
         delete db.userApis[em];
         db.revokedUserApis[em] = Date.now();
