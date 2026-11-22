@@ -18,17 +18,7 @@
 
 ## 🔗 Liên hệ & Social
 
-[![Email](https://img.shields.io/badge/Email-phamduchieu.robotics%40gmail.com-D14836?style=flat-square&logo=gmail&logoColor=white)](mailto:phamduchieu.robotics@gmail.com)
-[![GitHub](https://img.shields.io/badge/GitHub-phamduchieu3112-181717?style=flat-square&logo=github&logoColor=white)](https://github.com/phamduchieu3112)
-[![Facebook](https://img.shields.io/badge/Facebook-lf.pdh-1877F2?style=flat-square&logo=facebook&logoColor=white)](https://www.facebook.com/lf.pdh/)
-[![Messenger](https://img.shields.io/badge/Messenger-lf.pdh-00B2FF?style=flat-square&logo=messenger&logoColor=white)](https://m.me/lf.pdh/)
-[![Instagram](https://img.shields.io/badge/Instagram-pdhieuuu-E4405F?style=flat-square&logo=instagram&logoColor=white)](https://instagram.com/pdhieuuu)
-[![TikTok](https://img.shields.io/badge/TikTok-%40bibeothichmcdonald-000000?style=flat-square&logo=tiktok&logoColor=white)](https://www.tiktok.com/@bibeothichmcdonald)
-[![YouTube](https://img.shields.io/badge/YouTube-%40phamduchieu--uet-FF0000?style=flat-square&logo=youtube&logoColor=white)](https://youtube.com/@phamduchieu-uet)
-[![Discord](https://img.shields.io/badge/Discord-pdhieuuu-5865F2?style=flat-square&logo=discord&logoColor=white)](#)
-
 - **Email:** [phamduchieu.robotics@gmail.com](mailto:phamduchieu.robotics@gmail.com)
-- **GitHub:** [github.com/phamduchieu3112](https://github.com/phamduchieu3112)
 - **Facebook:** [facebook.com/lf.pdh](https://www.facebook.com/lf.pdh/)
 - **Messenger:** [m.me/lf.pdh](https://m.me/lf.pdh/)
 - **Instagram:** [instagram.com/pdhieuuu](https://instagram.com/pdhieuuu)
@@ -36,3 +26,11 @@
 - **YouTube:** [youtube.com/@phamduchieu-uet](https://youtube.com/@phamduchieu-uet)
 - **Discord:** `pdhieuuu`
 - **Zalo / SĐT:** `0775907888`
+
+[![Email](https://img.shields.io/badge/Email-phamduchieu.robotics%40gmail.com-D14836?style=flat-square&logo=gmail&logoColor=white)](mailto:phamduchieu.robotics@gmail.com)<br>
+[![Facebook](https://img.shields.io/badge/Facebook-lf.pdh-1877F2?style=flat-square&logo=facebook&logoColor=white)](https://www.facebook.com/lf.pdh/)<br>
+[![Messenger](https://img.shields.io/badge/Messenger-lf.pdh-00B2FF?style=flat-square&logo=messenger&logoColor=white)](https://m.me/lf.pdh/)<br>
+[![Instagram](https://img.shields.io/badge/Instagram-pdhieuuu-E4405F?style=flat-square&logo=instagram&logoColor=white)](https://instagram.com/pdhieuuu)<br>
+[![TikTok](https://img.shields.io/badge/TikTok-%40bibeothichmcdonald-000000?style=flat-square&logo=tiktok&logoColor=white)](https://www.tiktok.com/@bibeothichmcdonald)<br>
+[![YouTube](https://img.shields.io/badge/YouTube-%40phamduchieu--uet-FF0000?style=flat-square&logo=youtube&logoColor=white)](https://youtube.com/@phamduchieu-uet)<br>
+[![Discord](https://img.shields.io/badge/Discord-pdhieuuu-5865F2?style=flat-square&logo=discord&logoColor=white)](#)
