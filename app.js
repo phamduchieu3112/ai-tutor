@@ -3185,6 +3185,7 @@ function onKeyDown(e) {
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
+/* BEGIN_VI_TRANSLATION_DICTIONARY */
 const I18N_MAP = {
   "AI Tutor – Nền tảng Ôn luyện, Creator Studio & AI Converter": { vi: "AI Tutor – Nền tảng Ôn luyện, Creator Studio & AI Converter", en: "AI Tutor – Practice Platform, Creator Studio & AI Converter", ja: "AI Tutor – オンライン学習・Creator Studio・AI Converter" },
   "AI Tutor by Phạm Đức Hiếu: Nền tảng ôn luyện, thi thử trực tuyến.": { vi: "AI Tutor by Phạm Đức Hiếu: Nền tảng ôn luyện, thi thử trực tuyến.", en: "AI Tutor by Pham Duc Hieu: Online practice & mock exam platform.", ja: "AI Tutor by Pham Duc Hieu: オンライン学習・模擬試験プラットフォーム。" },
@@ -5074,6 +5075,16 @@ const I18N_PATTERNS = [
     re: /^Đã chọn email\s+(.+?)\s+để cấp \/ nâng cấp gói\.$/,
     en: (m) => "Selected " + m[1] + " to grant / upgrade plan.",
     ja: (m) => "プラン付与・アップグレード対象として " + m[1] + " を選択しました。"
+  },
+  {
+    re: /^Model\s+(.+?)\s+đã hết lượt Free Tier — hệ thống tự động chuyển sang\s+(.+?)\s+để tiếp tục xử lý!$/,
+    en: (m) => "Model " + m[1] + " reached its Free Tier quota — automatically switched to " + m[2] + " to continue processing!",
+    ja: (m) => "モデル " + m[1] + " が無料枠の上限に達したため、自動的に " + m[2] + " に切り替えて処理を続行します！"
+  },
+  {
+    re: /^API Key hiện tại đã hết hạn mức miễn phí \(Free Tier Quota\) trên các model khả dụng(.*)$/,
+    en: () => "Current API Key has reached Google's Free Tier quota across available models. Please switch to another Gemini API Key in API Settings or upgrade your Google AI Studio quota.",
+    ja: () => "現在の API Key は利用可能なモデルの無料枠 (Free Tier Quota) の上限に達しました。API設定で別の Gemini API Key に変更するか、Google AI Studio のクォータをアップグレードしてください。"
   }
 ];
 /* END_VI_TRANSLATION_DICTIONARY */
@@ -5220,7 +5231,7 @@ window.UET = {
   isAdmin: isAdmin, isAdminUser: isAdminUser, currentTier: currentTier, tierRank: tierRank, effectiveLimits: effectiveLimits,
   can: can, requireFeature: requireFeature, promptUpgrade: promptUpgrade,
   getAssignedApiForUser: getActiveUserAssignedApi, getAssignedApiForEmail: getAssignedApiForEmail,
-  getLang: getLang, setLang: setLang, applyI18n: applyI18n, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString,
+  getLang: getLang, setLang: setLang, applyI18n: applyI18n, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString,
   getDecks: function () { return state.decks; }, getUserDecks: getUserDecks, getDeck: getDeck,
   normalizeQuestion: normalizeQuestion, parseWorkbookRows: parseWorkbookRows, addOrMergeDeck: addOrMergeDeck,
   downloadTemplate: downloadTemplate, showTab: showTab, navigateTo: navigateTo, syncHistory: syncHistory, renderTab: renderTab, updateChrome: updateChrome,

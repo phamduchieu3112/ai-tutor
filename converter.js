@@ -582,52 +582,140 @@
     });
   }
 
-  async function callGemini(apiKey, model, payload, signal) {
-    const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(apiKey);
-    let delay = 1500;
-    const TIMEOUT_MS = 90000;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
-      const reqCtrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-      let timedOut = false;
-      const timer = reqCtrl ? setTimeout(function () { timedOut = true; reqCtrl.abort(); }, TIMEOUT_MS) : null;
-      const onParentAbort = function () { if (reqCtrl) reqCtrl.abort(); };
-      if (signal && typeof signal.addEventListener === "function") signal.addEventListener("abort", onParentAbort, { once: true });
-      let res;
-      try {
-        res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          signal: reqCtrl ? reqCtrl.signal : signal
-        });
-      } catch (fetchErr) {
-        if (timer) clearTimeout(timer);
-        if (signal && typeof signal.removeEventListener === "function") signal.removeEventListener("abort", onParentAbort);
-        if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
-        if (timedOut) {
-          if (attempt < 2) continue;
-          throw new Error("Y\u00eau c\u1ea7u t\u1edbi Gemini AI qu\u00e1 th\u1eddi gian ch\u1edd (Timeout 90s). Vui l\u00f2ng th\u1eed l\u1ea1i.");
-        }
-        throw fetchErr;
-      }
-      if (timer) clearTimeout(timer);
-      if (signal && typeof signal.removeEventListener === "function") signal.removeEventListener("abort", onParentAbort);
-      if (res.ok) {
-        const data = await res.json();
-        const txt = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
-        if (!txt) throw new Error("Gemini kh\u00f4ng tr\u1ea3 v\u1ec1 JSON.");
-        return JSON.parse(txt);
-      }
-      if ((res.status === 429 || res.status >= 500) && attempt < 3) {
-        await new Promise(function (r) { setTimeout(r, delay); });
-        delay *= 2;
-        continue;
-      }
-      const err = await res.json().catch(function () { return {}; });
-      throw new Error((err && err.error && err.error.message) || ("HTTP " + res.status));
+  const FALLBACK_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-3-flash-preview",
+    "gemini-2.5-pro"
+  ];
+
+  function getCandidateApiKeys(primaryKey) {
+    const rawList = [];
+    if (primaryKey) {
+      String(primaryKey).split(/[\r\n,;]+/).forEach(function (k) {
+        const t = k.trim();
+        if (t) rawList.push(t);
+      });
     }
-    throw new Error("V\u01b0\u1ee3t qu\u00e1 s\u1ed1 l\u1ea7n th\u1eed l\u1ea1i API.");
+    const personal = getPersonalApiKey();
+    if (personal) {
+      String(personal).split(/[\r\n,;]+/).forEach(function (k) {
+        const t = k.trim();
+        if (t && rawList.indexOf(t) === -1) rawList.push(t);
+      });
+    }
+    const assigned = getAssignedApi();
+    if (assigned && assigned.apiKey) {
+      String(assigned.apiKey).split(/[\r\n,;]+/).forEach(function (k) {
+        const t = k.trim();
+        if (t && rawList.indexOf(t) === -1) rawList.push(t);
+      });
+    }
+    return rawList.length > 0 ? rawList : [String(primaryKey || "").trim()].filter(Boolean);
+  }
+
+  function getCandidateModels(preferredModel) {
+    const pref = cState.activeFallbackModel || preferredModel || "gemini-2.5-flash";
+    const list = [pref];
+    if (preferredModel && list.indexOf(preferredModel) === -1) list.push(preferredModel);
+    FALLBACK_MODELS.forEach(function (m) {
+      if (list.indexOf(m) === -1) list.push(m);
+    });
+    return list;
+  }
+
+  function isQuotaOrRateLimitError(status, msg) {
+    if (status === 429) return true;
+    const s = String(msg || "").toLowerCase();
+    return s.indexOf("quota") !== -1 || s.indexOf("rate-limit") !== -1 || s.indexOf("rate limit") !== -1 || s.indexOf("resource_exhausted") !== -1 || s.indexOf("exceeded your current quota") !== -1;
+  }
+
+  function formatFriendlyGeminiError(errMessage) {
+    const raw = String(errMessage || "").trim();
+    if (isQuotaOrRateLimitError(0, raw)) {
+      const retryMatch = raw.match(/retry in\s+([0-9hms.]+)/i);
+      const retryHint = retryMatch ? (" (Th\u1eed l\u1ea1i sau " + retryMatch[1].replace(/\.\d+s$/, "s") + ")") : "";
+      return "API Key hi\u1ec7n t\u1ea1i \u0111\u00e3 h\u1ebft h\u1ea1n m\u1ee9c mi\u1ec5n ph\u00ed (Free Tier Quota) tr\u00ean c\u00e1c model kh\u1ea3 d\u1ee5ng" + retryHint + ". H\u00e3y \u0111\u1ed5i sang Gemini API Key kh\u00e1c trong m\u1ee5c C\u00e0i \u0111\u1eb7t API ho\u1eb7c n\u00e2ng c\u1ea5p h\u1ea1n m\u1ee9c Google AI Studio.";
+    }
+    if (raw.length > 220) return raw.slice(0, 220) + "...";
+    return raw || "Kh\u00f4ng x\u00e1c \u0111\u1ecbnh";
+  }
+
+  async function callGemini(apiKey, model, payload, signal) {
+    const keys = getCandidateApiKeys(apiKey);
+    const models = getCandidateModels(model);
+    const TIMEOUT_MS = 90000;
+    let lastErrorMsg = "";
+
+    for (let ki = 0; ki < keys.length; ki++) {
+      const curKey = keys[ki];
+      for (let mi = 0; mi < models.length; mi++) {
+        const curModel = models[mi];
+        const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(curModel) + ":generateContent?key=" + encodeURIComponent(curKey);
+        let delay = 1200;
+
+        for (let attempt = 0; attempt < 2; attempt++) {
+          if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+          const reqCtrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+          let timedOut = false;
+          const timer = reqCtrl ? setTimeout(function () { timedOut = true; reqCtrl.abort(); }, TIMEOUT_MS) : null;
+          const onParentAbort = function () { if (reqCtrl) reqCtrl.abort(); };
+          if (signal && typeof signal.addEventListener === "function") signal.addEventListener("abort", onParentAbort, { once: true });
+          let res;
+          try {
+            res = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+              signal: reqCtrl ? reqCtrl.signal : signal
+            });
+          } catch (fetchErr) {
+            if (timer) clearTimeout(timer);
+            if (signal && typeof signal.removeEventListener === "function") signal.removeEventListener("abort", onParentAbort);
+            if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+            if (timedOut) {
+              if (attempt < 1) continue;
+              lastErrorMsg = "Y\u00eau c\u1ea7u t\u1edbi Gemini AI qu\u00e1 th\u1eddi gian ch\u1edd (Timeout 90s). Vui l\u00f2ng th\u1eed l\u1ea1i.";
+              break;
+            }
+            throw fetchErr;
+          }
+          if (timer) clearTimeout(timer);
+          if (signal && typeof signal.removeEventListener === "function") signal.removeEventListener("abort", onParentAbort);
+
+          if (res.ok) {
+            const data = await res.json();
+            const txt = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
+            if (!txt) throw new Error("Gemini kh\u00f4ng tr\u1ea3 v\u1ec1 JSON.");
+            const parsed = JSON.parse(txt);
+            if (curModel !== model && cState.activeFallbackModel !== curModel) {
+              cState.activeFallbackModel = curModel;
+              U().showToast("Model " + model + " \u0111\u00e3 h\u1ebft l\u01b0\u1ee3t Free Tier — h\u1ec7 th\u1ed1ng t\u1ef1 \u0111\u1ed9ng chuy\u1ec3n sang " + curModel + " \u0111\u1ec3 ti\u1ebfp t\u1ee5c x\u1eed l\u00fd!", "info");
+            }
+            return parsed;
+          }
+
+          const errBody = await res.json().catch(function () { return {}; });
+          const errMsg = (errBody && errBody.error && errBody.error.message) || ("HTTP " + res.status);
+          lastErrorMsg = errMsg;
+
+          // If this model hit Free Tier quota (429) or is unavailable (404/503), immediately try the next model in the fallback chain!
+          if (isQuotaOrRateLimitError(res.status, errMsg) || res.status === 404 || res.status === 503) {
+            break;
+          }
+
+          if (res.status >= 500 && attempt < 1) {
+            await new Promise(function (r) { setTimeout(r, delay); });
+            delay *= 2;
+            continue;
+          }
+          throw new Error(formatFriendlyGeminiError(errMsg));
+        }
+      }
+    }
+    throw new Error(formatFriendlyGeminiError(lastErrorMsg || "V\u01b0\u1ee3t qu\u00e1 s\u1ed1 l\u1ea7n th\u1eed l\u1ea1i API."));
   }
 
   function ocrPrompt(subject, keepPrefix) {
@@ -657,7 +745,8 @@
             type: { type: "STRING", enum: ["Multiple Choice", "Checkbox"] },
             options: { type: "ARRAY", items: { type: "STRING" } },
             correct: { type: "ARRAY", items: { type: "INTEGER" } },
-            explanation: { type: "STRING" }
+            explanation: { type: "STRING" },
+            confidence: { type: "STRING", enum: ["high", "medium", "low"] }
           },
           required: ["question", "type", "options", "correct"]
         }
@@ -676,13 +765,18 @@
     if (raw && raw._zeroBased && Array.isArray(raw.correct)) correct = raw.correct.map(Number);
     correct = Array.from(new Set(correct)).filter(function (i) { return Number.isInteger(i) && i >= 0 && i < optsRaw.length; }).sort(function (a, b) { return a - b; });
     const type = (String((raw && raw.type) || "").toLowerCase() === "checkbox" || String((raw && raw.type) || "") === "multiple" || correct.length > 1) ? "Checkbox" : "Multiple Choice";
+    const conf = String((raw && raw.confidence) || "high").toLowerCase();
+    const isLowConf = (conf === "low" || conf === "medium") && correct.length > 0;
     return {
       id: "cq_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
       text: text, type: type, options: options, correct: correct,
       time: parseInt(raw && raw.time, 10) > 0 ? parseInt(raw.time, 10) : cState.defaultTime,
       image: String((raw && raw.image) || "").trim(),
       explanation: String((raw && raw.explanation) || "").trim(),
-      verified: false, suspect: false, checkNote: ""
+      verified: false,
+      suspect: isLowConf,
+      checkNote: isLowConf ? ("\u0110\u1ed9 t\u1ef1 tin " + conf + ".") : (correct.length > 0 && raw && raw.confidence ? "AI ki\u1ec3m tra ch\u00e9o kh\u1edbp \u0111\u00e1p \u00e1n (\u0110\u1ed9 t\u1ef1 tin cao)." : ""),
+      _selfChecked: !!(raw && raw.confidence)
     };
   }
 
@@ -709,7 +803,7 @@
     const missingIdx = list.map(function (q, i) { return q.correct.length === 0 ? i : -1; }).filter(function (i) { return i !== -1; });
     if (missingIdx.length === 0) return 0;
     const wantExplain = U().can("aiExplain") || true;
-    const BATCH = 15;
+    const BATCH = 20;
     const schema = {
       type: "OBJECT",
       properties: {
@@ -717,7 +811,12 @@
           type: "ARRAY",
           items: {
             type: "OBJECT",
-            properties: { index: { type: "INTEGER" }, correct: { type: "ARRAY", items: { type: "INTEGER" } }, explanation: { type: "STRING" } },
+            properties: {
+              index: { type: "INTEGER" },
+              correct: { type: "ARRAY", items: { type: "INTEGER" } },
+              explanation: { type: "STRING" },
+              confidence: { type: "STRING", enum: ["high", "medium", "low"] }
+            },
             required: ["index", "correct", "explanation"]
           }
         }
@@ -738,7 +837,7 @@
         return { index: idx, question: q.text, type: q.type, options: q.options.filter(Boolean).map(function (o, k) { return (k + 1) + ". " + o; }) };
       });
       const res = await callGemini(apiKey, model, {
-        systemInstruction: { parts: [{ text: "B\u1ea1n l\u00e0 gi\u1ea3ng vi\u00ean xu\u1ea5t s\u1eafc. Gi\u1ea3i ch\u00ednh x\u00e1c t\u1eebng c\u00e2u h\u1ecfi, tr\u1ea3 v\u1ec1 ch\u1ec9 s\u1ed1 1-based trong correct v\u00e0 gi\u1ea3i th\u00edch ng\u1eafn g\u1ecdn ti\u1ebfng Vi\u1ec7t (d\u00f9ng LaTeX $...$ cho To\u00e1n/L\u00fd/H\u00f3a)." }] },
+        systemInstruction: { parts: [{ text: "B\u1ea1n l\u00e0 gi\u1ea3ng vi\u00ean xu\u1ea5t s\u1eafc. Gi\u1ea3i ch\u00ednh x\u00e1c t\u1eebng c\u00e2u h\u1ecfi, t\u1ef1 ki\u1ec3m tra ch\u00e9o (self-check) m\u1ee9c \u0111\u1ed9 t\u1ef1 tin (high/medium/low), tr\u1ea3 v\u1ec1 ch\u1ec9 s\u1ed1 1-based trong correct v\u00e0 gi\u1ea3i th\u00edch ng\u1eafn g\u1ecdn ti\u1ebfng Vi\u1ec7t (d\u00f9ng LaTeX $...$ cho To\u00e1n/L\u00fd/H\u00f3a)." }] },
         contents: [{ role: "user", parts: [{ text: JSON.stringify(items) }] }],
         generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: schema }
       }, signal);
@@ -751,6 +850,10 @@
           q.correct = corr;
           if (corr.length > 1) q.type = "Checkbox";
           if (wantExplain && s.explanation && !q.explanation) q.explanation = String(s.explanation).trim();
+          const conf = String(s.confidence || "high").toLowerCase();
+          q.suspect = conf === "low" || conf === "medium";
+          q.checkNote = q.suspect ? ("\u0110\u1ed9 t\u1ef1 tin " + conf + ".") : "AI ki\u1ec3m tra ch\u00e9o kh\u1edbp \u0111\u00e1p \u00e1n (\u0110\u1ed9 t\u1ef1 tin cao).";
+          q._selfChecked = true;
           solved++;
         }
       });
@@ -762,7 +865,7 @@
   /* Reusable AI Double-Check over an arbitrary question array */
   async function doubleCheckQuestionsArray(list, apiKey, model, signal, pctStart, pctEnd) {
     if (!list || list.length === 0) return 0;
-    const BATCH = 12;
+    const BATCH = 25;
     const schema = {
       type: "OBJECT",
       properties: {
@@ -819,6 +922,7 @@
           q.suspect = false;
           q.checkNote = "AI ki\u1ec3m tra ch\u00e9o kh\u1edbp \u0111\u00e1p \u00e1n (\u0110\u1ed9 t\u1ef1 tin cao).";
         }
+        q._selfChecked = true;
       });
       cState.progressPct = Math.round(p0 + ((Math.min(st + BATCH, list.length) / list.length) * (p1 - p0)));
     }
@@ -838,7 +942,7 @@
       renderConverter();
       const res = await callGemini(apiKey, model, {
         systemInstruction: { parts: [{ text: ocrPrompt(cState.subject, cState.keepPrefix) }] },
-        contents: [{ role: "user", parts: [{ text: "\u0110\u1ecdc \u0111o\u1ea1n \u0111\u1ec1 thi sau, chu\u1ea9n h\u00f3a to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi tr\u1eafc nghi\u1ec7m v\u00e0 gi\u1ea3i ch\u00ednh x\u00e1c m\u1ecdi c\u00e2u h\u1ecfi (k\u00e8m gi\u1ea3i th\u00edch ng\u1eafn g\u1ecdn):\n\n" + chunks[i] }] }],
+        contents: [{ role: "user", parts: [{ text: "\u0110\u1ecdc \u0111o\u1ea1n \u0111\u1ec1 thi sau, chu\u1ea9n h\u00f3a to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi tr\u1eafc nghi\u1ec7m v\u00e0 gi\u1ea3i ch\u00ednh x\u00e1c m\u1ecdi c\u00e2u h\u1ecfi (k\u00e8m gi\u1ea3i th\u00edch ng\u1eafn g\u1ecdn v\u00e0 m\u1ee9c \u0111\u1ed9 t\u1ef1 tin confidence):\n\n" + chunks[i] }] }],
         generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: QUESTION_LIST_SCHEMA }
       }, signal);
       const qs = Array.isArray(res && res.questions) ? res.questions.map(toConvItem).filter(Boolean) : [];
@@ -864,10 +968,17 @@
     cState.abortCtrl = new AbortController();
     const signal = cState.abortCtrl.signal;
     const model = getApiModel();
+    const baseQuestions = cState.appendMode ? cState.questions.slice() : [];
     const collected = [];
     const summaries = [];
     let aiSolvedList = [];
     let stopped = false;
+
+    const commitProgressive = function () {
+      if (collected.length > 0) {
+        cState.questions = baseQuestions.concat(collected);
+      }
+    };
 
     try {
       setPipelineSteps("active", "pending", "pending");
@@ -882,6 +993,7 @@
           const exQs = await parseExcelFileAsync(excelItems[ei].file);
           if (exQs.length > 0) {
             collected.push.apply(collected, exQs);
+            commitProgressive();
             summaries.push("Excel (" + excelItems[ei].name + "): " + exQs.length + " c\u00e2u");
           } else {
             U().showToast("T\u1ec7p Excel \"" + excelItems[ei].name + "\" kh\u00f4ng c\u00f3 c\u00e2u h\u1ecfi h\u1ee3p l\u1ec7.", "warning");
@@ -891,7 +1003,7 @@
         }
       }
 
-      // ---------- CASE A: IMAGES (.png/.jpg/.jpeg/.webp/...) -> AI VISION / OCR ----------
+      // ---------- CASE A: IMAGES (.png/.jpg/.jpeg/.webp/...) -> AI VISION / OCR (2-Image Smart Batching) ----------
       if (!stopped && imageItems.length > 0) {
         const apiKey = requireApiKey();
         if (!apiKey) {
@@ -900,29 +1012,65 @@
         }
         setPipelineSteps("active", "pending", "pending", "AI Vision & ki\u1ec3m tra ch\u00e9o...");
         const imgExtracted = [];
-        for (let i = 0; i < imageItems.length; i++) {
+        const IMG_BATCH = 2;
+        for (let i = 0; i < imageItems.length; i += IMG_BATCH) {
           if (signal.aborted) { stopped = true; break; }
-          const im = imageItems[i];
-          cState.progressLabel = "AI Vision \u0111ang \u0111\u1ecdc \u1ea3nh " + (i + 1) + "/" + imageItems.length + ": " + im.name;
-          cState.progressPct = Math.round(10 + (i / imageItems.length) * 45);
+          const batchSlice = imageItems.slice(i, i + IMG_BATCH);
+          const batchNames = batchSlice.map(function (x) { return x.name; }).join(", ");
+          cState.progressLabel = "AI Vision \u0111ang \u0111\u1ecdc \u1ea3nh " + (i + 1) + (batchSlice.length > 1 ? ("–" + (i + batchSlice.length)) : "") + "/" + imageItems.length + ": " + batchNames;
+          cState.progressPct = Math.round(10 + (i / imageItems.length) * 50);
           renderConverter();
           try {
-            const b64 = await prepareImageBase64(im.file);
+            const b64List = [];
+            for (let bi = 0; bi < batchSlice.length; bi++) {
+              b64List.push(await prepareImageBase64(batchSlice[bi].file));
+            }
+            const userParts = [
+              { text: "Tr\u00edch xu\u1ea5t to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi tr\u1eafc nghi\u1ec7m t\u1eeb " + (b64List.length > 1 ? (b64List.length + " \u1ea3nh \u0111\u1ec1 thi n\u00e0y theo \u0111\u00fang th\u1ee9 t\u1ef1") : "\u1ea3nh n\u00e0y") + ", s\u1eeda l\u1ed7i \u0111\u1ecbnh d\u1ea1ng, gi\u1ea3i nh\u1eefng c\u00e2u ch\u01b0a c\u00f3 \u0111\u00e1p \u00e1n v\u00e0 t\u1ef1 ki\u1ec3m tra \u0111\u1ed9 t\u1ef1 tin (confidence)." }
+            ];
+            b64List.forEach(function (b64) {
+              userParts.push({ inlineData: { mimeType: b64.mimeType, data: b64.data } });
+            });
             const res = await callGemini(apiKey, model, {
               systemInstruction: { parts: [{ text: ocrPrompt(cState.subject, cState.keepPrefix) }] },
-              contents: [{ role: "user", parts: [{ text: "Tr\u00edch xu\u1ea5t to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi tr\u1eafc nghi\u1ec7m t\u1eeb \u1ea3nh n\u00e0y, s\u1eeda l\u1ed7i \u0111\u1ecbnh d\u1ea1ng v\u00e0 gi\u1ea3i nh\u1eefng c\u00e2u ch\u01b0a c\u00f3 \u0111\u00e1p \u00e1n." }, { inlineData: { mimeType: b64.mimeType, data: b64.data } }] }],
+              contents: [{ role: "user", parts: userParts }],
               generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: QUESTION_LIST_SCHEMA }
             }, signal);
             const qs = Array.isArray(res && res.questions) ? res.questions.map(toConvItem).filter(Boolean) : [];
             imgExtracted.push.apply(imgExtracted, qs);
+            collected.push.apply(collected, qs);
+            aiSolvedList.push.apply(aiSolvedList, qs);
+            commitProgressive();
           } catch (imErr) {
             if (imErr && imErr.name === "AbortError") throw imErr;
-            U().showToast("L\u1ed7i \u0111\u1ecdc \u1ea3nh \"" + im.name + "\": " + (imErr.message || "T\u1ec7p \u1ea3nh h\u1ecfng"), "error");
+            // If a 2-image batch failed, try each image in the slice individually before reporting error
+            if (batchSlice.length > 1) {
+              for (let si = 0; si < batchSlice.length; si++) {
+                if (signal.aborted) { stopped = true; break; }
+                const singleIm = batchSlice[si];
+                try {
+                  const b64Single = await prepareImageBase64(singleIm.file);
+                  const resSingle = await callGemini(apiKey, model, {
+                    systemInstruction: { parts: [{ text: ocrPrompt(cState.subject, cState.keepPrefix) }] },
+                    contents: [{ role: "user", parts: [{ text: "Tr\u00edch xu\u1ea5t to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi tr\u1eafc nghi\u1ec7m t\u1eeb \u1ea3nh n\u00e0y, s\u1eeda l\u1ed7i \u0111\u1ecbnh d\u1ea1ng v\u00e0 gi\u1ea3i nh\u1eefng c\u00e2u ch\u01b0a c\u00f3 \u0111\u00e1p \u00e1n." }, { inlineData: { mimeType: b64Single.mimeType, data: b64Single.data } }] }],
+                    generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: QUESTION_LIST_SCHEMA }
+                  }, signal);
+                  const qsSingle = Array.isArray(resSingle && resSingle.questions) ? resSingle.questions.map(toConvItem).filter(Boolean) : [];
+                  imgExtracted.push.apply(imgExtracted, qsSingle);
+                  collected.push.apply(collected, qsSingle);
+                  aiSolvedList.push.apply(aiSolvedList, qsSingle);
+                  commitProgressive();
+                } catch (singleErr) {
+                  if (singleErr && singleErr.name === "AbortError") throw singleErr;
+                  U().showToast("L\u1ed7i \u0111\u1ecdc \u1ea3nh \"" + singleIm.name + "\": " + formatFriendlyGeminiError(singleErr.message), "error");
+                }
+              }
+            } else {
+              U().showToast("L\u1ed7i \u0111\u1ecdc \u1ea3nh \"" + batchSlice[0].name + "\": " + formatFriendlyGeminiError(imErr.message), "error");
+            }
           }
         }
         if (imgExtracted.length > 0) {
-          collected.push.apply(collected, imgExtracted);
-          aiSolvedList.push.apply(aiSolvedList, imgExtracted);
           summaries.push("\u1ea2nh AI Vision: " + imgExtracted.length + " c\u00e2u");
         }
       }
@@ -991,6 +1139,7 @@
             if (qs.length > 0) {
               collected.push.apply(collected, qs);
               aiSolvedList.push.apply(aiSolvedList, qs);
+              commitProgressive();
               summaries.push(src.name + " (PDF scan → AI): " + qs.length + " c\u00e2u");
             }
             continue;
@@ -1010,17 +1159,25 @@
           if (!isPartiallyBroken && parsed.length > 0 && missingCount === 0) {
             // STEP 2A: Valid Answer Keys Present -> Direct conversion, ZERO redundant AI calls!
             collected.push.apply(collected, parsed);
+            commitProgressive();
             summaries.push(src.name + ": " + parsed.length + " c\u00e2u (\u0111\u1ee7 \u0111\u00e1p \u00e1n – chuy\u1ec3n \u0111\u1ed5i tr\u1ef1c ti\u1ebfp)");
           } else if (!isPartiallyBroken && parsed.length > 0 && missingCount > 0) {
-            // STEP 2B-1: Structured questions parsed, but missing some/all answers -> AI Solver + Double-Check
+            // STEP 2B-1: Structured questions parsed, but missing some/all answers -> AI Solver + Self-Check
             collected.push.apply(collected, parsed);
+            commitProgressive();
             const missingQs = parsed.filter(function (q) { return q.correct.length === 0; });
             const apiKey = getApiKey();
             if (apiKey) {
               setPipelineSteps("done", "done", "active", "AI \u0111ang gi\u1ea3i " + missingCount + " c\u00e2u thi\u1ebfu \u0111\u00e1p \u00e1n & ki\u1ec3m tra ch\u00e9o...");
-              await solveQuestionsArray(missingQs, apiKey, model, signal, 50, 78);
-              aiSolvedList.push.apply(aiSolvedList, missingQs);
-              summaries.push(src.name + ": " + parsed.length + " c\u00e2u (AI gi\u1ea3i " + missingCount + " c\u00e2u)");
+              try {
+                await solveQuestionsArray(missingQs, apiKey, model, signal, 50, 82);
+                aiSolvedList.push.apply(aiSolvedList, missingQs);
+                commitProgressive();
+                summaries.push(src.name + ": " + parsed.length + " c\u00e2u (AI gi\u1ea3i " + missingCount + " c\u00e2u)");
+              } catch (solveErr) {
+                if (solveErr && solveErr.name === "AbortError") throw solveErr;
+                U().showToast("L\u1ed7i khi gi\u1ea3i \u0111\u00e1p \u00e1n: " + formatFriendlyGeminiError(solveErr.message), "warning");
+              }
             } else {
               summaries.push(src.name + ": " + parsed.length + " c\u00e2u (thi\u1ebfu " + missingCount + " \u0110/A – c\u1ea7n API Key \u0111\u1ec3 AI t\u1ef1 gi\u1ea3i)");
               U().showToast("\u0110\u00e3 tr\u00edch xu\u1ea5t " + parsed.length + " c\u00e2u t\u1eeb \"" + src.name + "\" nh\u01b0ng c\u00f2n " + missingCount + " c\u00e2u thi\u1ebfu \u0111\u00e1p \u00e1n. H\u00e3y c\u00e0i Gemini API Key \u0111\u1ec3 AI t\u1ef1 gi\u1ea3i & ki\u1ec3m tra ch\u00e9o.", "warning", {
@@ -1034,6 +1191,7 @@
             if (!apiKey) {
               if (parsed.length > 0) {
                 collected.push.apply(collected, parsed);
+                commitProgressive();
                 summaries.push(src.name + ": " + parsed.length + " c\u00e2u (\u0111\u1ecbnh d\u1ea1ng l\u1ed9n x\u1ed9n – c\u1ea7n API Key \u0111\u1ec3 AI chu\u1ea9n h\u00f3a \u0111\u1ee7)");
               } else {
                 U().showToast("T\u1ec7p \"" + src.name + "\" ch\u01b0a \u0111\u00fang \u0111\u1ecbnh d\u1ea1ng tr\u1eafc nghi\u1ec7m chu\u1ea9n n\u00ean c\u1ea7n Gemini API Key \u0111\u1ec3 AI ph\u00e2n t\u00edch & gi\u1ea3i.", "warning");
@@ -1041,38 +1199,54 @@
               continue;
             }
             setPipelineSteps("done", "done", "active", "\u0110\u1ecbnh d\u1ea1ng t\u1ef1 do → AI \u0111ang \u0111\u1ecdc, gi\u1ea3i & ki\u1ec3m tra ch\u00e9o...");
-            const aiQs = await extractAndSolveTextWithAI(cleanText, apiKey, model, signal, 50, 78);
+            const aiQs = await extractAndSolveTextWithAI(cleanText, apiKey, model, signal, 50, 82);
             if (aiQs.length > 0) {
               collected.push.apply(collected, aiQs);
               aiSolvedList.push.apply(aiSolvedList, aiQs);
+              commitProgressive();
               summaries.push(src.name + " (AI c\u1ea5u tr\u00fac & gi\u1ea3i): " + aiQs.length + " c\u00e2u");
             }
           }
         }
       }
 
-      // ---------- STEP 3: ENSURE MISSING ANSWERS SOLVED + AI DOUBLE-CHECK ----------
+      // ---------- STEP 3: ENSURE MISSING ANSWERS SOLVED + SMART VERIFICATION ----------
       if (!stopped && collected.length > 0) {
+        commitProgressive();
         const apiKey = getApiKey();
         const stillMissing = collected.filter(function (q) { return q.correct.length === 0; });
         if (stillMissing.length > 0 && cState.autoSolve && apiKey) {
           setPipelineSteps("done", "done", "active", "AI \u0111ang gi\u1ea3i \u0111\u00e1p \u00e1n c\u00f2n thi\u1ebfu...");
-          await solveQuestionsArray(stillMissing, apiKey, model, signal, 75, 86);
-          stillMissing.forEach(function (q) { if (aiSolvedList.indexOf(q) === -1) aiSolvedList.push(q); });
+          try {
+            await solveQuestionsArray(stillMissing, apiKey, model, signal, 78, 92);
+            stillMissing.forEach(function (q) { if (aiSolvedList.indexOf(q) === -1) aiSolvedList.push(q); });
+            commitProgressive();
+          } catch (stErr) {
+            if (stErr && stErr.name === "AbortError") throw stErr;
+            U().showToast("L\u1ed7i khi gi\u1ea3i \u0111\u00e1p \u00e1n: " + formatFriendlyGeminiError(stErr.message), "warning");
+          }
         }
 
-        if (aiSolvedList.length > 0 && apiKey && !signal.aborted) {
+        // Only run a 2nd-pass Double-Check on questions that were NOT already self-checked in single-pass
+        const needsSecondPass = aiSolvedList.filter(function (q) { return !q._selfChecked && q.correct.length > 0; });
+        if (needsSecondPass.length > 0 && apiKey && !signal.aborted) {
           setPipelineSteps("done", "done", "active", "AI \u0111ang ki\u1ec3m tra ch\u00e9o \u0111\u1ed9 ch\u00ednh x\u00e1c \u0111\u00e1p \u00e1n...");
-          const flagged = await doubleCheckQuestionsArray(aiSolvedList, apiKey, model, signal, 86, 99);
-          setPipelineSteps("done", "done", "done", flagged > 0 ? ("AI \u0111\u00e3 gi\u1ea3i & ki\u1ec3m tra ch\u00e9o (" + flagged + " c\u00e2u c\u1ea7n xem k\u1ef9)") : "AI \u0111\u00e3 gi\u1ea3i & ki\u1ec3m tra ch\u00e9o 100% kh\u1edbp!");
-        } else if (aiSolvedList.length === 0) {
-          setPipelineSteps("done", "done", "skip", "\u0110\u00e3 \u0111\u1ee7 \u0111\u00e1p \u00e1n h\u1ee3p l\u1ec7 – b\u1ecf qua b\u01b0\u1edbc AI gi\u1ea3i");
-        } else {
-          setPipelineSteps("done", "done", "done");
+          try {
+            await doubleCheckQuestionsArray(needsSecondPass, apiKey, model, signal, 90, 99);
+          } catch (dcErr) {
+            if (dcErr && dcErr.name === "AbortError") throw dcErr;
+            // Non-fatal: keep all extracted & solved questions intact!
+          }
         }
 
-        if (cState.appendMode) cState.questions = cState.questions.concat(collected);
-        else cState.questions = collected;
+        const flagged = aiSolvedList.filter(function (q) { return q.suspect; }).length;
+        if (aiSolvedList.length > 0) {
+          setPipelineSteps("done", "done", "done", flagged > 0 ? ("AI \u0111\u00e3 gi\u1ea3i & ki\u1ec3m tra ch\u00e9o (" + flagged + " c\u00e2u c\u1ea7n xem k\u1ef9)") : "AI \u0111\u00e3 gi\u1ea3i & ki\u1ec3m tra ch\u00e9o 100% kh\u1edbp!");
+        } else {
+          setPipelineSteps("done", "done", "skip", "\u0110\u00e3 \u0111\u1ee7 \u0111\u00e1p \u00e1n h\u1ee3p l\u1ec7 – b\u1ecf qua b\u01b0\u1edbc AI gi\u1ea3i");
+        }
+
+        commitProgressive();
         cState.page = 1;
         cState.progressPct = 100;
         cState.lastSummary = summaries.join(" • ");
@@ -1086,8 +1260,9 @@
         U().showToast("Kh\u00f4ng t\u00ecm th\u1ea5y c\u00e2u h\u1ecfi h\u1ee3p l\u1ec7 n\u00e0o trong t\u1ec7p \u0111\u00e3 t\u1ea3i l\u00ean.", "warning");
       }
     } catch (e) {
+      commitProgressive();
       if (e && e.name === "AbortError") U().showToast("\u0110\u00e3 d\u1eebng qu\u00e1 tr\u00ecnh x\u1eed l\u00fd. C\u00e1c c\u00e2u \u0111\u00e3 tr\u00edch xu\u1ea5t \u0111\u01b0\u1ee3c gi\u1eef l\u1ea1i.", "warning");
-      else U().showToast("L\u1ed7i x\u1eed l\u00fd t\u1ec7p: " + ((e && e.message) || "Kh\u00f4ng x\u00e1c \u0111\u1ecbnh"), "error");
+      else U().showToast("L\u1ed7i x\u1eed l\u00fd t\u1ec7p: " + formatFriendlyGeminiError(e && e.message), "error");
     } finally {
       cState.busy = false;
       cState.progressLabel = "";
