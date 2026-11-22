@@ -1,10 +1,11 @@
 node_modules/
 dist/
 .vercel/
-.env
-.env.local
+.env*
+!.env.example
 server-db.json
 data/db.json
+data/system-keys-store.json
 *.log
 .DS_Store
 Thumbs.db

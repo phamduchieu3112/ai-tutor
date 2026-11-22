@@ -403,7 +403,22 @@ function mergeRemoteBillingSnap(snap) {
   if (snap.userApis && typeof snap.userApis === "object") {
     const revApis = (snap.revokedUserApis && typeof snap.revokedUserApis === "object") ? snap.revokedUserApis : {};
     const localApis = loadObj(KEYS.userApis);
-    const mergedApis = Object.assign({}, localApis);
+    const mergedApis = {};
+    // Scrub any legacy raw keys from browser localStorage (Zero Client Exposure)
+    Object.keys(localApis).forEach(function (em) {
+      const k = String(em || "").toLowerCase();
+      const it = localApis[em];
+      if (it && typeof it === "object" && it.maskedKey) {
+        mergedApis[k] = {
+          email: k,
+          maskedKey: String(it.maskedKey),
+          model: String(it.model || "gemini-2.5-flash"),
+          assignedBy: it.assignedBy || ADMIN_EMAIL,
+          updatedAt: it.updatedAt || "",
+          ts: Number(it.ts) || 0
+        };
+      }
+    });
     Object.keys(revApis).forEach(function (em) {
       const k = String(em || "").toLowerCase();
       if (mergedApis[k] && (Number(mergedApis[k].ts) || 0) <= Number(revApis[em])) {
@@ -414,9 +429,17 @@ function mergeRemoteBillingSnap(snap) {
     Object.keys(snap.userApis).forEach(function (em) {
       const k = String(em || "").toLowerCase();
       const item = snap.userApis[em];
-      if (item && typeof item === "object" && item.apiKey) {
-        if (!mergedApis[k] || JSON.stringify(mergedApis[k]) !== JSON.stringify(item)) {
-          mergedApis[k] = item;
+      if (item && typeof item === "object" && (item.maskedKey || item.apiKey)) {
+        const safeItem = {
+          email: k,
+          maskedKey: String(item.maskedKey || maskApiKeyDisplay(item.apiKey || "")),
+          model: String(item.model || "gemini-2.5-flash"),
+          assignedBy: item.assignedBy || ADMIN_EMAIL,
+          updatedAt: item.updatedAt || "",
+          ts: Number(item.ts) || 0
+        };
+        if (!mergedApis[k] || JSON.stringify(mergedApis[k]) !== JSON.stringify(safeItem)) {
+          mergedApis[k] = safeItem;
           changed = true;
         }
       }
@@ -499,8 +522,7 @@ async function syncWithBackend() {
       subscriptions: loadObj(KEYS.subs),
       payment_requests: loadArr(KEYS.payReqs),
       vouchers: loadArr(KEYS.vouchers),
-      paymentConfig: isAdmin() ? loadObj(KEYS.payCfg) : undefined,
-      userApis: isAdmin() ? loadObj(KEYS.userApis) : undefined
+      paymentConfig: isAdmin() ? loadObj(KEYS.payCfg) : undefined
     };
     const snap = await apiCall("/api/billing/sync", "POST", payload) || await apiCall("/api/billing/state", "GET");
     return mergeRemoteBillingSnap(snap);
@@ -515,7 +537,9 @@ function getAssignedApiForEmail(email) {
   if (!em) return null;
   const all = loadObj(KEYS.userApis);
   const item = all[em];
-  return (item && typeof item === "object" && item.apiKey) ? item : null;
+  if (!item || typeof item !== "object") return null;
+  const masked = item.maskedKey || (item.apiKey ? maskApiKeyDisplay(item.apiKey) : "");
+  return masked ? { email: em, maskedKey: masked, model: item.model || "gemini-2.5-flash", updatedAt: item.updatedAt || "", ts: Number(item.ts) || 0 } : null;
 }
 function getActiveUserAssignedApi() {
   return (state.user && state.user.email) ? getAssignedApiForEmail(state.user.email) : null;
@@ -815,10 +839,12 @@ const ROUTES = {
   "/profile": { tab: "profile", title: "H\u1ed3 s\u01a1 c\u00e1 nh\u00e2n | AI Tutor" },
   "/pricing": { tab: "pricing", title: "G\u00f3i n\u00e2ng c\u1ea5p | AI Tutor" },
   "/api-settings": { tab: "api", title: "C\u00e0i \u0111\u1eb7t Gemini API | AI Tutor" },
+  "/api-guide": { tab: "guide", title: "H\u01b0\u1edbng d\u1eabn l\u1ea5y API Key | AI Tutor" },
   "/backup": { tab: "backup", title: "Sao l\u01b0u & Kh\u00f4i ph\u1ee5c | AI Tutor" },
   "/admin": { tab: "admin", sub: "requests", title: "Qu\u1ea3n tr\u1ecb duy\u1ec7t \u0111\u01a1n | AI Tutor", adminOnly: true },
   "/admin/requests": { tab: "admin", sub: "requests", title: "Qu\u1ea3n tr\u1ecb – Duy\u1ec7t thanh to\u00e1n | AI Tutor", adminOnly: true },
   "/admin/members": { tab: "admin", sub: "members", title: "Qu\u1ea3n tr\u1ecb – Th\u00e0nh vi\u00ean | AI Tutor", adminOnly: true },
+  "/admin/system-keys": { tab: "admin", sub: "syskeys", title: "Qu\u1ea3n tr\u1ecb – API Key H\u1ec7 th\u1ed1ng | AI Tutor", adminOnly: true },
   "/admin/vietqr": { tab: "admin", sub: "cfg", title: "Qu\u1ea3n tr\u1ecb – C\u1ea5u h\u00ecnh VietQR | AI Tutor", adminOnly: true },
   "/admin/vouchers": { tab: "admin", sub: "voucher", title: "Qu\u1ea3n tr\u1ecb – M\u00e3 gi\u1ea3m gi\u00e1 | AI Tutor", adminOnly: true },
   "/admin/backup": { tab: "admin", sub: "backup", title: "Qu\u1ea3n tr\u1ecb – Sao l\u01b0u h\u1ec7 th\u1ed1ng | AI Tutor", adminOnly: true },
@@ -834,12 +860,14 @@ const TAB_TO_PATH = {
   profile: "/profile",
   pricing: "/pricing",
   api: "/api-settings",
+  guide: "/api-guide",
   backup: "/backup",
   admin: "/admin"
 };
 const ADMIN_SUB_TO_PATH = {
   requests: "/admin/requests",
   members: "/admin/members",
+  syskeys: "/admin/system-keys",
   cfg: "/admin/vietqr",
   voucher: "/admin/vouchers",
   backup: "/admin/backup"
@@ -926,6 +954,7 @@ function navigateTo(rawPath, options) {
     profile: "viewProfile",
     pricing: "viewPricing",
     api: "viewApi",
+    guide: "viewApiGuide",
     backup: "viewBackup",
     admin: "viewAdmin"
   };
@@ -973,6 +1002,9 @@ function renderTab() {
     case "api":
       if (window.UETConverter && typeof window.UETConverter.renderApiPage === "function") window.UETConverter.renderApiPage();
       break;
+    case "guide":
+      if (window.UETConverter && typeof window.UETConverter.renderApiGuide === "function") window.UETConverter.renderApiGuide();
+      break;
     case "backup":
       if (window.UETCloud && typeof window.UETCloud.renderBackupPage === "function") window.UETCloud.renderBackupPage();
       break;
@@ -1018,10 +1050,12 @@ function updateChrome() {
   });
   const dot = $("navApiDot");
   if (dot) {
-    const assigned = getActiveUserAssignedApi();
-    const hasKey = !!((localStorage.getItem(KEYS.apiKey) || "").trim() || (assigned && assigned.apiKey));
-    dot.classList.toggle("ok", hasKey);
-    dot.title = hasKey ? "\u0110\u00e3 c\u1ea5u h\u00ecnh Gemini API Key" : "Ch\u01b0a c\u1ea5u h\u00ecnh Gemini API Key";
+    const hasPersonal = !!(window.UETConverter && typeof window.UETConverter.hasPersonalKeys === "function" && window.UETConverter.hasPersonalKeys());
+    const hasSysProxy = !!(state.user && state.user.credential);
+    dot.classList.toggle("ok", hasPersonal || hasSysProxy);
+    dot.title = hasPersonal
+      ? "\u0110ang d\u00f9ng API Key c\u00e1 nh\u00e2n"
+      : (hasSysProxy ? "\u0110ang d\u00f9ng System Key Pool mi\u1ec5n ph\u00ed m\u1eb7c \u0111\u1ecbnh" : "Ch\u01b0a c\u1ea5u h\u00ecnh API Key");
   }
   const curLang = getLang();
   const langBtns = document.querySelectorAll("[data-lang]");
@@ -2427,7 +2461,7 @@ function getAllRegisteredUsers() {
     const u = map[em];
     const sub = getActiveSub(em);
     const tier = isAdminUser(em) ? (sub ? sub.tier : "diamond") : (sub ? sub.tier : "none");
-    const apiEntry = apis[em] && apis[em].apiKey ? apis[em] : null;
+    const apiEntry = apis[em] && (apis[em].maskedKey || apis[em].apiKey) ? apis[em] : null;
     return {
       email: em,
       name: u.name || em.split("@")[0],
@@ -2443,6 +2477,68 @@ function getAllRegisteredUsers() {
   });
 }
 
+const sysKeysState = {
+  loaded: false,
+  loading: false,
+  busy: false,
+  error: "",
+  encryptionConfigured: false,
+  driver: null,
+  keys: [],
+  envKeys: [],
+  auditLogs: [],
+  preview: null,
+  rawDraft: ""
+};
+
+async function adminSystemKeysFetch(subPath, method, body) {
+  const token = (state.user && state.user.credential) ? String(state.user.credential).trim() : "";
+  if (!token) {
+    return { _err: "Thi\u1ebfu ph\u00ean \u0111\u0103ng nh\u1eadp Google (ID Token). Vui l\u00f2ng \u0111\u0103ng xu\u1ea5t v\u00e0 \u0111\u0103ng nh\u1eadp l\u1ea1i.", _status: 401 };
+  }
+  try {
+    const res = await fetch("/api/admin/system-keys" + (subPath || ""), {
+      method: method || "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined
+    });
+    const ct = String((res.headers && res.headers.get && res.headers.get("content-type")) || "").toLowerCase();
+    if (ct.indexOf("application/json") === -1) {
+      return { _err: "M\u00e1y ch\u1ee7 API kh\u00f4ng kh\u1ea3 d\u1ee5ng (HTTP " + res.status + "). H\u00e3y ch\u1ea1y qua Vercel / npm start.", _status: res.status };
+    }
+    const data = await res.json().catch(function () { return null; });
+    if (!res.ok) {
+      const msg = (data && data.error && (data.error.message || data.error)) || ("HTTP " + res.status);
+      return { _err: msg, _status: res.status, data: data };
+    }
+    return { ok: true, data: data };
+  } catch (e) {
+    return { _err: (e && e.message) || "L\u1ed7i k\u1ebft n\u1ed1i m\u00e1y ch\u1ee7.", _status: 0 };
+  }
+}
+
+async function loadAdminSysKeys(force) {
+  if (sysKeysState.loading && !force) return;
+  sysKeysState.loading = true;
+  sysKeysState.error = "";
+  const resp = await adminSystemKeysFetch("", "GET");
+  sysKeysState.loading = false;
+  sysKeysState.loaded = true;
+  if (resp && resp._err) {
+    sysKeysState.error = resp._err;
+  } else if (resp && resp.data) {
+    sysKeysState.encryptionConfigured = !!resp.data.encryptionConfigured;
+    sysKeysState.driver = resp.data.driver || null;
+    sysKeysState.keys = Array.isArray(resp.data.keys) ? resp.data.keys : [];
+    sysKeysState.envKeys = Array.isArray(resp.data.envKeys) ? resp.data.envKeys : [];
+    sysKeysState.auditLogs = Array.isArray(resp.data.auditLogs) ? resp.data.auditLogs : [];
+  }
+  if (state.tab === "admin" && state.adminTab === "syskeys") renderAdmin();
+}
+
 function renderAdmin() {
   if (!isAdmin()) { setHTML("adminBody", ""); return; }
   const reqs = loadArr(KEYS.payReqs);
@@ -2454,6 +2550,7 @@ function renderAdmin() {
   const tabs = [
     ["requests", "Duy\u1ec7t thanh to\u00e1n (" + pendingCnt + ")"],
     ["members", "Th\u00e0nh vi\u00ean & C\u1ea5p g\u00f3i"],
+    ["syskeys", "🔑 API Key H\u1ec7 th\u1ed1ng"],
     ["cfg", "C\u1ea5u h\u00ecnh VietQR"],
     ["voucher", "M\u00e3 gi\u1ea3m gi\u00e1"],
     ["backup", "Sao l\u01b0u h\u1ec7 th\u1ed1ng"]
@@ -2471,6 +2568,12 @@ function renderAdmin() {
 
   if (state.adminTab === "requests") h += adminRequestsHTML();
   else if (state.adminTab === "members") h += adminMembersHTML();
+  else if (state.adminTab === "syskeys") {
+    if (!sysKeysState.loaded && !sysKeysState.loading) {
+      setTimeout(function () { loadAdminSysKeys(false); }, 0);
+    }
+    h += adminSysKeysHTML();
+  }
   else if (state.adminTab === "cfg") h += adminCfgHTML();
   else if (state.adminTab === "voucher") h += adminVoucherHTML();
   else h += adminBackupHTML();
@@ -2617,7 +2720,7 @@ function adminMembersHTML() {
   const members = Object.keys(subs).filter(function (e) { return getActiveSub(e); });
   const rows = members.length ? members.map(function (e) {
     const s = subs[e];
-    const hasApi = !!(apis[e] && apis[e].apiKey);
+    const hasApi = !!(apis[e] && (apis[e].maskedKey || apis[e].apiKey));
     return "<tr><td>" + esc(e) + (hasApi ? ' <span class="badge badge-ok" title="\u0110\u00e3 g\u00e1n Gemini API">🔑 \u0110\u00e3 g\u00e1n API</span>' : "") + "</td><td><strong>" + esc(TIERS[s.tier] ? TIERS[s.tier].name : s.tier) + "</strong></td><td>" +
       (s.tier === "unranked" ? "Mi\u1ec5n ph\u00ed" : esc(fmtDate(s.expires))) +
       '</td><td><div class="deck-actions">' +
@@ -2629,19 +2732,16 @@ function adminMembersHTML() {
     return '<option value="' + c + '">' + esc(TIERS[c].name) + "</option>";
   }).join("");
 
-  const apiEmails = Object.keys(apis).filter(function (e) { return apis[e] && apis[e].apiKey; });
+  const apiEmails = Object.keys(apis).filter(function (e) { return apis[e] && (apis[e].maskedKey || apis[e].apiKey); });
   const apiRows = apiEmails.length ? apiEmails.map(function (e) {
     const item = apis[e];
-    const poolCount = item.apiPool
-      ? item.apiPool.split(/[\r\n,;]+/).map(function (x) { return x.trim(); }).filter(Boolean).length
-      : 0;
-    const poolBadge = poolCount > 0 ? (' <span class="badge badge-ok">+' + poolCount + ' Key d\u1ef1 ph\u00f2ng</span>') : "";
+    const maskedDisp = item.maskedKey || maskApiKeyDisplay(item.apiKey || "");
     return "<tr><td><strong>" + esc(e) + "</strong></td>" +
-      "<td><code>" + esc(maskApiKeyDisplay(item.apiKey)) + "</code>" + poolBadge + "</td>" +
+      "<td><code>" + esc(maskedDisp) + "</code></td>" +
       "<td>" + esc(item.model || "gemini-2.5-flash") + "</td>" +
       "<td>" + esc(item.updatedAt ? fmtDateTime(item.updatedAt) : "—") + "</td>" +
       '<td><div class="deck-actions">' +
-        '<button type="button" class="btn btn-outline btn-sm" data-act="prefill-api" data-email="' + esc(e) + '">S\u1eeda</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-act="prefill-api" data-email="' + esc(e) + '">C\u1eadp nh\u1eadt</button>' +
         '<button type="button" class="btn btn-danger btn-sm" data-act="revoke-user-api" data-email="' + esc(e) + '">Thu h\u1ed3i API</button>' +
       '</div></td></tr>';
   }).join("") : '<tr><td colspan="5" class="muted">Ch\u01b0a c\u00f3 t\u00e0i kho\u1ea3n n\u00e0o \u0111\u01b0\u1ee3c Admin g\u00e1n Gemini API Key.</td></tr>';
@@ -2670,7 +2770,7 @@ function adminMembersHTML() {
 
     '<div style="padding-top:16px;border-top:2px dashed var(--border)">' +
       '<h3>2. 🔑 G\u00e1n h\u1ed9 Google Gemini API Key theo Email ng\u01b0\u1eddi d\u00f9ng</h3>' +
-      '<p class="muted" style="font-size:.82rem;margin:0 0 10px">H\u1ed7 tr\u1ee3 g\u00e1n API Key \u0111a n\u1ec1n t\u1ea3ng (Google Gemini, Groq Cloud, OpenAI, OpenRouter, DeepSeek) k\u00e8m h\u1ed9p ch\u1ee9a nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng t\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng khi h\u1ebft Quota 429.</p>' +
+      '<p class="muted" style="font-size:.82rem;margin:0 0 10px">Key g\u00e1n \u0111\u01b0\u1ee3c m\u00e3 h\u00f3a tr\u00ean m\u00e1y ch\u1ee7 v\u00e0 ch\u1ec9 hi\u1ec3n th\u1ecb d\u1ea1ng \u1ea9n b\u1edbt tr\u00ean giao di\u1ec7n (\u0111\u1ec3 c\u1ea5p System Default Key d\u00f9ng chung qua <code>/api/ai/proxy</code>, h\u00e3y d\u00f9ng tab <strong>🔑 API Key H\u1ec7 th\u1ed1ng</strong>).</p>' +
       '<div class="admin-form" style="align-items:flex-start">' +
         '<label class="field">Email ng\u01b0\u1eddi d\u00f9ng<input type="email" id="assignApiEmail" placeholder="email@example.com"></label>' +
         '<label class="field" style="min-width:240px">API Key ch\u00ednh (Gemini / Groq / OpenAI / OpenRouter / DeepSeek)' +
@@ -2698,6 +2798,7 @@ function adminMembersHTML() {
             '<option value="openai:gpt-4.1-mini">OpenAI GPT-4.1 Mini (Vision)</option>' +
           '</optgroup>' +
           '<optgroup label="OpenRouter – \u0110a Model Free &amp; Pro (sk-or-...)">' +
+            '<option value="openrouter:openrouter/free">OpenRouter Auto Free Router (:free &amp; Vision)</option>' +
             '<option value="openrouter:google/gemini-2.0-flash-exp:free">OpenRouter: Gemini 2.0 Flash (Free &amp; Vision)</option>' +
             '<option value="openrouter:qwen/qwen2.5-vl-72b-instruct:free">OpenRouter: Qwen 2.5 VL 72B (Free &amp; Vision)</option>' +
             '<option value="openrouter:google/gemini-2.5-flash">OpenRouter: Gemini 2.5 Flash (Vision)</option>' +
@@ -2716,7 +2817,140 @@ function adminMembersHTML() {
         '<button type="button" class="btn btn-danger" data-act="revoke-user-api-form">Thu h\u1ed3i API</button>' +
       '</div>' +
       '<h3>Danh s\u00e1ch t\u00e0i kho\u1ea3n \u0111\u00e3 \u0111\u01b0\u1ee3c Admin g\u00e1n Gemini API (' + apiEmails.length + ')</h3>' +
-      '<div class="table-scroll"><table class="data-table"><thead><tr><th>Email ng\u01b0\u1eddi d\u00f9ng</th><th>Gemini API Key</th><th>Model</th><th>C\u1eadp nh\u1eadt</th><th>H\u00e0nh \u0111\u1ed9ng</th></tr></thead><tbody>' + apiRows + "</tbody></table></div>" +
+      '<div class="table-scroll"><table class="data-table"><thead><tr><th>Email ng\u01b0\u1eddi d\u00f9ng</th><th>API Key (\u1ea8n)</th><th>Model</th><th>C\u1eadp nh\u1eadt</th><th>H\u00e0nh \u0111\u1ed9ng</th></tr></thead><tbody>' + apiRows + "</tbody></table></div>" +
+    '</div>';
+}
+
+function adminSysKeysHTML() {
+  const s = sysKeysState;
+  const allRows = s.keys.concat(s.envKeys);
+  const driverLabel = s.driver ? ((s.driver.label || s.driver.driver) + (s.driver.persistentAcrossDeploys ? " (B\u1ec1n v\u1eefng)" : " (T\u1ea1m th\u1eddi / Local)")) : "\u0110ang ki\u1ec3m tra...";
+
+  const renderStatusBadge = function (rec) {
+    if (rec.enabled === false) return '<span class="syskey-status disabled">Disabled</span>';
+    if (rec.status === "invalid") return '<span class="syskey-status invalid">Invalid</span>';
+    if (rec.status === "cooldown") {
+      const rem = rec.cooldownUntil ? Math.max(1, Math.ceil((Number(rec.cooldownUntil) - Date.now()) / 1000)) : 60;
+      return '<span class="syskey-status cooldown">Cooldown (' + rem + 's)</span>';
+    }
+    return '<span class="syskey-status healthy">Healthy</span>';
+  };
+
+  let previewHtml = "";
+  if (s.preview) {
+    const p = s.preview;
+    const provSum = Object.keys(p.summaryByProvider || {})
+      .filter(function (k) { return p.summaryByProvider[k] > 0; })
+      .map(function (k) { return k + ": " + p.summaryByProvider[k]; })
+      .join(" • ") || "0";
+    const accSum = (p.summaryByAccount || []).map(function (a) {
+      return esc(a.accountLabel) + " (" + a.count + ")";
+    }).join(" • ");
+    const prevRows = (p.previewItems || []).map(function (it) {
+      return '<li><strong>' + esc(it.accountLabel) + '</strong> — <code>' + esc(it.provider) + '</code>: <code>' + esc(it.maskedKey) + '</code></li>';
+    }).join("");
+    const mismatchHtml = (p.mismatches && p.mismatches.length)
+      ? '<div style="margin-top:8px;color:var(--rose);font-size:.8rem"><strong>⚠️ Sai \u0111\u1ecbnh d\u1ea1ng / L\u1ec7ch ti\u1ec1n t\u1ed1 (' + p.mismatches.length + '):</strong><ul>' +
+          p.mismatches.map(function (m) {
+            return '<li>' + esc(m.accountLabel || "") + ' [' + esc(m.label || "") + '] (' + esc(m.maskedKey || "") + '): ' + esc(m.reason || "") + '</li>';
+          }).join("") + '</ul></div>'
+      : "";
+    const dupHtml = (p.duplicates && p.duplicates.length)
+      ? '<div class="muted" style="margin-top:6px;font-size:.78rem">🔁 Tr\u00f9ng l\u1eb7p b\u1ecf qua (' + p.duplicates.length + '): ' + p.duplicates.map(function (d) { return esc(d.provider + " " + d.maskedKey); }).join(", ") + '</div>'
+      : "";
+    const skipHtml = (p.skipped && p.skipped.length)
+      ? '<div class="muted" style="margin-top:4px;font-size:.78rem">⏭️ M\u1ee5c tr\u1ed1ng / Ch\u01b0a t\u1ea1o b\u1ecf qua (' + p.skipped.length + '): ' + p.skipped.map(function (x) { return esc(x.label || x.accountLabel || ""); }).join(", ") + '</div>'
+      : "";
+
+    previewHtml = '<div class="syskey-preview-box">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">' +
+        '<strong>📋 K\u1ebft qu\u1ea3 ph\u00e2n t\u00edch (Preview): ' + p.totalValid + ' Key h\u1ee3p l\u1ec7 s\u1eb5n s\u00e0ng m\u00e3 h\u00f3a &amp; l\u01b0u</strong>' +
+        '<span class="muted" style="font-size:.8rem">' + esc(provSum) + '</span>' +
+      '</div>' +
+      (accSum ? '<div class="muted" style="font-size:.78rem;margin:6px 0">T\u00e0i kho\u1ea3n: ' + accSum + '</div>' : '') +
+      (prevRows ? '<ul style="margin:6px 0 8px 18px;font-size:.8rem;max-height:180px;overflow:auto">' + prevRows + '</ul>' : '') +
+      mismatchHtml + dupHtml + skipHtml +
+      '<div class="deck-actions" style="margin-top:10px">' +
+        '<button type="button" class="btn btn-emerald" data-act="syskey-confirm-import"' + ((s.busy || !p.totalValid) ? " disabled" : "") + '>✅ X\u00e1c nh\u1eadn M\u00e3 h\u00f3a AES-256-GCM &amp; L\u01b0u (' + p.totalValid + ' Key)</button>' +
+        '<button type="button" class="btn btn-outline" data-act="syskey-cancel-preview"' + (s.busy ? " disabled" : "") + '>H\u1ee7y</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  const keyTableRows = allRows.length ? allRows.map(function (k) {
+    const isEnv = k.source === "env";
+    const srcBadge = isEnv
+      ? ' <span class="badge" style="font-size:.68rem">ENV</span>'
+      : ' <span class="badge badge-ok" style="font-size:.68rem">DB</span>';
+    const actCell = isEnv
+      ? '<span class="muted" style="font-size:.76rem">Qu\u1ea3n l\u00fd qua ENV</span>'
+      : ('<div class="deck-actions">' +
+          '<button type="button" class="btn btn-outline btn-sm" data-act="syskey-toggle" data-id="' + esc(k.id) + '" data-enabled="' + (k.enabled !== false ? "1" : "0") + '"' + (s.busy ? " disabled" : "") + '>' + (k.enabled !== false ? "T\u1ea1m t\u1eaft" : "B\u1eadt l\u1ea1i") + '</button>' +
+          ((k.status === "cooldown" || k.status === "invalid")
+            ? '<button type="button" class="btn btn-outline btn-sm" data-act="syskey-reset" data-id="' + esc(k.id) + '"' + (s.busy ? " disabled" : "") + '>Reset</button>'
+            : '') +
+          '<button type="button" class="btn btn-danger btn-sm" data-act="syskey-delete" data-id="' + esc(k.id) + '" data-masked="' + esc(k.maskedKey) + '"' + (s.busy ? " disabled" : "") + '>X\u00f3a</button>' +
+        '</div>');
+
+    return '<tr>' +
+      '<td><strong>' + esc(k.accountLabel) + '</strong>' + srcBadge + '</td>' +
+      '<td><code>' + esc(k.provider) + '</code></td>' +
+      '<td><code>' + esc(k.maskedKey) + '</code></td>' +
+      '<td>' + renderStatusBadge(k) + (k.lastError ? '<div class="muted" style="font-size:.7rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(k.lastError) + '">' + esc(k.lastError) + '</div>' : '') + '</td>' +
+      '<td>' + (Number(k.usageCount) || 0) + ' OK / ' + (Number(k.errorCount) || 0) + ' Err</td>' +
+      '<td>' + actCell + '</td>' +
+    '</tr>';
+  }).join("") : '<tr><td colspan="6" class="muted">' + (s.loading ? "\u0110ang t\u1ea3i danh s\u00e1ch System Key..." : "Ch\u01b0a c\u00f3 System Key n\u00e0o trong Pool.") + '</td></tr>';
+
+  const auditRows = (s.auditLogs && s.auditLogs.length)
+    ? s.auditLogs.map(function (a) {
+        return '<div class="audit-log-row">' +
+          '<span class="muted">' + esc(a.createdAt ? fmtDateTime(a.createdAt) : "") + '</span>' +
+          '<strong>' + esc(a.adminEmail || "") + '</strong>' +
+          '<code>' + esc(a.action || "") + '</code>' +
+          '<span>' + esc(a.detail || "") + '</span>' +
+        '</div>';
+      }).join("")
+    : '<div class="muted">Ch\u01b0a c\u00f3 nh\u1eadt k\u00fd thao t\u00e1c n\u00e0o.</div>';
+
+  return '<h3>🔑 Qu\u1ea3n l\u00fd API Key H\u1ec7 th\u1ed1ng (System Key Pool — Zero Client Exposure)</h3>' +
+    '<div class="checkout-notice" style="margin-bottom:12px">' +
+      '🔒 <strong>B\u1ea3o m\u1eadt m\u00e3 h\u00f3a:</strong> ' +
+        (s.encryptionConfigured
+          ? '<span class="syskey-status healthy">✅ AES-256-GCM \u0110\u00e3 b\u1eadt (ENCRYPTION_SECRET)</span>'
+          : '<span class="syskey-status invalid">⚠️ Ch\u01b0a c\u1ea5u h\u00ecnh ENCRYPTION_SECRET tr\u00ean server</span>') +
+      ' &nbsp;|&nbsp; <strong>L\u01b0u tr\u1eef:</strong> <code>' + esc(driverLabel) + '</code>' +
+      (s.driver && !s.driver.persistentAcrossDeploys ? '<div class="muted" style="font-size:.78rem;margin-top:4px">⚠️ C\u1ea3nh b\u00e1o: Vercel Serverless kh\u00f4ng l\u01b0u \u0111\u0129a c\u1ee9ng l\u00e2u d\u00e0i n\u1ebfu ch\u01b0a c\u1ea5u h\u00ecnh <code>KV_REST_API_URL</code>/<code>UPSTASH_REDIS_REST_URL</code> ho\u1eb7c <code>SUPABASE_URL</code> + <code>SUPABASE_SERVICE_ROLE_KEY</code>.</div>' : '') +
+    '</div>' +
+
+    (s.error ? '<div class="pending-banner" style="border-color:var(--rose);margin-bottom:12px"><span>❌ <strong>L\u1ed7i m\u00e1y ch\u1ee7:</strong> ' + esc(s.error) + '</span></div>' : '') +
+
+    '<div style="margin-bottom:20px">' +
+      '<h4>1. Nh\u1eadp h\u00e0ng lo\u1ea1t theo nh\u00f3m t\u00e0i kho\u1ea3n (2-Step Smart Importer)</h4>' +
+      '<p class="muted" style="font-size:.8rem;margin:0 0 8px">D\u00e1n \u0111o\u1ea1n danh s\u00e1ch d\u1ea1ng <code>1. T\u00ean — email</code> + c\u00e1c d\u00f2ng g\u1ea1ch \u0111\u1ea7u d\u00f2ng (<code>Groq:</code>, <code>OpenRouter:</code>, <code>Gemini:</code>, <code>OpenAI:</code>, <code>DeepSeek:</code>). H\u1ec7 th\u1ed1ng t\u1ef1 lo\u1ea1i b\u1ecf m\u00e3 SV, b\u1ecf d\u00f2ng tr\u1ed1ng/"Ch\u01b0a t\u1ea1o", ki\u1ec3m tra ti\u1ec1n t\u1ed1 v\u00e0 ch\u1ed1ng tr\u00f9ng b\u1eb1ng HMAC-SHA256. V\u0103n b\u1ea3n d\u00e1n kh\u00f4ng bao gi\u1edd \u0111\u01b0\u1ee3c l\u01b0u hay ghi log.</p>' +
+      '<textarea id="sysKeysRawInput" rows="7" spellcheck="false" autocomplete="off" placeholder="1. T\u00e0i kho\u1ea3n 1 \u2014 example1@gmail.com&#10;- Groq: gsk_...&#10;- OpenRouter: sk-or-v1-...&#10;- Gemini: AIzaSy...">' + esc(s.rawDraft) + '</textarea>' +
+      '<div class="deck-actions" style="margin-top:8px">' +
+        '<button type="button" class="btn btn-primary" data-act="syskey-preview"' + (s.busy ? " disabled" : "") + '>🔍 Ph\u00e2n t\u00edch &amp; Xem tr\u01b0\u1edbc (Preview)</button>' +
+        '<button type="button" class="btn btn-outline" data-act="syskey-clear-input"' + (s.busy ? " disabled" : "") + '>X\u00f3a \u00f4 d\u00e1n</button>' +
+      '</div>' +
+      previewHtml +
+    '</div>' +
+
+    '<div style="padding-top:16px;border-top:2px dashed var(--border);margin-bottom:20px">' +
+      '<div class="panel-head" style="margin-bottom:8px">' +
+        '<h4 style="margin:0">2. Danh s\u00e1ch System Key trong Pool (' + allRows.length + ')</h4>' +
+        '<div class="deck-actions">' +
+          '<button type="button" class="btn btn-outline btn-sm" data-act="syskey-refresh"' + (s.busy ? " disabled" : "") + '>🔄 T\u1ea3i l\u1ea1i</button>' +
+          '<button type="button" class="btn btn-emerald btn-sm" data-act="syskey-test-all"' + (s.busy ? " disabled" : "") + '>🧪 Test All Keys</button>' +
+          '<button type="button" class="btn btn-danger btn-sm" data-act="syskey-remove-invalid"' + (s.busy ? " disabled" : "") + '>🧹 Remove All Invalid Keys</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="table-scroll"><table class="data-table"><thead><tr><th>T\u00e0i kho\u1ea3n</th><th>H\u00e3ng</th><th>Key (\u1ea8n)</th><th>Tr\u1ea1ng th\u00e1i</th><th>Th\u1ed1ng k\u00ea</th><th>H\u00e0nh \u0111\u1ed9ng</th></tr></thead><tbody>' + keyTableRows + '</tbody></table></div>' +
+    '</div>' +
+
+    '<div style="padding-top:16px;border-top:2px dashed var(--border)">' +
+      '<h4 style="margin:0 0 8px">3. Nh\u1eadt k\u00fd Qu\u1ea3n tr\u1ecb (Audit Log)</h4>' +
+      '<div class="audit-log-box">' + auditRows + '</div>' +
     '</div>';
 }
 
@@ -2895,10 +3129,10 @@ async function onAdminClick(e) {
       const modSel = $("assignApiModel");
       const cur = getAssignedApiForEmail(em);
       if (emInp) emInp.value = em;
-      if (keyInp) { keyInp.value = cur ? cur.apiKey : ""; keyInp.type = "password"; keyInp.focus(); }
-      if (poolInp) poolInp.value = (cur && cur.apiPool) ? cur.apiPool : "";
+      if (keyInp) { keyInp.value = ""; keyInp.type = "password"; keyInp.focus(); }
+      if (poolInp) poolInp.value = "";
       if (modSel && cur && cur.model) modSel.value = cur.model;
-      showToast("\u0110\u00e3 ch\u1ecdn email " + em + " \u0111\u1ec3 g\u00e1n Gemini API Key.", "info");
+      showToast("\u0110\u00e3 ch\u1ecdn email " + em + " \u0111\u1ec3 c\u1eadp nh\u1eadt Gemini API Key.", "info");
     } else if (act === "assign-user-api") {
       const email = ($("assignApiEmail") ? $("assignApiEmail").value : "").trim().toLowerCase();
       const rawKey = ($("assignApiKey") ? $("assignApiKey").value : "").trim();
@@ -2913,15 +3147,16 @@ async function onAdminClick(e) {
       const all = loadObj(KEYS.userApis);
       all[email] = {
         email: email,
-        apiKey: apiKey,
-        apiPool: apiPool,
+        maskedKey: (r && r.entry && r.entry.maskedKey) ? r.entry.maskedKey : maskApiKeyDisplay(apiKey),
         model: model,
         assignedBy: ADMIN_EMAIL,
         updatedAt: new Date(now).toISOString(),
         ts: now
       };
       saveJSON(KEYS.userApis, all);
-      showToast("\u0110\u00e3 g\u00e1n Google Gemini API Key cho t\u00e0i kho\u1ea3n " + email + " th\u00e0nh c\u00f4ng!", "success");
+      if ($("assignApiKey")) $("assignApiKey").value = "";
+      if ($("assignApiPool")) $("assignApiPool").value = "";
+      showToast("\u0110\u00e3 m\u00e3 h\u00f3a & g\u00e1n API Key cho t\u00e0i kho\u1ea3n " + email + " th\u00e0nh c\u00f4ng!", "success");
       updateChrome();
       renderAdmin();
     } else if (act === "revoke-user-api" || act === "revoke-user-api-form") {
@@ -2939,12 +3174,151 @@ async function onAdminClick(e) {
         updateChrome();
         renderAdmin();
       });
+    } else if (act === "syskey-preview") {
+      const ta = $("sysKeysRawInput");
+      const rawText = ta ? ta.value : sysKeysState.rawDraft;
+      sysKeysState.rawDraft = rawText;
+      if (!String(rawText || "").trim()) { showToast("Vui l\u00f2ng d\u00e1n danh s\u00e1ch API Key tr\u01b0\u1edbc khi ph\u00e2n t\u00edch.", "warning"); return; }
+      sysKeysState.busy = true;
+      renderAdmin();
+      const resp = await adminSystemKeysFetch("/preview", "POST", { rawText: rawText });
+      sysKeysState.busy = false;
+      if (resp._err) {
+        sysKeysState.error = resp._err;
+        showToast("L\u1ed7i ph\u00e2n t\u00edch Key: " + resp._err, "error");
+      } else if (resp.data) {
+        sysKeysState.error = "";
+        sysKeysState.preview = resp.data;
+        sysKeysState.encryptionConfigured = !!resp.data.encryptionConfigured;
+      }
+      renderAdmin();
+    } else if (act === "syskey-clear-input") {
+      sysKeysState.rawDraft = "";
+      sysKeysState.preview = null;
+      renderAdmin();
+    } else if (act === "syskey-cancel-preview") {
+      sysKeysState.preview = null;
+      renderAdmin();
+    } else if (act === "syskey-confirm-import") {
+      const ta = $("sysKeysRawInput");
+      const rawText = sysKeysState.rawDraft || (ta ? ta.value : "");
+      if (!String(rawText || "").trim()) { showToast("Kh\u00f4ng c\u00f3 d\u1eef li\u1ec7u \u0111\u1ec3 nh\u1eadp.", "warning"); return; }
+      sysKeysState.busy = true;
+      renderAdmin();
+      const resp = await adminSystemKeysFetch("/import", "POST", { rawText: rawText });
+      sysKeysState.busy = false;
+      if (resp._err) {
+        sysKeysState.error = resp._err;
+        showToast("L\u1ed7i nh\u1eadp System Key: " + resp._err, "error");
+      } else if (resp.data) {
+        sysKeysState.error = "";
+        sysKeysState.rawDraft = "";
+        sysKeysState.preview = null;
+        sysKeysState.keys = Array.isArray(resp.data.keys) ? resp.data.keys : sysKeysState.keys;
+        sysKeysState.auditLogs = Array.isArray(resp.data.auditLogs) ? resp.data.auditLogs : sysKeysState.auditLogs;
+        showToast("\u0110\u00e3 m\u00e3 h\u00f3a AES-256-GCM & l\u01b0u " + (resp.data.importedCount || 0) + " API Key v\u00e0o System Pool!", "success");
+      }
+      renderAdmin();
+    } else if (act === "syskey-refresh") {
+      await loadAdminSysKeys(true);
+    } else if (act === "syskey-test-all") {
+      sysKeysState.busy = true;
+      renderAdmin();
+      const resp = await adminSystemKeysFetch("/test-all", "POST", {});
+      sysKeysState.busy = false;
+      if (resp._err) {
+        sysKeysState.error = resp._err;
+        showToast(resp._err, resp._status === 429 ? "warning" : "error");
+      } else if (resp.data) {
+        sysKeysState.error = "";
+        sysKeysState.keys = Array.isArray(resp.data.keys) ? resp.data.keys : sysKeysState.keys;
+        sysKeysState.auditLogs = Array.isArray(resp.data.auditLogs) ? resp.data.auditLogs : sysKeysState.auditLogs;
+        const sm = resp.data.summary || {};
+        showToast("Test All xong: " + (sm.healthy || 0) + " Healthy • " + (sm.cooldown || 0) + " Cooldown • " + (sm.invalid || 0) + " Invalid.", "info");
+      }
+      renderAdmin();
+    } else if (act === "syskey-remove-invalid") {
+      showConfirm("X\u00f3a t\u1ea5t c\u1ea3 Key kh\u00f4ng h\u1ee3p l\u1ec7", "X\u00f3a v\u0129nh vi\u1ec5n t\u1ea5t c\u1ea3 Key \u0111ang c\u00f3 tr\u1ea1ng th\u00e1i Invalid kh\u1ecfi System Key Pool?", async function () {
+        sysKeysState.busy = true;
+        renderAdmin();
+        const resp = await adminSystemKeysFetch("/remove-invalid", "POST", {});
+        sysKeysState.busy = false;
+        if (resp._err) {
+          showToast("L\u1ed7i: " + resp._err, "error");
+        } else if (resp.data) {
+          sysKeysState.keys = Array.isArray(resp.data.keys) ? resp.data.keys : sysKeysState.keys;
+          sysKeysState.auditLogs = Array.isArray(resp.data.auditLogs) ? resp.data.auditLogs : sysKeysState.auditLogs;
+          showToast("\u0110\u00e3 x\u00f3a " + (resp.data.removedCount || 0) + " Invalid Key.", "info");
+        }
+        renderAdmin();
+      });
+    } else if (act === "syskey-toggle") {
+      const id = b.getAttribute("data-id");
+      const curEn = b.getAttribute("data-enabled") === "1";
+      if (!id) return;
+      sysKeysState.busy = true;
+      renderAdmin();
+      const resp = await adminSystemKeysFetch("/" + encodeURIComponent(id), "PATCH", { enabled: !curEn });
+      sysKeysState.busy = false;
+      if (resp._err) {
+        showToast("L\u1ed7i: " + resp._err, "error");
+      } else if (resp.data) {
+        sysKeysState.keys = Array.isArray(resp.data.keys) ? resp.data.keys : sysKeysState.keys;
+        sysKeysState.auditLogs = Array.isArray(resp.data.auditLogs) ? resp.data.auditLogs : sysKeysState.auditLogs;
+      }
+      renderAdmin();
+    } else if (act === "syskey-reset") {
+      const id = b.getAttribute("data-id");
+      if (!id) return;
+      sysKeysState.busy = true;
+      renderAdmin();
+      const resp = await adminSystemKeysFetch("/" + encodeURIComponent(id), "PATCH", { resetStatus: true });
+      sysKeysState.busy = false;
+      if (resp._err) {
+        showToast("L\u1ed7i: " + resp._err, "error");
+      } else if (resp.data) {
+        sysKeysState.keys = Array.isArray(resp.data.keys) ? resp.data.keys : sysKeysState.keys;
+        sysKeysState.auditLogs = Array.isArray(resp.data.auditLogs) ? resp.data.auditLogs : sysKeysState.auditLogs;
+        showToast("\u0110\u00e3 \u0111\u1eb7t l\u1ea1i tr\u1ea1ng th\u00e1i Healthy cho Key.", "success");
+      }
+      renderAdmin();
+    } else if (act === "syskey-delete") {
+      const id = b.getAttribute("data-id");
+      const masked = b.getAttribute("data-masked") || id;
+      if (!id) return;
+      showConfirm("X\u00f3a System Key", "X\u00f3a v\u0129nh vi\u1ec5n System Key " + masked + "?", async function () {
+        sysKeysState.busy = true;
+        renderAdmin();
+        const resp = await adminSystemKeysFetch("/" + encodeURIComponent(id), "DELETE");
+        sysKeysState.busy = false;
+        if (resp._err) {
+          showToast("L\u1ed7i: " + resp._err, "error");
+        } else if (resp.data) {
+          sysKeysState.keys = Array.isArray(resp.data.keys) ? resp.data.keys : sysKeysState.keys;
+          sysKeysState.auditLogs = Array.isArray(resp.data.auditLogs) ? resp.data.auditLogs : sysKeysState.auditLogs;
+          showToast("\u0110\u00e3 x\u00f3a System Key " + masked + ".", "info");
+        }
+        renderAdmin();
+      });
     } else if (act === "export-backup") {
+      const rawApis = loadObj(KEYS.userApis);
+      const maskedUserApis = {};
+      Object.keys(rawApis).forEach(function (em) {
+        const it = rawApis[em];
+        if (it && typeof it === "object") {
+          maskedUserApis[em] = {
+            email: it.email || em,
+            maskedKey: it.maskedKey || maskApiKeyDisplay(it.apiKey || ""),
+            model: it.model || "gemini-2.5-flash",
+            updatedAt: it.updatedAt || ""
+          };
+        }
+      });
       const data = {
         exportedAt: new Date().toISOString(),
         registeredUsers: loadObj(KEYS.users),
         subscriptions: loadObj(KEYS.subs),
-        userApis: loadObj(KEYS.userApis),
+        userApis: maskedUserApis,
         payment_requests: loadArr(KEYS.payReqs),
         vouchers: getVouchers(),
         paymentConfig: getPayCfg()
@@ -2963,6 +3337,7 @@ function onAdminInput(e) {
   if (!e.target) return;
   if (e.target.id === "admQuery") { state.adminQuery = e.target.value; renderAdminRequestsTable(); }
   else if (e.target.id === "admMemberQuery") { state.adminMemberQuery = e.target.value; renderAdminMembersTable(); }
+  else if (e.target.id === "sysKeysRawInput") { sysKeysState.rawDraft = e.target.value; }
 }
 
 /* ------------------------------ Profile ------------------------------ */
@@ -3109,7 +3484,7 @@ function renderProfilePage() {
         '<dl class="pay-info">' +
           '<dt>T\u00ean hi\u1ec3n th\u1ecb</dt><dd>' + esc(u.name) + '</dd>' +
           '<dt>Email Google</dt><dd>' + esc(state.user.email) + '</dd>' +
-          '<dt>Gemini API</dt><dd>' + (assignedApi ? ('<span class="badge badge-ok">🔑 \u0110\u00e3 \u0111\u01b0\u1ee3c Admin g\u00e1n API (' + esc(assignedApi.model || "gemini-2.5-flash") + ')</span>') : ((localStorage.getItem(KEYS.apiKey) || "").trim() ? '<span class="badge badge-ok">\u0110\u00e3 l\u01b0u Key c\u00e1 nh\u00e2n</span>' : '<span class="muted">Ch\u01b0a c\u1ea5u h\u00ecnh</span>')) + '</dd>' +
+          '<dt>API AI</dt><dd>' + ((window.UETConverter && typeof window.UETConverter.hasPersonalKeys === "function" && window.UETConverter.hasPersonalKeys()) ? '<span class="badge badge-ok">\u0110ang d\u00f9ng Key c\u00e1 nh\u00e2n</span>' : '<span class="badge">🌐 System Default Pool (Mi\u1ec5n ph\u00ed)</span>') + '</dd>' +
           '<dt>M\u00e3 sinh vi\u00ean</dt><dd>' + esc(u.studentId || "Ch\u01b0a c\u1eadp nh\u1eadt") + '</dd>' +
           '<dt>L\u1edbp / Khoa</dt><dd>' + esc(u.className || "Ch\u01b0a c\u1eadp nh\u1eadt") + '</dd>' +
           '<dt>M\u1ee5c ti\u00eau h\u1ecdc t\u1eadp</dt><dd>' + esc(u.targetGoal || "Ch\u01b0a c\u1eadp nh\u1eadt") + '</dd>' +
@@ -3218,6 +3593,7 @@ function onKeyDown(e) {
 }
 
 /* ------------------------------ Multi-Language Engine (VI / EN / JA - Zero Font Change) ------------------------------ */
+/* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
@@ -3635,7 +4011,7 @@ const I18N_MAP = {
   "Số tiền": { vi: "Số tiền", en: "Amount", ja: "金額" },
   "Ghi chú / Mã GD": { vi: "Ghi chú / Mã GD", en: "Note / Txn ID", ja: "メモ / 取引ID" },
   "Biên lai": { vi: "Biên lai", en: "Receipt", ja: "明細画像" },
-  "Trạng thái": { vi: "Trạng thái", en: "Status", ja: "ステータス" },
+  "Trạng thái": { vi: "Trạng thái", en: "Status", ja: "状態" },
   "Hành động": { vi: "Hành động", en: "Actions", ja: "操作" },
   "Phản hồi từ Admin": { vi: "Phản hồi từ Admin", en: "Admin Feedback", ja: "管理者からの回答" },
   "Đang chờ Quản trị viên xác nhận": { vi: "Đang chờ Quản trị viên xác nhận", en: "Awaiting Administrator confirmation", ja: "管理者の確認待ち" },
@@ -3672,7 +4048,7 @@ const I18N_MAP = {
   "Đã gán Gemini API": { vi: "Đã gán Gemini API", en: "Gemini API Assigned", ja: "Gemini API 割当済" },
   "Thu hồi API": { vi: "Thu hồi API", en: "Revoke API", ja: "API取消" },
   "Thu hồi Gemini API Key": { vi: "Thu hồi Gemini API Key", en: "Revoke Gemini API Key", ja: "Gemini API Key を取消" },
-  "Cập nhật": { vi: "Cập nhật", en: "Updated", ja: "更新日時" },
+  "Cập nhật": { vi: "Cập nhật", en: "Update", ja: "更新" },
   "Chưa có tài khoản nào được Admin gán Gemini API Key.": { vi: "Chưa có tài khoản nào được Admin gán Gemini API Key.", en: "No accounts have been assigned a Gemini API Key by Admin yet.", ja: "管理者によって Gemini API Key が割り当てられたアカウントはまだありません。" },
   "Cấu hình tài khoản nhận tiền VietQR": { vi: "Cấu hình tài khoản nhận tiền VietQR", en: "VietQR Receiving Bank Account Configuration", ja: "VietQR 受取銀行口座の設定" },
   "Tên ngân hàng": { vi: "Tên ngân hàng", en: "Bank Name", ja: "銀行名" },
@@ -4202,7 +4578,7 @@ const I18N_MAP = {
   ").": { vi: ").", en: ").", ja: ") に自動通知されます。" },
   "Hiển thị toàn bộ tài khoản đã đăng ký trên hệ thống. Khi có người dùng mới đăng ký hoặc gửi yêu cầu xác nhận thanh toán, hệ thống sẽ tự động gửi thông báo về email quản trị (phamduchieu.robotics@gmail.com).": { vi: "Hiển thị toàn bộ tài khoản đã đăng ký trên hệ thống. Khi có người dùng mới đăng ký hoặc gửi yêu cầu xác nhận thanh toán, hệ thống sẽ tự động gửi thông báo về email quản trị (phamduchieu.robotics@gmail.com).", en: "Displays all registered accounts in the system. Whenever a new user registers or submits a payment confirmation request, an email alert is automatically sent to the admin email (phamduchieu.robotics@gmail.com).", ja: "システムに登録された全アカウントを表示します。新規ユーザー登録または支払い確認リクエストが送信されると、管理者メール (phamduchieu.robotics@gmail.com) に自動通知されます。" },
   "Hỗ trợ đa nền tảng AI (Google Gemini, OpenAI, Groq Cloud, OpenRouter, DeepSeek), hộp chứa nhiều API Key dự phòng tự động xoay vòng khi hết Quota 429 và API do Quản trị viên gán theo Email.": { vi: "Hỗ trợ đa nền tảng AI (Google Gemini, OpenAI, Groq Cloud, OpenRouter, DeepSeek), hộp chứa nhiều API Key dự phòng tự động xoay vòng khi hết Quota 429 và API do Quản trị viên gán theo Email.", en: "Supports multi-platform AI (Google Gemini, OpenAI, Groq Cloud, OpenRouter, DeepSeek), a Multi-Key Backup Pool that auto-rotates on 429 Quota limits, and Admin-assigned APIs by Email.", ja: "マルチプラットフォーム AI (Google Gemini, OpenAI, Groq Cloud, OpenRouter, DeepSeek)、Quota 429 制限時に自動ローテーションする予備 API Key プール、および管理者割当 API をサポートします。" },
-  "Chọn Nền tảng & Model AI chủ đạo": { vi: "Chọn Nền tảng & Model AI chủ đạo", en: "Select Primary AI Platform & Model", ja: "メイン AI プラットフォーム＆モデルを選択" },
+  "Chọn Nền tảng & Model AI chủ đạo": { vi: "Chọn Nền tảng & Model AI chủ đạo", en: "Select Primary AI Platform & Model", ja: "メインの AI プラットフォーム＆モデルを選択" },
   "Gemini 2.5 Flash-Lite (Siêu nhanh / Quota lớn)": { vi: "Gemini 2.5 Flash-Lite (Siêu nhanh / Quota lớn)", en: "Gemini 2.5 Flash-Lite (Ultra Fast / High Quota)", ja: "Gemini 2.5 Flash-Lite (超高速 / 大容量クォータ)" },
   "Groq Llama 4 Scout 17B (Miễn phí & Vision)": { vi: "Groq Llama 4 Scout 17B (Miễn phí & Vision)", en: "Groq Llama 4 Scout 17B (Free & Vision)", ja: "Groq Llama 4 Scout 17B (無料 & Vision)" },
   "Groq Llama 4 Maverick 17B (Vision)": { vi: "Groq Llama 4 Maverick 17B (Vision)", en: "Groq Llama 4 Maverick 17B (Vision)", ja: "Groq Llama 4 Maverick 17B (Vision)" },
@@ -4223,7 +4599,73 @@ const I18N_MAP = {
   "Không tìm thấy Model AI tương thích với định dạng tệp này. Nếu đọc ảnh/PDF scan, hãy thêm Key của Gemini, Groq, OpenAI hoặc OpenRouter.": { vi: "Không tìm thấy Model AI tương thích với định dạng tệp này. Nếu đọc ảnh/PDF scan, hãy thêm Key của Gemini, Groq, OpenAI hoặc OpenRouter.", en: "No compatible AI model found for this file format. For images/scanned PDFs, please add a Gemini, Groq, OpenAI, or OpenRouter API Key.", ja: "このファイル形式に対応する AI モデルが見つかりません。画像やスキャン PDF の場合は Gemini, Groq, OpenAI, または OpenRouter の API Key を追加してください。" },
   "Groq Cloud – Miễn phí & Siêu tốc (gsk_...)": { vi: "Groq Cloud – Miễn phí & Siêu tốc (gsk_...)", en: "Groq Cloud – Free & Ultra Fast (gsk_...)", ja: "Groq Cloud – 無料＆超高速 (gsk_...)" },
   "OpenRouter – Đa Model Free & Pro (sk-or-...)": { vi: "OpenRouter – Đa Model Free & Pro (sk-or-...)", en: "OpenRouter – Multi-Model Free & Pro (sk-or-...)", ja: "OpenRouter – マルチモデル Free & Pro (sk-or-...)" },
-  "Dán nhiều API Key dự phòng (mỗi dòng 1 Key hoặc cách nhau bằng dấu phẩy). Hỗ trợ trộn nhiều hãng cùng lúc:\nAIzaSy... (Google Gemini)\ngsk_... (Groq Cloud Free)\nsk-or-v1-... (OpenRouter)\nopenai:sk-... hoặc deepseek:sk-...": { vi: "Dán nhiều API Key dự phòng (mỗi dòng 1 Key hoặc cách nhau bằng dấu phẩy). Hỗ trợ trộn nhiều hãng cùng lúc:\nAIzaSy... (Google Gemini)\ngsk_... (Groq Cloud Free)\nsk-or-v1-... (OpenRouter)\nopenai:sk-... hoặc deepseek:sk-...", en: "Paste multiple backup API Keys (one per line or comma-separated). Supports mixing multiple AI providers:\nAIzaSy... (Google Gemini)\ngsk_... (Groq Cloud Free)\nsk-or-v1-... (OpenRouter)\nopenai:sk-... or deepseek:sk-...", ja: "複数の予備 API Key を貼り付け（1行に1キーまたはカンマ区切り）。複数プロバイダーの混在に対応:\nAIzaSy... (Google Gemini)\ngsk_... (Groq Cloud Free)\nsk-or-v1-... (OpenRouter)\nopenai:sk-... または deepseek:sk-..." }
+  "Dán nhiều API Key dự phòng (mỗi dòng 1 Key hoặc cách nhau bằng dấu phẩy). Hỗ trợ trộn nhiều hãng cùng lúc:\nAIzaSy... (Google Gemini)\ngsk_... (Groq Cloud Free)\nsk-or-v1-... (OpenRouter)\nopenai:sk-... hoặc deepseek:sk-...": { vi: "Dán nhiều API Key dự phòng (mỗi dòng 1 Key hoặc cách nhau bằng dấu phẩy). Hỗ trợ trộn nhiều hãng cùng lúc:\nAIzaSy... (Google Gemini)\ngsk_... (Groq Cloud Free)\nsk-or-v1-... (OpenRouter)\nopenai:sk-... hoặc deepseek:sk-...", en: "Paste multiple backup API Keys (one per line or comma-separated). Supports mixing multiple AI providers:\nAIzaSy... (Google Gemini)\ngsk_... (Groq Cloud Free)\nsk-or-v1-... (OpenRouter)\nopenai:sk-... or deepseek:sk-...", ja: "複数の予備 API Key を貼り付け（1行に1キーまたはカンマ区切り）。複数プロバイダーの混在に対応:\nAIzaSy... (Google Gemini)\ngsk_... (Groq Cloud Free)\nsk-or-v1-... (OpenRouter)\nopenai:sk-... または deepseek:sk-..." },
+  "📖 Hướng dẫn lấy API Key": { vi: "📖 Hướng dẫn lấy API Key", en: "📖 API Key Guide", ja: "📖 API Key 取得ガイド" },
+  "Bạn đang sử dụng API Key miễn phí mặc định được cung cấp bởi hệ thống. Do dùng chung nên hạn mức (quota) thấp và có thể bị chậm hoặc gián đoạn. Để có trải nghiệm mượt mà và không giới hạn, hãy cân nhắc sử dụng API Key cá nhân của bạn.": { vi: "Bạn đang sử dụng API Key miễn phí mặc định được cung cấp bởi hệ thống. Do dùng chung nên hạn mức (quota) thấp và có thể bị chậm hoặc gián đoạn. Để có trải nghiệm mượt mà và không giới hạn, hãy cân nhắc sử dụng API Key cá nhân của bạn.", en: "You are currently using the free default API Key provided by the system. Because it is shared, its quota is limited and may be slow or interrupted. For a smooth and unlimited experience, consider using your own personal API Key.", ja: "現在、システム提供の無料デフォルト API Key を使用しています。共有リソースのため利用枠 (Quota) が少なく、遅延や中断が発生する場合があります。快適で無制限に利用するには、ご自身の個人 API Key の設定をご検討ください。" },
+  "Xem hướng dẫn lấy API Key miễn phí →": { vi: "Xem hướng dẫn lấy API Key miễn phí →", en: "View Free API Key Guide →", ja: "無料 API Key 取得ガイドを見る →" },
+  "Nhập Key cá nhân": { vi: "Nhập Key cá nhân", en: "Enter Personal Key", ja: "個人 Key を入力" },
+  "Ẩn thông báo này": { vi: "Ẩn thông báo này", en: "Dismiss this notice", ja: "この通知を閉じる" },
+  "Gợi ý: Đăng nhập Google ở góc trên để kích hoạt System Pool miễn phí, hoặc nhập API Key cá nhân để dùng ngay không cần chờ.": { vi: "Gợi ý: Đăng nhập Google ở góc trên để kích hoạt System Pool miễn phí, hoặc nhập API Key cá nhân để dùng ngay không cần chờ.", en: "Tip: Sign in with Google at the top right to enable the free System Pool, or enter your personal API Key for instant unlimited access.", ja: "ヒント: 右上から Google ログインすると無料の System Pool が利用可能になります。または個人 API Key を入力してすぐにご利用いただけます。" },
+  "Đang dùng API Key cá nhân": { vi: "Đang dùng API Key cá nhân", en: "Using personal API Key", ja: "個人 API Key を使用中" },
+  "Đang dùng System Key Pool miễn phí mặc định": { vi: "Đang dùng System Key Pool miễn phí mặc định", en: "Using default free System Key Pool", ja: "デフォルトの無料 System Key Pool を使用中" },
+  "Chưa cấu hình API Key": { vi: "Chưa cấu hình API Key", en: "API Key not configured", ja: "API Key 未設定" },
+  "Cài đặt Đa Nền tảng AI & API Key Cá nhân": { vi: "Cài đặt Đa Nền tảng AI & API Key Cá nhân", en: "Multi-Provider AI & Personal API Key Settings", ja: "マルチプロバイダー AI ＆ 個人 API Key 設定" },
+  "Mặc định hệ thống dùng System Key Pool an toàn qua máy chủ /api/ai/proxy (nếu đã đăng nhập Google). Khi bạn nhập Key cá nhân, mọi yêu cầu AI sẽ gọi trực tiếp bằng Key của bạn (không qua hạn mức chung).": { vi: "Mặc định hệ thống dùng System Key Pool an toàn qua máy chủ /api/ai/proxy (nếu đã đăng nhập Google). Khi bạn nhập Key cá nhân, mọi yêu cầu AI sẽ gọi trực tiếp bằng Key của bạn (không qua hạn mức chung).", en: "By default, the system securely routes requests via /api/ai/proxy using the System Key Pool (when signed in with Google). When you save personal keys, all AI requests call providers directly with your keys.", ja: "デフォルトでは /api/ai/proxy 経由で安全な System Key Pool を使用します（Google ログイン時）。個人 Key を設定すると、すべての AI リクエストがご自身の Key で直接送信されます。" },
+  "Chế độ hiện tại:": { vi: "Chế độ hiện tại:", en: "Current mode:", ja: "現在のモード:" },
+  "📖 Xem hướng dẫn lấy Key →": { vi: "📖 Xem hướng dẫn lấy Key →", en: "📖 API Key Guide →", ja: "📖 Key 取得ガイド →" },
+  "Nhập API Key theo từng nhà cung cấp (chọn hãng tránh nhầm tiền tố sk- OpenAI / DeepSeek)": { vi: "Nhập API Key theo từng nhà cung cấp (chọn hãng tránh nhầm tiền tố sk- OpenAI / DeepSeek)", en: "Enter API Keys by Provider (select provider tab to avoid sk- OpenAI vs DeepSeek ambiguity)", ja: "プロバイダー別に API Key を入力（sk- プレフィックスの OpenAI / DeepSeek 混同を防止）" },
+  "Tiền tố:": { vi: "Tiền tố:", en: "Prefix:", ja: "プレフィックス:" },
+  "Chưa nhập Key nào cho hãng này.": { vi: "Chưa nhập Key nào cho hãng này.", en: "No keys entered for this provider yet.", ja: "このプロバイダーの Key はまだ入力されていません。" },
+  "Hợp lệ": { vi: "Hợp lệ", en: "Valid", ja: "有効" },
+  "💾 Lưu tất cả Key cá nhân": { vi: "💾 Lưu tất cả Key cá nhân", en: "💾 Save All Personal Keys", ja: "💾 個人 Key をすべて保存" },
+  "🧪 Test Keys": { vi: "🧪 Test Keys", en: "🧪 Test Keys", ja: "🧪 Key をテスト" },
+  "📤 Xuất JSON": { vi: "📤 Xuất JSON", en: "📤 Export JSON", ja: "📤 JSON エクスポート" },
+  "📥 Nhập JSON": { vi: "📥 Nhập JSON", en: "📥 Import JSON", ja: "📥 JSON インポート" },
+  "🗑️ Xóa toàn bộ Key cá nhân": { vi: "🗑️ Xóa toàn bộ Key cá nhân", en: "🗑️ Clear All Personal Keys", ja: "🗑️ 個人 Key をすべて削除" },
+  "Kết quả kiểm tra từng Key:": { vi: "Kết quả kiểm tra từng Key:", en: "Per-Key Connection Test Results:", ja: "Key 別接続テスト結果:" },
+  "📖 Hướng dẫn lấy API Key Miễn phí & Trả phí": { vi: "📖 Hướng dẫn lấy API Key Miễn phí & Trả phí", en: "📖 Guide to Getting Free & Paid AI API Keys", ja: "📖 無料・有料 AI API Key 取得ガイド" },
+  "Sử dụng API Key cá nhân giúp đọc ảnh/PDF siêu nhanh, không bị nghẽn hạn mức dùng chung và bảo mật tuyệt đối trên trình duyệt của bạn.": { vi: "Sử dụng API Key cá nhân giúp đọc ảnh/PDF siêu nhanh, không bị nghẽn hạn mức dùng chung và bảo mật tuyệt đối trên trình duyệt của bạn.", en: "Using your own API Key gives fast OCR/PDF processing with zero shared rate limits and keeps your key local to your browser.", ja: "個人 API Key を使用すると、共有制限なしで高速な画像・PDF 読み取りが可能になり、ブラウザ内に安全に保存されます。" },
+  "🔑 Nhập API Key ngay →": { vi: "🔑 Nhập API Key ngay →", en: "🔑 Enter API Key Now →", ja: "🔑 今すぐ API Key を入力 →" },
+  "★ Khuyên dùng": { vi: "★ Khuyên dùng", en: "★ Recommended", ja: "★ おすすめ" },
+  "Lấy Key ↗": { vi: "Lấy Key ↗", en: "Get Key ↗", ja: "Key を取得 ↗" },
+  "Model hỗ trợ:": { vi: "Model hỗ trợ:", en: "Supported Models:", ja: "対応モデル:" },
+  "Sẵn sàng bắt đầu?": { vi: "Sẵn sàng bắt đầu?", en: "Ready to get started?", ja: "準備はよろしいですか？" },
+  "API Key cá nhân của bạn chỉ lưu cục bộ trong trình duyệt (localStorage) và gửi trực tiếp tới máy chủ hãng AI.": { vi: "API Key cá nhân của bạn chỉ lưu cục bộ trong trình duyệt (localStorage) và gửi trực tiếp tới máy chủ hãng AI.", en: "Your personal API Keys are stored locally in your browser (localStorage) and sent directly to official AI provider servers.", ja: "個人 API Key はお使いのブラウザ (localStorage) にのみ保存され、公式 AI プロバイダーへ直接送信されます。" },
+  "Đã có Key? Nhập ngay tại Cài đặt API →": { vi: "Đã có Key? Nhập ngay tại Cài đặt API →", en: "Already have a Key? Enter it now in API Settings →", ja: "Key をお持ちですか？ API 設定で今すぐ入力 →" },
+  "Mẹo hay (Pro Tip): Tự động xoay vòng không lo hết Quota": { vi: "Mẹo hay (Pro Tip): Tự động xoay vòng không lo hết Quota", en: "Pro Tip: Auto-Rotation Without Quota Interruptions", ja: "便利なコツ (Pro Tip): Quota 上限を気にせず自動ローテーション" },
+  "Bạn có thể tạo nhiều API Key từ nhiều tài khoản hoặc Google Cloud Project KHÁC NHAU mà chính bạn sở hữu (ví dụ 2 key Groq Cloud + 2 key OpenRouter + nhiều key Gemini ở các dự án độc lập) và dán tất cả vào hộp nhập theo từng hãng ở Cài đặt API để hệ thống tự động xoay vòng khi 1 key chạm giới hạn. Lưu ý: nhiều API Key tạo trong CÙNG một Google Cloud Project sẽ dùng chung quota với nhau, và hãy luôn tuân thủ Điều khoản sử dụng (Terms of Service) của từng nhà cung cấp.": { vi: "Bạn có thể tạo nhiều API Key từ nhiều tài khoản hoặc Google Cloud Project KHÁC NHAU mà chính bạn sở hữu (ví dụ 2 key Groq Cloud + 2 key OpenRouter + nhiều key Gemini ở các dự án độc lập) và dán tất cả vào hộp nhập theo từng hãng ở Cài đặt API để hệ thống tự động xoay vòng khi 1 key chạm giới hạn. Lưu ý: nhiều API Key tạo trong CÙNG một Google Cloud Project sẽ dùng chung quota với nhau, và hãy luôn tuân thủ Điều khoản sử dụng (Terms of Service) của từng nhà cung cấp.", en: "You can create multiple API Keys across DIFFERENT accounts or Google Cloud Projects that you personally own (e.g., 2 Groq keys + 2 OpenRouter keys + multiple Gemini keys in separate projects) and paste them into each provider tab in API Settings for automatic rotation. Note: keys in the SAME Google Cloud Project share quota; always follow each provider's Terms of Service.", ja: "ご自身が所有する異なるアカウントや Google Cloud プロジェクトから複数の API Key を作成し（例: Groq 2個 + OpenRouter 2個 + 別プロジェクトの Gemini Key 複数）、API 設定の各プロバイダータブに貼り付けることで自動ローテーションが可能です。同一プロジェクト内の Key は枠を共有するためご注意ください。各社の利用規約を遵守してください。" },
+  "Khuyên dùng • Miễn phí • Vision": { vi: "Khuyên dùng • Miễn phí • Vision", en: "Recommended • Free • Vision", ja: "おすすめ • 無料 • Vision" },
+  "Đa Model :free & Paid": { vi: "Đa Model :free & Paid", en: "Multi-Model :free & Paid", ja: "マルチモデル :free & 有料" },
+  "Miễn phí • Tiếng Việt & PDF/Ảnh tốt": { vi: "Miễn phí • Tiếng Việt & PDF/Ảnh tốt", en: "Free • Best for Vietnamese & PDF/Images", ja: "無料 • 多言語・PDF/画像に強い" },
+  "Trả phí • Cần nạp tối thiểu": { vi: "Trả phí • Cần nạp tối thiểu", en: "Paid • Minimum Credit Required", ja: "有料 • 最低チャージ必要" },
+  "Trả phí giá rẻ • Mạnh Toán & Suy luận": { vi: "Trả phí giá rẻ • Mạnh Toán & Suy luận", en: "Low-Cost Paid • Strong Math & Reasoning", ja: "低コスト有料 • 数学・推論に特化" },
+  "Miễn phí, tốc độ LPU cực nhanh, hỗ trợ đọc ảnh đề thi (Vision), không cần thẻ Visa.": { vi: "Miễn phí, tốc độ LPU cực nhanh, hỗ trợ đọc ảnh đề thi (Vision), không cần thẻ Visa.", en: "Free tier with ultra-fast LPU inference and Vision image OCR support, no credit card required.", ja: "無料枠あり、超高速 LPU 推論と画像読み取り (Vision) に対応、クレジットカード不要。" },
+  "1 API Key dùng chung cho hàng chục model miễn phí (:free) lẫn trả phí (Gemini, Qwen VL, DeepSeek, GPT).": { vi: "1 API Key dùng chung cho hàng chục model miễn phí (:free) lẫn trả phí (Gemini, Qwen VL, DeepSeek, GPT).", en: "Single API Key for dozens of free (:free) and paid models (Gemini, Qwen VL, DeepSeek, GPT).", ja: "1つの API Key で数十種類の無料 (:free) および有料モデル (Gemini, Qwen VL, DeepSeek, GPT) を利用可能。" },
+  "Có gói miễn phí theo ngày, đọc PDF scan / công thức Toán-Lý-Hóa và xử lý tiếng Việt rất tốt.": { vi: "Có gói miễn phí theo ngày, đọc PDF scan / công thức Toán-Lý-Hóa và xử lý tiếng Việt rất tốt.", en: "Daily free tier with strong native PDF OCR, math/science formulas, and multilingual accuracy.", ja: "日次無料枠があり、スキャン PDF や理系数式・多言語処理に優れています。" },
+  "Dịch vụ trả phí theo token (cần nạp tối thiểu vào Billing), chất lượng Vision & GPT-4o ổn định cao.": { vi: "Dịch vụ trả phí theo token (cần nạp tối thiểu vào Billing), chất lượng Vision & GPT-4o ổn định cao.", en: "Pay-as-you-go token pricing (minimum Billing top-up required) with high Vision & GPT-4o accuracy.", ja: "従量課金制（Billing への事前チャージが必要）で、Vision と GPT-4o の安定性が高いです。" },
+  "Chi phí cực rẻ, đặc biệt mạnh khi giải bài tập Toán/Lý/Hóa và suy luận logic bằng văn bản (không hỗ trợ Vision ảnh).": { vi: "Chi phí cực rẻ, đặc biệt mạnh khi giải bài tập Toán/Lý/Hóa và suy luận logic bằng văn bản (không hỗ trợ Vision ảnh).", en: "Very low cost, excelling at math/science problem solving and text reasoning (text only, no Vision).", ja: "非常に低コストで、数学・理科の解答やテキスト推論に強みがあります（画像 Vision 非対応）。" },
+  "🔑 API Key Hệ thống": { vi: "🔑 API Key Hệ thống", en: "🔑 System API Keys", ja: "🔑 システム API Key" },
+  "API AI": { vi: "API AI", en: "AI API", ja: "AI API" },
+  "🌐 System Default Pool (Miễn phí)": { vi: "🌐 System Default Pool (Miễn phí)", en: "🌐 System Default Pool (Free)", ja: "🌐 システム共有プール (無料)" },
+  "🔑 Quản lý API Key Hệ thống (System Key Pool — Zero Client Exposure)": { vi: "🔑 Quản lý API Key Hệ thống (System Key Pool — Zero Client Exposure)", en: "🔑 System API Key Pool Management (Zero Client Exposure)", ja: "🔑 システム API Key プール管理 (クライアント非公開設計)" },
+  "Bảo mật mã hóa:": { vi: "Bảo mật mã hóa:", en: "Encryption Security:", ja: "暗号化セキュリティ:" },
+  "✅ AES-256-GCM Đã bật (ENCRYPTION_SECRET)": { vi: "✅ AES-256-GCM Đã bật (ENCRYPTION_SECRET)", en: "✅ AES-256-GCM Enabled (ENCRYPTION_SECRET)", ja: "✅ AES-256-GCM 有効 (ENCRYPTION_SECRET)" },
+  "⚠️ Chưa cấu hình ENCRYPTION_SECRET trên server": { vi: "⚠️ Chưa cấu hình ENCRYPTION_SECRET trên server", en: "⚠️ ENCRYPTION_SECRET not configured on server", ja: "⚠️ サーバーに ENCRYPTION_SECRET が未設定です" },
+  "Lưu trữ:": { vi: "Lưu trữ:", en: "Storage:", ja: "ストレージ:" },
+  "1. Nhập hàng loạt theo nhóm tài khoản (2-Step Smart Importer)": { vi: "1. Nhập hàng loạt theo nhóm tài khoản (2-Step Smart Importer)", en: "1. Bulk Account-Grouped Import (2-Step Smart Importer)", ja: "1. アカウント別一括インポート (2段階スマート取込)" },
+  "🔍 Phân tích & Xem trước (Preview)": { vi: "🔍 Phân tích & Xem trước (Preview)", en: "🔍 Parse & Preview", ja: "🔍 解析・プレビュー" },
+  "Xóa ô dán": { vi: "Xóa ô dán", en: "Clear Input", ja: "入力をクリア" },
+  "🔄 Tải lại": { vi: "🔄 Tải lại", en: "🔄 Refresh", ja: "🔄 再読み込み" },
+  "Hãng": { vi: "Hãng", en: "Provider", ja: "プロバイダー" },
+  "Key (Ẩn)": { vi: "Key (Ẩn)", en: "Masked Key", ja: "マスク済み Key" },
+  "API Key (Ẩn)": { vi: "API Key (Ẩn)", en: "Masked API Key", ja: "マスク済み API Key" },
+  "Thống kê": { vi: "Thống kê", en: "Stats", ja: "統計" },
+  "Tạm tắt": { vi: "Tạm tắt", en: "Disable", ja: "無効化" },
+  "Bật lại": { vi: "Bật lại", en: "Enable", ja: "有効化" },
+  "Quản lý qua ENV": { vi: "Quản lý qua ENV", en: "Managed via ENV", ja: "ENV で管理" },
+  "Chưa có System Key nào trong Pool.": { vi: "Chưa có System Key nào trong Pool.", en: "No System Keys in pool yet.", ja: "プールにシステム Key がまだ登録されていません。" },
+  "3. Nhật ký Quản trị (Audit Log)": { vi: "3. Nhật ký Quản trị (Audit Log)", en: "3. Admin Audit Log", ja: "3. 管理者操作ログ (Audit Log)" },
+  "Chưa có nhật ký thao tác nào.": { vi: "Chưa có nhật ký thao tác nào.", en: "No audit logs recorded yet.", ja: "操作ログはまだありません。" }
 };
 
 const I18N_PATTERNS = [
@@ -5302,7 +5744,7 @@ window.UET = {
   isAdmin: isAdmin, isAdminUser: isAdminUser, currentTier: currentTier, tierRank: tierRank, effectiveLimits: effectiveLimits,
   can: can, requireFeature: requireFeature, promptUpgrade: promptUpgrade,
   getAssignedApiForUser: getActiveUserAssignedApi, getAssignedApiForEmail: getAssignedApiForEmail,
-  getLang: getLang, setLang: setLang, applyI18n: applyI18n, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString,
+  getLang: getLang, setLang: setLang, applyI18n: applyI18n, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString,
   getDecks: function () { return state.decks; }, getUserDecks: getUserDecks, getDeck: getDeck,
   normalizeQuestion: normalizeQuestion, parseWorkbookRows: parseWorkbookRows, addOrMergeDeck: addOrMergeDeck,
   downloadTemplate: downloadTemplate, showTab: showTab, navigateTo: navigateTo, syncHistory: syncHistory, renderTab: renderTab, updateChrome: updateChrome,

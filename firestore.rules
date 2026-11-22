@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // CRITICAL SECURITY LOCKDOWN:
+    // System Default AI Key Pool, Env Key State, Audit Logs, and Rate Limits
+    // are strictly server-only (accessed exclusively via Firebase Admin SDK).
+    match /system_ai_keys/{keyId} {
+      allow read, write: if false;
+    }
+    match /system_ai_env_state/{docId} {
+      allow read, write: if false;
+    }
+    match /system_ai_audit_logs/{logId} {
+      allow read, write: if false;
+    }
+    match /ai_proxy_rate_limits/{bucketId} {
+      allow read, write: if false;
+    }
+
+    // Default deny for any unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

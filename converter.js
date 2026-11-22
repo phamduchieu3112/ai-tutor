@@ -42,61 +42,42 @@
     apiStatus: "none",      // none | saved | ok | error
     apiStatusMsg: "Ch\u01b0a c\u1ea5u h\u00ecnh",
     mounted: false,
-    apiMounted: false
+    apiMounted: false,
+    disclaimerDismissed: false,
+    activeProvTab: "",
+    testResults: null,
+    fallbackToastShownFor: ""
   };
 
   const API_POOL_KEY = "uet_master_api_pool";
+  const PERSONAL_KEYS_V2 = "uet_master_personal_keys_v2";
+  const LEGACY_USER_APIS_KEY = "uet_master_user_apis";
+  const SYSTEM_PROXY_SENTINEL = "__SYSTEM_PROXY__";
+  const PERSONAL_POOL_SENTINEL = "__PERSONAL_POOL__";
+  const PROVIDER_ORDER = ["groq", "openrouter", "gemini", "openai", "deepseek"];
 
-  const PROVIDER_INFO = {
-    gemini: {
-      name: "Google Gemini",
-      endpoint: "https://generativelanguage.googleapis.com/v1beta/models/",
-      models: [
-        { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash (Nhanh)", vision: true, pdf: true },
-        { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite (Si\u00eau nhanh / Quota l\u1edbn)", vision: true, pdf: true },
-        { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash (\u1ed4n \u0111\u1ecbnh)", vision: true, pdf: true },
-        { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro (Ch\u00ednh x\u00e1c cao)", vision: true, pdf: true },
-        { id: "gemini-3-flash-preview", label: "Gemini 3 Flash Preview", vision: true, pdf: true }
-      ]
-    },
-    groq: {
-      name: "Groq Cloud",
-      endpoint: "https://api.groq.com/openai/v1/chat/completions",
-      models: [
-        { id: "groq:meta-llama/llama-4-scout-17b-16e-instruct", rawModel: "meta-llama/llama-4-scout-17b-16e-instruct", label: "Groq Llama 4 Scout 17B (Mi\u1ec5n ph\u00ed & Vision)", vision: true, pdf: false },
-        { id: "groq:meta-llama/llama-4-maverick-17b-128e-instruct", rawModel: "meta-llama/llama-4-maverick-17b-128e-instruct", label: "Groq Llama 4 Maverick 17B (Vision)", vision: true, pdf: false },
-        { id: "groq:llama-3.3-70b-versatile", rawModel: "llama-3.3-70b-versatile", label: "Groq Llama 3.3 70B (Si\u00eau t\u1ed1c)", vision: false, pdf: false }
-      ]
-    },
-    openai: {
-      name: "OpenAI",
-      endpoint: "https://api.openai.com/v1/chat/completions",
-      models: [
-        { id: "openai:gpt-4o-mini", rawModel: "gpt-4o-mini", label: "OpenAI GPT-4o Mini (Nhanh & Vision)", vision: true, pdf: false },
-        { id: "openai:gpt-4o", rawModel: "gpt-4o", label: "OpenAI GPT-4o (Ch\u00ednh x\u00e1c cao & Vision)", vision: true, pdf: false },
-        { id: "openai:gpt-4.1-mini", rawModel: "gpt-4.1-mini", label: "OpenAI GPT-4.1 Mini (Vision)", vision: true, pdf: false }
-      ]
-    },
-    openrouter: {
-      name: "OpenRouter",
-      endpoint: "https://openrouter.ai/api/v1/chat/completions",
-      models: [
-        { id: "openrouter:google/gemini-2.0-flash-exp:free", rawModel: "google/gemini-2.0-flash-exp:free", label: "OpenRouter: Gemini 2.0 Flash (Free & Vision)", vision: true, pdf: false },
-        { id: "openrouter:qwen/qwen2.5-vl-72b-instruct:free", rawModel: "qwen/qwen2.5-vl-72b-instruct:free", label: "OpenRouter: Qwen 2.5 VL 72B (Free & Vision)", vision: true, pdf: false },
-        { id: "openrouter:google/gemini-2.5-flash", rawModel: "google/gemini-2.5-flash", label: "OpenRouter: Gemini 2.5 Flash (Vision)", vision: true, pdf: false },
-        { id: "openrouter:deepseek/deepseek-chat-v3-0324:free", rawModel: "deepseek/deepseek-chat-v3-0324:free", label: "OpenRouter: DeepSeek V3 (Free)", vision: false, pdf: false },
-        { id: "openrouter:openai/gpt-4o-mini", rawModel: "openai/gpt-4o-mini", label: "OpenRouter: GPT-4o Mini (Vision)", vision: true, pdf: false }
-      ]
-    },
-    deepseek: {
-      name: "DeepSeek",
-      endpoint: "https://api.deepseek.com/chat/completions",
-      models: [
-        { id: "deepseek:deepseek-chat", rawModel: "deepseek-chat", label: "DeepSeek V3 Chat (Gi\u1ea3i \u0111\u1ec1 & Chu\u1ea9n h\u00f3a)", vision: false, pdf: false },
-        { id: "deepseek:deepseek-reasoner", rawModel: "deepseek-reasoner", label: "DeepSeek R1 Reasoner (To\u00e1n/L\u00fd/H\u00f3a chuy\u00ean s\u00e2u)", vision: false, pdf: false }
-      ]
-    }
+  function CFG() {
+    return (typeof window !== "undefined" && window.AI_PROVIDERS_CONFIG) ? window.AI_PROVIDERS_CONFIG : null;
+  }
+
+  const FALLBACK_PROVIDER_INFO = {
+    gemini: { name: "Google Gemini", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/", testEndpoint: "https://generativelanguage.googleapis.com/v1beta/models", prefixHint: "AIza...", keyUrl: "https://aistudio.google.com/app/apikey", models: [{ id: "gemini-2.5-flash", rawModel: "gemini-2.5-flash", label: "Gemini 2.5 Flash (Nhanh)", vision: true, pdf: true, free: true }] },
+    groq: { name: "Groq Cloud", endpoint: "https://api.groq.com/openai/v1/chat/completions", testEndpoint: "https://api.groq.com/openai/v1/models", prefixHint: "gsk_...", keyUrl: "https://console.groq.com/keys", models: [{ id: "groq:meta-llama/llama-4-scout-17b-16e-instruct", rawModel: "meta-llama/llama-4-scout-17b-16e-instruct", label: "Groq Llama 4 Scout 17B (Mi\u1ec5n ph\u00ed & Vision)", vision: true, pdf: false, free: true }] },
+    openrouter: { name: "OpenRouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", testEndpoint: "https://openrouter.ai/api/v1/models", prefixHint: "sk-or-...", keyUrl: "https://openrouter.ai/keys", models: [{ id: "openrouter:openrouter/free", rawModel: "openrouter/free", label: "OpenRouter Auto Free Router (:free & Vision)", vision: true, pdf: false, free: true }] },
+    openai: { name: "OpenAI", endpoint: "https://api.openai.com/v1/chat/completions", testEndpoint: "https://api.openai.com/v1/models", prefixHint: "sk-...", keyUrl: "https://platform.openai.com/api-keys", models: [{ id: "openai:gpt-4o-mini", rawModel: "gpt-4o-mini", label: "OpenAI GPT-4o Mini (Nhanh & Vision)", vision: true, pdf: false, free: false }] },
+    deepseek: { name: "DeepSeek", endpoint: "https://api.deepseek.com/chat/completions", testEndpoint: "https://api.deepseek.com/models", prefixHint: "sk-...", keyUrl: "https://platform.deepseek.com/api_keys", models: [{ id: "deepseek:deepseek-chat", rawModel: "deepseek-chat", label: "DeepSeek V3 Chat", vision: false, pdf: false, free: false }] }
   };
+
+  function getProviderMap() {
+    const c = CFG();
+    return (c && c.PROVIDER_MAP) ? c.PROVIDER_MAP : FALLBACK_PROVIDER_INFO;
+  }
+
+  function getProvidersList() {
+    const c = CFG();
+    if (c && Array.isArray(c.PROVIDERS)) return c.PROVIDERS;
+    return PROVIDER_ORDER.map(function (id) { return Object.assign({ id: id }, FALLBACK_PROVIDER_INFO[id]); });
+  }
 
   function detectProviderFromModel(modelId) {
     const m = String(modelId || "").trim().toLowerCase();
@@ -126,46 +107,160 @@
     return prefMatch ? prefMatch[1].trim() : s;
   }
 
-  function U() { return window.UET; }
-  function getAssignedApi() {
-    return (U() && typeof U().getAssignedApiForUser === "function") ? U().getAssignedApiForUser() : null;
-  }
-  function getPersonalApiKey() {
-    try { return (localStorage.getItem(U().KEYS.apiKey) || "").trim(); } catch (e) { return ""; }
-  }
-  function getPersonalApiPool() {
-    try { return (localStorage.getItem(API_POOL_KEY) || "").trim(); } catch (e) { return ""; }
-  }
-  function setPersonalApiPool(v) {
-    try {
-      if (v && v.trim()) localStorage.setItem(API_POOL_KEY, v.trim());
-      else localStorage.removeItem(API_POOL_KEY);
-    } catch (e) { /* */ }
-    U().updateChrome();
-  }
-  function getApiKey() {
-    const personal = getPersonalApiKey();
-    if (personal) return personal;
-    const pool = getPersonalApiPool();
-    if (pool) {
-      const first = pool.split(/[\r\n,;]+/).map(function (x) { return x.trim(); }).filter(Boolean)[0];
-      if (first) return first;
+  function validateProviderKeyFormat(provider, rawKey) {
+    const c = CFG();
+    if (c && typeof c.validateKeyFormat === "function") {
+      return c.validateKeyFormat(provider, rawKey);
     }
-    const assigned = getAssignedApi();
-    return (assigned && assigned.apiKey) ? String(assigned.apiKey).trim() : "";
+    const k = String(rawKey || "").trim();
+    if (!k || /\s/.test(k) || k.length < 16) return { valid: false, reason: "Kh\u00f4ng h\u1ee3p l\u1ec7" };
+    return { valid: true, reason: "H\u1ee3p l\u1ec7" };
   }
-  function setApiKey(v) {
-    try { if (v) localStorage.setItem(U().KEYS.apiKey, v.trim()); else localStorage.removeItem(U().KEYS.apiKey); } catch (e) { /* */ }
-    U().updateChrome();
+
+  function maskKeyPreview(k) {
+    const s = String(k || "").trim();
+    if (!s) return "";
+    if (s.length <= 10) return s.slice(0, 2) + "\u2022\u2022\u2022\u2022" + s.slice(-2);
+    return s.slice(0, 6) + "\u2022\u2022\u2022\u2022\u2022\u2022" + s.slice(-4);
   }
+
+  function U() { return window.UET; }
+
+  function getUserIdToken() {
+    try {
+      const u = U() && U().state && U().state.user;
+      return (u && u.credential) ? String(u.credential).trim() : "";
+    } catch (e) { return ""; }
+  }
+
+  function emptyPersonalStore() {
+    return {
+      activeProvider: "groq",
+      keysByProvider: { groq: [], openrouter: [], gemini: [], openai: [], deepseek: [] }
+    };
+  }
+
+  function parseTextListToKeys(rawText) {
+    const out = [];
+    const seen = {};
+    String(rawText || "").split(/[\r\n,;]+/).forEach(function (part) {
+      const cleaned = cleanRawKeyValue(part);
+      if (!cleaned || cleaned.startsWith("#")) return;
+      if (seen[cleaned]) return;
+      seen[cleaned] = true;
+      out.push(cleaned);
+    });
+    return out;
+  }
+
+  function savePersonalKeyStore(store) {
+    const clean = emptyPersonalStore();
+    clean.activeProvider = PROVIDER_ORDER.indexOf(store && store.activeProvider) !== -1 ? store.activeProvider : "groq";
+    PROVIDER_ORDER.forEach(function (p) {
+      const arr = (store && store.keysByProvider && Array.isArray(store.keysByProvider[p])) ? store.keysByProvider[p] : [];
+      const seen = {};
+      arr.forEach(function (k) {
+        const v = cleanRawKeyValue(k);
+        if (v && !seen[v]) {
+          seen[v] = true;
+          clean.keysByProvider[p].push(v);
+        }
+      });
+    });
+    try {
+      const hasAny = PROVIDER_ORDER.some(function (p) { return clean.keysByProvider[p].length > 0; });
+      if (hasAny || clean.activeProvider !== "groq") {
+        localStorage.setItem(PERSONAL_KEYS_V2, JSON.stringify(clean));
+      } else {
+        localStorage.removeItem(PERSONAL_KEYS_V2);
+      }
+      localStorage.removeItem(API_POOL_KEY);
+      if (U() && U().KEYS && U().KEYS.apiKey) localStorage.removeItem(U().KEYS.apiKey);
+      localStorage.removeItem(LEGACY_USER_APIS_KEY);
+    } catch (e) { /* */ }
+    if (U() && typeof U().updateChrome === "function") U().updateChrome();
+    return clean;
+  }
+
+  function loadPersonalKeyStore() {
+    // Scrub any legacy raw admin-assigned key cache on client (zero client exposure)
+    try { localStorage.removeItem(LEGACY_USER_APIS_KEY); } catch (e) { /* */ }
+    try {
+      const raw = localStorage.getItem(PERSONAL_KEYS_V2);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.keysByProvider) {
+          const out = emptyPersonalStore();
+          out.activeProvider = PROVIDER_ORDER.indexOf(parsed.activeProvider) !== -1 ? parsed.activeProvider : "groq";
+          PROVIDER_ORDER.forEach(function (p) {
+            if (Array.isArray(parsed.keysByProvider[p])) {
+              out.keysByProvider[p] = parsed.keysByProvider[p].map(cleanRawKeyValue).filter(Boolean);
+            }
+          });
+          return out;
+        }
+      }
+    } catch (e) { /* */ }
+
+    // One-time migration from legacy browser-local single key & multi-key pool
+    const migrated = emptyPersonalStore();
+    let foundLegacy = false;
+    try {
+      const legacyPrimary = (U() && U().KEYS && U().KEYS.apiKey) ? (localStorage.getItem(U().KEYS.apiKey) || "").trim() : "";
+      const legacyPool = (localStorage.getItem(API_POOL_KEY) || "").trim();
+      const defProv = detectProviderFromModel(getApiModel());
+      const pushTok = function (tok) {
+        const p = detectProviderFromKey(tok, defProv);
+        const k = cleanRawKeyValue(tok);
+        if (!k || PROVIDER_ORDER.indexOf(p) === -1) return;
+        if (migrated.keysByProvider[p].indexOf(k) === -1) {
+          migrated.keysByProvider[p].push(k);
+          migrated.activeProvider = p;
+          foundLegacy = true;
+        }
+      };
+      if (legacyPrimary) legacyPrimary.split(/[\r\n,;]+/).forEach(pushTok);
+      if (legacyPool) legacyPool.split(/[\r\n,;]+/).forEach(pushTok);
+      if (foundLegacy) savePersonalKeyStore(migrated);
+    } catch (e) { /* */ }
+    return migrated;
+  }
+
+  function hasPersonalKeys() {
+    const store = loadPersonalKeyStore();
+    return PROVIDER_ORDER.some(function (p) { return store.keysByProvider[p].length > 0; });
+  }
+
+  function countPersonalKeys() {
+    const store = loadPersonalKeyStore();
+    let total = 0;
+    PROVIDER_ORDER.forEach(function (p) { total += store.keysByProvider[p].length; });
+    return total;
+  }
+
+  function getPersonalApiKey() {
+    const store = loadPersonalKeyStore();
+    for (let i = 0; i < PROVIDER_ORDER.length; i++) {
+      const p = PROVIDER_ORDER[i];
+      if (store.keysByProvider[p].length > 0) return store.keysByProvider[p][0];
+    }
+    return "";
+  }
+
+  function getApiKey() {
+    if (hasPersonalKeys()) return PERSONAL_POOL_SENTINEL;
+    if (getUserIdToken()) return SYSTEM_PROXY_SENTINEL;
+    return "";
+  }
+
   function getApiModel() {
     try {
       const saved = localStorage.getItem(U().KEYS.apiModel);
       if (saved) return saved;
     } catch (e) { /* */ }
-    const assigned = getAssignedApi();
-    return (assigned && assigned.model) ? assigned.model : "gemini-2.5-flash";
+    return "gemini-2.5-flash";
   }
+
   function setApiModel(m) {
     cState.activeFallbackModel = "";
     try { localStorage.setItem(U().KEYS.apiModel, m); } catch (e) { /* */ }
@@ -173,32 +268,29 @@
 
   function parseKeyPoolItems(primaryKeyHint, preferredModelHint) {
     const defProvider = detectProviderFromModel(preferredModelHint || getApiModel());
-    const rawTokens = [];
-    const pushRaw = function (block) {
-      if (!block) return;
-      String(block).split(/[\r\n,;]+/).forEach(function (line) {
-        const t = line.trim();
-        if (t && !t.startsWith("#")) rawTokens.push(t);
-      });
-    };
-    pushRaw(primaryKeyHint);
-    pushRaw(getPersonalApiKey());
-    pushRaw(getPersonalApiPool());
-    const assigned = getAssignedApi();
-    if (assigned) {
-      pushRaw(assigned.apiKey);
-      pushRaw(assigned.apiPool);
-    }
-    const seen = {};
+    const store = loadPersonalKeyStore();
     const out = [];
-    rawTokens.forEach(function (tok) {
-      const provider = detectProviderFromKey(tok, defProvider);
-      const key = cleanRawKeyValue(tok);
-      if (!key) return;
-      const sig = provider + ":" + key;
+    const seen = {};
+
+    const addItem = function (prov, key) {
+      const p = PROVIDER_ORDER.indexOf(prov) !== -1 ? prov : defProvider;
+      const k = cleanRawKeyValue(key);
+      if (!k || k === SYSTEM_PROXY_SENTINEL || k === PERSONAL_POOL_SENTINEL) return;
+      const sig = p + ":" + k;
       if (seen[sig]) return;
       seen[sig] = true;
-      out.push({ provider: provider, apiKey: key });
+      out.push({ provider: p, apiKey: k });
+    };
+
+    if (primaryKeyHint && primaryKeyHint !== SYSTEM_PROXY_SENTINEL && primaryKeyHint !== PERSONAL_POOL_SENTINEL) {
+      String(primaryKeyHint).split(/[\r\n,;]+/).forEach(function (tok) {
+        const t = tok.trim();
+        if (t && !t.startsWith("#")) addItem(detectProviderFromKey(t, defProvider), t);
+      });
+    }
+
+    PROVIDER_ORDER.forEach(function (p) {
+      (store.keysByProvider[p] || []).forEach(function (k) { addItem(p, k); });
     });
     return out;
   }
@@ -209,9 +301,9 @@
   }
 
   function requireApiKey() {
-    const k = getApiKey();
-    if (k) return k;
-    U().showToast("Ch\u01b0a c\u00f3 Gemini API Key! H\u00e3y c\u00e0i \u0111\u1eb7t API Key tr\u01b0\u1edbc khi ch\u1ea1y AI.", "warning", {
+    if (hasPersonalKeys()) return PERSONAL_POOL_SENTINEL;
+    if (getUserIdToken()) return SYSTEM_PROXY_SENTINEL;
+    U().showToast("Vui l\u00f2ng \u0111\u0103ng nh\u1eadp Google (\u0111\u1ec3 d\u00f9ng System AI mi\u1ec5n ph\u00ed) ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n t\u1ea1i C\u00e0i \u0111\u1eb7t API.", "warning", {
       label: "\u0110i t\u1edbi C\u00e0i \u0111\u1eb7t API",
       onClick: function () { U().showTab("api"); }
     });
@@ -219,108 +311,159 @@
   }
 
   /* ======================== API & LANGUAGE SETTINGS PAGE ======================== */
+  function buildValidationChipsHtml(provider, rawText) {
+    const keys = parseTextListToKeys(rawText);
+    if (keys.length === 0) {
+      return '<span class="muted" style="font-size:.76rem">Ch\u01b0a nh\u1eadp Key n\u00e0o cho h\u00e3ng n\u00e0y.</span>';
+    }
+    return keys.map(function (k, idx) {
+      const check = validateProviderKeyFormat(provider, k);
+      const cls = check.valid ? "key-val-chip ok" : "key-val-chip bad";
+      const icon = check.valid ? "✅" : "⚠️";
+      return '<span class="' + cls + '" title="' + U().esc(check.reason) + '">' +
+        icon + ' #' + (idx + 1) + ' <code>' + U().esc(maskKeyPreview(k)) + '</code> — ' + U().esc(check.reason) +
+      '</span>';
+    }).join("");
+  }
+
+  function syncActiveTextareaToStore(store) {
+    const ta = U().$("uetProvKeyTextarea");
+    const prov = cState.activeProvTab || store.activeProvider || "groq";
+    if (ta) {
+      store.keysByProvider[prov] = parseTextListToKeys(ta.value);
+    }
+    return store;
+  }
+
   function renderApiPage() {
     const root = U().$("apiSettingsRoot");
     if (!root) return;
-    const personalKey = getPersonalApiKey();
-    const personalPool = getPersonalApiPool();
-    const assigned = getAssignedApi();
-    const key = getApiKey();
+    const store = loadPersonalKeyStore();
     const model = getApiModel();
-    const poolItems = parseKeyPoolItems("", model);
+    const providersList = getProvidersList();
+    const providerMap = getProviderMap();
+    if (!cState.activeProvTab || !providerMap[cState.activeProvTab]) {
+      const modelProv = detectProviderFromModel(model);
+      cState.activeProvTab = store.activeProvider || (providerMap[modelProv] ? modelProv : "groq");
+    }
+    const activeProv = cState.activeProvTab;
+    const activeProvObj = providersList.find(function (p) { return p.id === activeProv; }) || providersList[0];
+    const personalCount = countPersonalKeys();
+    const hasPersonal = personalCount > 0;
+    const isSignedIn = !!getUserIdToken();
     const curLang = (U() && typeof U().getLang === "function") ? U().getLang() : "vi";
-    if (!personalKey && !personalPool && assigned && assigned.apiKey) {
-      cState.apiStatus = "ok";
-      cState.apiStatusMsg = "✅ \u0110\u00e3 g\u00e1n b\u1edfi Admin";
-    } else if (key && cState.apiStatus === "none") {
+
+    if (hasPersonal) {
+      if (cState.apiStatus !== "ok" && cState.apiStatus !== "error") {
+        cState.apiStatus = "ok";
+        cState.apiStatusMsg = "🔑 \u0110ang d\u00f9ng " + personalCount + " Key c\u00e1 nh\u00e2n";
+      }
+    } else if (isSignedIn) {
       cState.apiStatus = "saved";
-      cState.apiStatusMsg = "\u0110\u00e3 l\u01b0u Key";
-    } else if (!key) {
+      cState.apiStatusMsg = "🌐 System Pool (M\u1eb7c \u0111\u1ecbnh)";
+    } else {
       cState.apiStatus = "none";
       cState.apiStatusMsg = "Ch\u01b0a c\u1ea5u h\u00ecnh";
     }
-    const badgeCls = cState.apiStatus === "ok" ? "badge-ok" : (cState.apiStatus === "error" ? "badge-bad" : (cState.apiStatus === "saved" ? "" : "badge-warn"));
-    const isPro = model.indexOf("pro") !== -1 || model.indexOf("gpt-4o") !== -1 || model.indexOf("reasoner") !== -1;
-    const userEmail = (U().state && U().state.user && U().state.user.email) ? U().state.user.email : "";
 
-    const providerCounts = {};
-    poolItems.forEach(function (it) {
-      const pName = PROVIDER_INFO[it.provider] ? PROVIDER_INFO[it.provider].name : it.provider;
-      providerCounts[pName] = (providerCounts[pName] || 0) + 1;
-    });
-    const poolSummary = Object.keys(providerCounts).map(function (p) { return p + " (" + providerCounts[p] + ")"; }).join(" • ");
+    const badgeCls = cState.apiStatus === "ok" ? "badge-ok" : (cState.apiStatus === "error" ? "badge-bad" : (cState.apiStatus === "saved" ? "" : "badge-warn"));
+    const activeKeys = store.keysByProvider[activeProv] || [];
+    const activeTextareaVal = activeKeys.join("\n");
+
+    const modelOptsHtml = providersList.map(function (p) {
+      const opts = (p.models || []).map(function (m) {
+        const caps = [];
+        if (m.free) caps.push("Free");
+        if (m.vision) caps.push("Vision");
+        if (m.pdf) caps.push("PDF");
+        const suffix = caps.length ? " [" + caps.join(" • ") + "]" : "";
+        return '<option value="' + U().esc(m.id) + '"' + (model === m.id ? " selected" : "") + '>' + U().esc(m.label + suffix) + '</option>';
+      }).join("");
+      return '<optgroup label="' + U().esc(p.name + " (" + (p.prefixHint || "") + ")") + '">' + opts + '</optgroup>';
+    }).join("");
+
+    const provTabsHtml = providersList.map(function (p) {
+      const cnt = (store.keysByProvider[p.id] || []).length;
+      const isAct = p.id === activeProv;
+      return '<button type="button" class="provider-tab-btn' + (isAct ? " active" : "") + '" data-prov-tab="' + U().esc(p.id) + '">' +
+        '<span>' + U().esc(p.name) + '</span>' +
+        (p.recommended ? '<span>★</span>' : '') +
+        (cnt > 0 ? '<span class="provider-tab-count">' + cnt + '</span>' : '') +
+      '</button>';
+    }).join("");
+
+    const summaryChips = providersList.filter(function (p) { return (store.keysByProvider[p.id] || []).length > 0; }).map(function (p) {
+      return p.name + " (" + store.keysByProvider[p.id].length + ")";
+    }).join(" • ");
+
+    let testResultsHtml = "";
+    if (Array.isArray(cState.testResults) && cState.testResults.length > 0) {
+      testResultsHtml = '<div class="test-results-box" id="uetTestResultsBox">' +
+        '<strong>K\u1ebft qu\u1ea3 ki\u1ec3m tra t\u1eebng Key:</strong>' +
+        '<ul>' + cState.testResults.map(function (r) {
+          return '<li class="' + U().esc(r.status) + '"><code>' + U().esc(r.provider) + '</code> • <code>' + U().esc(r.masked) + '</code>: ' + U().esc(r.message) + '</li>';
+        }).join("") + '</ul></div>';
+    }
 
     root.innerHTML =
       '<div class="api-wrap">' +
         '<section class="panel">' +
-          '<div class="panel-head"><div><h2>C\u00e0i \u0111\u1eb7t Google Gemini API</h2><p class="muted" style="margin:0;font-size:.84rem">H\u1ed7 tr\u1ee3 \u0111a n\u1ec1n t\u1ea3ng AI (Google Gemini, OpenAI, Groq Cloud, OpenRouter, DeepSeek), h\u1ed9p ch\u1ee9a nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng t\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng khi h\u1ebft Quota 429 v\u00e0 API do Qu\u1ea3n tr\u1ecb vi\u00ean g\u00e1n theo Email.</p></div>' +
-          '<span class="badge ' + badgeCls + '" id="apiPageBadge">' + U().esc(cState.apiStatusMsg) + '</span></div>' +
-
-          (assigned && assigned.apiKey
-            ? '<div class="checkout-notice" style="margin-bottom:14px;border-color:var(--emerald);background:var(--emerald-soft)">' +
-                '🔑 <strong>\u0110\u00e3 \u0111\u01b0\u1ee3c Qu\u1ea3n tr\u1ecb vi\u00ean g\u00e1n h\u1ed9 Gemini API:</strong> T\u00e0i kho\u1ea3n <strong>' + U().esc(userEmail || assigned.email) + '</strong> \u0111\u00e3 \u0111\u01b0\u1ee3c g\u00e1n s\u1eb5n API Key (Model m\u1eb7c \u0111\u1ecbnh: <code>' + U().esc(assigned.model || "gemini-2.5-flash") + '</code>). B\u1ea1n c\u00f3 th\u1ec3 d\u00f9ng ngay <strong>AI Converter</strong> m\u00e0 kh\u00f4ng c\u1ea7n t\u1ef1 nh\u1eadp Key c\u00e1 nh\u00e2n.' +
-              '</div>'
-            : '') +
-
-          '<label class="field">Ch\u1ecdn N\u1ec1n t\u1ea3ng &amp; Model AI ch\u1ee7 \u0111\u1ea1o' +
-            '<select id="uetApiModelSelect">' +
-              '<optgroup label="Google Gemini (AIza...)">' +
-                '<option value="gemini-2.5-flash"' + (model === "gemini-2.5-flash" ? " selected" : "") + '>Gemini 2.5 Flash – Ch\u1ebf \u0111\u1ed9 Nhanh / Ti\u1ebft ki\u1ec7m (API Free)</option>' +
-                '<option value="gemini-2.5-flash-lite"' + (model === "gemini-2.5-flash-lite" ? " selected" : "") + '>Gemini 2.5 Flash-Lite (Si\u00eau nhanh / Quota l\u1edbn)</option>' +
-                '<option value="gemini-2.0-flash"' + (model === "gemini-2.0-flash" ? " selected" : "") + '>Gemini 2.0 Flash (\u1ed4n \u0111\u1ecbnh)</option>' +
-                '<option value="gemini-2.5-pro"' + (model === "gemini-2.5-pro" ? " selected" : "") + '>Gemini 2.5 Pro – Ch\u1ebf \u0111\u1ed9 Ch\u00ednh x\u00e1c cao (Khuy\u00ean d\u00f9ng cho Google AI Pro / Ultra / Paid)</option>' +
-                '<option value="gemini-3-flash-preview"' + (model === "gemini-3-flash-preview" ? " selected" : "") + '>Gemini 3 Flash Preview – T\u1ed1c \u0111\u1ed9 cao (API Free / Preview)</option>' +
-              '</optgroup>' +
-              '<optgroup label="Groq Cloud – Mi\u1ec5n ph\u00ed &amp; Si\u00eau t\u1ed1c (gsk_...)">' +
-                '<option value="groq:meta-llama/llama-4-scout-17b-16e-instruct"' + (model === "groq:meta-llama/llama-4-scout-17b-16e-instruct" ? " selected" : "") + '>Groq Llama 4 Scout 17B (Mi\u1ec5n ph\u00ed &amp; Vision)</option>' +
-                '<option value="groq:meta-llama/llama-4-maverick-17b-128e-instruct"' + (model === "groq:meta-llama/llama-4-maverick-17b-128e-instruct" ? " selected" : "") + '>Groq Llama 4 Maverick 17B (Vision)</option>' +
-                '<option value="groq:llama-3.3-70b-versatile"' + (model === "groq:llama-3.3-70b-versatile" ? " selected" : "") + '>Groq Llama 3.3 70B (Si\u00eau t\u1ed1c)</option>' +
-              '</optgroup>' +
-              '<optgroup label="OpenAI ChatGPT API (sk-...)">' +
-                '<option value="openai:gpt-4o-mini"' + (model === "openai:gpt-4o-mini" ? " selected" : "") + '>OpenAI GPT-4o Mini (Nhanh &amp; Vision)</option>' +
-                '<option value="openai:gpt-4o"' + (model === "openai:gpt-4o" ? " selected" : "") + '>OpenAI GPT-4o (Ch\u00ednh x\u00e1c cao &amp; Vision)</option>' +
-                '<option value="openai:gpt-4.1-mini"' + (model === "openai:gpt-4.1-mini" ? " selected" : "") + '>OpenAI GPT-4.1 Mini (Vision)</option>' +
-              '</optgroup>' +
-              '<optgroup label="OpenRouter – \u0110a Model Free &amp; Pro (sk-or-...)">' +
-                '<option value="openrouter:google/gemini-2.0-flash-exp:free"' + (model === "openrouter:google/gemini-2.0-flash-exp:free" ? " selected" : "") + '>OpenRouter: Gemini 2.0 Flash (Free &amp; Vision)</option>' +
-                '<option value="openrouter:qwen/qwen2.5-vl-72b-instruct:free"' + (model === "openrouter:qwen/qwen2.5-vl-72b-instruct:free" ? " selected" : "") + '>OpenRouter: Qwen 2.5 VL 72B (Free &amp; Vision)</option>' +
-                '<option value="openrouter:google/gemini-2.5-flash"' + (model === "openrouter:google/gemini-2.5-flash" ? " selected" : "") + '>OpenRouter: Gemini 2.5 Flash (Vision)</option>' +
-                '<option value="openrouter:deepseek/deepseek-chat-v3-0324:free"' + (model === "openrouter:deepseek/deepseek-chat-v3-0324:free" ? " selected" : "") + '>OpenRouter: DeepSeek V3 (Free)</option>' +
-                '<option value="openrouter:openai/gpt-4o-mini"' + (model === "openrouter:openai/gpt-4o-mini" ? " selected" : "") + '>OpenRouter: GPT-4o Mini (Vision)</option>' +
-              '</optgroup>' +
-              '<optgroup label="DeepSeek API (deepseek:sk-...)">' +
-                '<option value="deepseek:deepseek-chat"' + (model === "deepseek:deepseek-chat" ? " selected" : "") + '>DeepSeek V3 Chat (Gi\u1ea3i \u0111\u1ec1 &amp; Chu\u1ea9n h\u00f3a)</option>' +
-                '<option value="deepseek:deepseek-reasoner"' + (model === "deepseek:deepseek-reasoner" ? " selected" : "") + '>DeepSeek R1 Reasoner (To\u00e1n/L\u00fd/H\u00f3a chuy\u00ean s\u00e2u)</option>' +
-              '</optgroup>' +
-            '</select>' +
-          '</label>' +
-
-          '<label class="field">API Key ch\u00ednh (Gemini AIza..., Groq gsk_..., OpenRouter sk-or-..., OpenAI/DeepSeek sk-...)' +
-            '<div class="key-input-wrap">' +
-              '<input type="password" id="uetApiKeyInput" autocomplete="off" spellcheck="false" value="' + U().esc(personalKey) + '" placeholder="' + (assigned && assigned.apiKey ? "\u0110ang d\u00f9ng API Key do Qu\u1ea3n tr\u1ecb vi\u00ean g\u00e1n cho " + U().esc(userEmail) + " (ho\u1eb7c d\u00e1n Key ri\u00eang \u0111\u1ec3 ghi \u0111\u00e8)" : "D\u00e1n chu\u1ed7i kh\u00f3a AIza..., gsk_..., sk-or-... ho\u1eb7c sk-...") + '">' +
-              '<button type="button" class="eye-btn" id="uetApiEyeBtn" title="Hi\u1ec7n / \u1ea8n API Key" aria-label="Hi\u1ec7n ho\u1eb7c \u1ea9n API Key">👁️</button>' +
+          '<div class="panel-head">' +
+            '<div>' +
+              '<h2>C\u00e0i \u0111\u1eb7t \u0110a N\u1ec1n t\u1ea3ng AI &amp; API Key C\u00e1 nh\u00e2n</h2>' +
+              '<p class="muted" style="margin:0;font-size:.84rem">M\u1eb7c \u0111\u1ecbnh h\u1ec7 th\u1ed1ng d\u00f9ng <strong>System Key Pool</strong> an to\u00e0n qua m\u00e1y ch\u1ee7 <code>/api/ai/proxy</code> (n\u1ebfu \u0111\u00e3 \u0111\u0103ng nh\u1eadp Google). Khi b\u1ea1n nh\u1eadp Key c\u00e1 nh\u00e2n, m\u1ecdi y\u00eau c\u1ea7u AI s\u1ebd g\u1ecdi <strong>tr\u1ef1c ti\u1ebfp</strong> b\u1eb1ng Key c\u1ee7a b\u1ea1n (kh\u00f4ng qua h\u1ea1n m\u1ee9c chung).</p>' +
             '</div>' +
-          '</label>' +
-
-          '<label class="field">📦 H\u1ed9p ch\u1ee9a nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng (Multi-Key Pool – T\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng khi h\u1ebft Quota 429)' +
-            '<textarea id="uetApiPoolInput" rows="4" spellcheck="false" placeholder="D\u00e1n nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng (m\u1ed7i d\u00f2ng 1 Key ho\u1eb7c c\u00e1ch nhau b\u1eb1ng d\u1ea5u ph\u1ea9y). H\u1ed7 tr\u1ee3 tr\u1ed9n nhi\u1ec1u h\u00e3ng c\u00f9ng l\u00fac:&#10;AIzaSy... (Google Gemini)&#10;gsk_... (Groq Cloud Free)&#10;sk-or-v1-... (OpenRouter)&#10;openai:sk-... ho\u1eb7c deepseek:sk-...">' + U().esc(personalPool) + '</textarea>' +
-          '</label>' +
-          '<p class="muted" style="font-size:.78rem;margin:0 0 12px">' +
-            (poolItems.length > 0
-              ? ('🔄 <strong>\u0110ang k\u00edch ho\u1ea1t ' + poolItems.length + ' API Key trong h\u00e0ng \u0111\u1ee3i t\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng:</strong> ' + U().esc(poolSummary) + '. Khi 1 model ho\u1eb7c 1 Key ch\u1ea1m gi\u1edbi h\u1ea1n 429, h\u1ec7 th\u1ed1ng t\u1ef1 \u0111\u1ed9ng nh\u1ea3y sang model/Key ti\u1ebfp theo.')
-              : 'H\u1ec7 th\u1ed1ng t\u1ef1 \u0111\u1ed9ng nh\u1eadn di\u1ec7n h\u00e3ng AI theo \u0111\u1ea7u m\u00e3 kh\u00f3a (<code>AIza...</code> = Gemini, <code>gsk_...</code> = Groq, <code>sk-or-...</code> = OpenRouter, <code>sk-...</code> = OpenAI, <code>deepseek:sk-...</code> = DeepSeek).') +
-          '</p>' +
-
-          '<div class="deck-actions" style="margin-bottom:16px">' +
-            '<button type="button" class="btn btn-primary" id="uetApiSaveBtn">L\u01b0u Key</button>' +
-            '<button type="button" class="btn btn-emerald" id="uetApiTestBtn">Ki\u1ec3m tra k\u1ebft n\u1ed1i (Test API)</button>' +
-            '<button type="button" class="btn btn-outline" id="uetApiDelBtn">X\u00f3a Key c\u00e1 nh\u00e2n</button>' +
+            '<span class="badge ' + badgeCls + '" id="apiPageBadge">' + U().esc(cState.apiStatusMsg) + '</span>' +
           '</div>' +
 
-          '<div class="' + (isPro ? "checkout-notice" : "pending-banner") + '" style="margin:8px 0 16px;font-weight:500;font-size:.82rem">' +
-            (isPro
-              ? "💎 <strong>Ch\u1ebf \u0111\u1ed9 Ch\u00ednh x\u00e1c cao (Gemini 2.5 Pro):</strong> T\u1ed1i \u01b0u t\u1ed1i \u0111a cho c\u00f4ng th\u1ee9c To\u00e1n/L\u00fd/H\u00f3a ph\u1ee9c t\u1ea1p v\u00e0 t\u1ef1 \u0111\u1ed9ng gi\u1ea3i \u0111\u1ec1 chu\u1ea9n x\u00e1c."
-              : "⚠️ <strong>L\u01b0u \u00fd khi d\u00f9ng API Free / Flash:</strong> T\u1ed1c \u0111\u1ed9 nhanh & mi\u1ec5n ph\u00ed, nh\u01b0ng b\u1ea1n n\u00ean m\u1edf <strong>Ch\u1ebf \u0111\u1ed9 Ki\u1ec3m duy\u1ec7t song song (Split-Screen Review)</strong> ho\u1eb7c ch\u1ea1y <strong>AI Double-Check</strong> sau khi \u0111\u1ecdc \u0111\u1ec1 \u0111\u1ec3 \u0111\u1ea3m b\u1ea3o \u0111\u00e1p \u00e1n chu\u1ea9n 100%.") +
+          (!hasPersonal
+            ? '<div class="pending-banner" style="margin-bottom:14px">' +
+                '<span>🌐 <strong>Ch\u1ebf \u0111\u1ed9 hi\u1ec7n t\u1ea1i:</strong> ' +
+                  (isSignedIn
+                    ? '\u0110ang d\u00f9ng System Default Key Pool mi\u1ec5n ph\u00ed qua <code>/api/ai/proxy</code> (gi\u1edbi h\u1ea1n c\u00f4ng b\u1eb1ng m\u1eb7c \u0111\u1ecbnh theo gi\u1edd). Khuy\u00ean d\u00f9ng l\u1ea5y Key c\u00e1 nh\u00e2n mi\u1ec5n ph\u00ed \u0111\u1ec3 t\u1ed1c \u0111\u1ed9 nhanh &amp; kh\u00f4ng ch\u1edd \u0111\u1ee3i!'
+                    : 'B\u1ea1n ch\u01b0a \u0111\u0103ng nh\u1eadp v\u00e0 ch\u01b0a c\u00f3 Key c\u00e1 nh\u00e2n. H\u00e3y \u0111\u0103ng nh\u1eadp Google ho\u1eb7c th\u00eam API Key c\u00e1 nh\u00e2n mi\u1ec5n ph\u00ed b\u00ean d\u01b0\u1edbi.') +
+                '</span>' +
+                '<button type="button" class="btn btn-outline btn-sm" id="uetApiGoGuideBtn">📖 Xem h\u01b0\u1edbng d\u1eabn l\u1ea5y Key →</button>' +
+              '</div>'
+            : '<div class="checkout-notice" style="margin-bottom:14px;border-color:var(--emerald);background:var(--emerald-soft)">' +
+                '🔑 <strong>\u0110ang k\u00edch ho\u1ea1t ' + personalCount + ' Key c\u00e1 nh\u00e2n:</strong> ' + U().esc(summaryChips) + '. Key ch\u1ec9 l\u01b0u c\u1ee5c b\u1ed9 trong tr\u00ecnh duy\u1ec7t c\u1ee7a b\u1ea1n v\u00e0 kh\u00f4ng t\u1ef1 \u0111\u1ed9ng ch\u1ea1y ng\u1ea7m v\u00e0o System Pool n\u1ebfu Key b\u1ecb l\u1ed7i/h\u1ebft h\u1ea1n m\u1ee9c.' +
+              '</div>') +
+
+          '<label class="field">Ch\u1ecdn N\u1ec1n t\u1ea3ng &amp; Model AI ch\u1ee7 \u0111\u1ea1o' +
+            '<select id="uetApiModelSelect">' + modelOptsHtml + '</select>' +
+          '</label>' +
+
+          '<div class="field" style="margin-top:12px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">' +
+              '<span>Nh\u1eadp API Key theo t\u1eebng nh\u00e0 cung c\u1ea5p (ch\u1ecdn h\u00e3ng tr\u00e1nh nh\u1ea7m ti\u1ec1n t\u1ed1 <code>sk-</code> OpenAI / DeepSeek)</span>' +
+              '<a href="' + U().esc(activeProvObj.keyUrl) + '" target="_blank" rel="noopener noreferrer" class="muted" style="font-size:.78rem">L\u1ea5y Key ' + U().esc(activeProvObj.name) + ' ↗</a>' +
+            '</div>' +
+            '<div class="provider-tabs" id="uetProviderTabs" role="tablist">' + provTabsHtml + '</div>' +
+            '<div class="prov-editor-card">' +
+              '<div class="prov-editor-head">' +
+                '<strong>' + U().esc(activeProvObj.name) + '</strong>' +
+                '<span class="pill-code">Ti\u1ec1n t\u1ed1: <code>' + U().esc(activeProvObj.prefixHint) + '</code></span>' +
+                (activeProvObj.badgeText ? '<span class="muted" style="font-size:.78rem">' + U().esc(activeProvObj.badgeText) + '</span>' : '') +
+              '</div>' +
+              '<textarea id="uetProvKeyTextarea" rows="4" spellcheck="false" autocomplete="off" placeholder="D\u00e1n 1 ho\u1eb7c nhi\u1ec1u API Key c\u1ee7a ' + U().esc(activeProvObj.name) + ' (' + U().esc(activeProvObj.prefixHint) + '), m\u1ed7i Key 1 d\u00f2ng ho\u1eb7c c\u00e1ch nhau b\u1eb1ng d\u1ea5u ph\u1ea9y...">' + U().esc(activeTextareaVal) + '</textarea>' +
+              '<div class="key-validation-list" id="uetProvValidationChips">' + buildValidationChipsHtml(activeProv, activeTextareaVal) + '</div>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="deck-actions" style="margin:14px 0">' +
+            '<button type="button" class="btn btn-primary" id="uetApiSaveBtn">💾 L\u01b0u t\u1ea5t c\u1ea3 Key c\u00e1 nh\u00e2n</button>' +
+            '<button type="button" class="btn btn-emerald" id="uetApiTestBtn">🧪 Test Keys</button>' +
+            '<button type="button" class="btn btn-outline" id="uetApiExportBtn">📤 Xu\u1ea5t JSON</button>' +
+            '<button type="button" class="btn btn-outline" id="uetApiImportBtn">📥 Nh\u1eadp JSON</button>' +
+            '<input type="file" id="uetApiImportFile" accept=".json,application/json" style="display:none">' +
+            '<button type="button" class="btn btn-outline" id="uetApiDelBtn">🗑️ X\u00f3a to\u00e0n b\u1ed9 Key c\u00e1 nh\u00e2n</button>' +
+          '</div>' +
+
+          testResultsHtml +
+
+          '<div class="pro-tip-box" style="margin:12px 0 16px">' +
+            '<strong>💡 ' + U().esc((CFG() && CFG().PRO_TIP && CFG().PRO_TIP.title) || "M\u1eb9o hay (Pro Tip)") + '</strong>' +
+            '<p style="margin:6px 0 0;font-size:.82rem">' + U().esc((CFG() && CFG().PRO_TIP && CFG().PRO_TIP.body) || "") + '</p>' +
           '</div>' +
 
           '<div style="padding-top:14px;border-top:1px solid var(--border)">' +
@@ -332,97 +475,230 @@
             '</div>' +
           '</div>' +
         '</section>' +
-
-        '<section class="panel">' +
-          '<div class="panel-head"><h2>H\u01b0\u1edbng d\u1eabn l\u1ea5y Gemini API Key</h2>' +
-            '<div class="deck-actions">' +
-              '<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">M\u1edf Google AI Studio ↗</a>' +
-              '<a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">Groq Cloud (Free) ↗</a>' +
-              '<a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">OpenRouter ↗</a>' +
-            '</div>' +
-          '</div>' +
-          '<ol class="guide-steps">' +
-            '<li><span class="step-num">1</span><span><strong>Google Gemini (Mi\u1ec5n ph\u00ed):</strong> L\u1ea5y m\u00e3 <code>AIza...</code> t\u1ea1i <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer"><strong>aistudio.google.com/app/apikey</strong></a>. C\u00f3 th\u1ec3 t\u1ea1o nhi\u1ec1u Key t\u1eeb nhi\u1ec1u d\u1ef1 \u00e1n/t\u00e0i kho\u1ea3n \u0111\u1ec3 d\u00e1n v\u00e0o <strong>H\u1ed9p ch\u1ee9a nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng</strong>.</span></li>' +
-            '<li><span class="step-num">2</span><span><strong>Groq Cloud (Mi\u1ec5n ph\u00ed &amp; H\u1ea1n m\u1ee9c l\u1edbn):</strong> L\u1ea5y m\u00e3 <code>gsk_...</code> t\u1ea1i <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer"><strong>console.groq.com/keys</strong></a> (h\u1ed7 tr\u1ee3 c\u1ea3 \u0111\u1ecdc \u1ea3nh \u0111\u1ec1 thi v\u1edbi Llama 4 Scout 17B l\u1eabn gi\u1ea3i \u0111\u1ec1 t\u1ed1c \u0111\u1ed9 cao).</span></li>' +
-            '<li><span class="step-num">3</span><span><strong>OpenRouter / OpenAI / DeepSeek:</strong> D\u00e1n m\u00e3 <code>sk-or-...</code> (OpenRouter), <code>sk-...</code> (OpenAI) ho\u1eb7c <code>deepseek:sk-...</code> (DeepSeek). H\u1ec7 th\u1ed1ng s\u1ebd t\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng qua t\u1ea5t c\u1ea3 c\u00e1c Key khi 1 h\u00e3ng h\u1ebft l\u01b0\u1ee3t.</span></li>' +
-          '</ol>' +
-          '<p class="muted" style="font-size:.8rem;margin:12px 0 0">🔒 <strong>B\u1ea3o m\u1eadt:</strong> API Key ch\u1ec9 l\u01b0u c\u1ee5c b\u1ed9 ho\u1eb7c \u0111\u01b0\u1ee3c Qu\u1ea3n tr\u1ecb vi\u00ean g\u00e1n theo Email \u0111\u0103ng nh\u1eadp v\u00e0 ch\u1ec9 g\u1eedi tr\u1ef1c ti\u1ebfp t\u1edbi m\u00e1y ch\u1ee7 ch\u00ednh th\u1ee9c c\u1ee7a t\u1eebng h\u00e3ng AI.</p>' +
-        '</section>' +
       '</div>';
 
     if (!cState.apiMounted) {
       cState.apiMounted = true;
       root.addEventListener("click", onApiPageClick);
       root.addEventListener("change", onApiPageChange);
+      root.addEventListener("input", onApiPageInput);
       root.addEventListener("paste", onApiPagePaste);
     }
     if (typeof U().applyI18n === "function") U().applyI18n(root);
   }
 
-  function maskKeyEl() {
-    const inp = U().$("uetApiKeyInput"), eye = U().$("uetApiEyeBtn");
-    if (inp) inp.type = "password";
-    if (eye) eye.textContent = "👁️";
+  function renderApiGuide() {
+    const root = U().$("apiGuideRoot");
+    if (!root) return;
+    const providers = getProvidersList();
+    const c = CFG();
+    const proTip = (c && c.PRO_TIP) ? c.PRO_TIP : {
+      title: "M\u1eb9o hay (Pro Tip): T\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng kh\u00f4ng lo h\u1ebft Quota",
+      body: "B\u1ea1n c\u00f3 th\u1ec3 d\u00e1n nhi\u1ec1u API Key t\u1eeb nhi\u1ec1u t\u00e0i kho\u1ea3n/d\u1ef1 \u00e1n \u0111\u1ed9c l\u1eadp thu\u1ed9c quy\u1ec1n s\u1edf h\u1eefu c\u1ee7a b\u1ea1n v\u00e0o C\u00e0i \u0111\u1eb7t API \u0111\u1ec3 t\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng an to\u00e0n."
+    };
+
+    const cardsHtml = providers.map(function (p) {
+      const stepsHtml = (p.guideSteps || []).map(function (st, i) {
+        return '<li><span class="step-num">' + (i + 1) + '</span><span>' + U().esc(st) + '</span></li>';
+      }).join("");
+      const modelsHtml = (p.models || []).slice(0, 4).map(function (m) {
+        const tags = (m.free ? '<span class="mini-tag free">Free</span>' : '') + (m.vision ? '<span class="mini-tag vis">Vision</span>' : '') + (m.pdf ? '<span class="mini-tag pdf">PDF</span>' : '');
+        return '<li><code>' + U().esc(m.rawModel) + '</code> ' + tags + '</li>';
+      }).join("");
+      return '<article class="guide-provider-card' + (p.recommended ? " is-recommended" : "") + '">' +
+        '<div class="panel-head" style="margin-bottom:8px">' +
+          '<div>' +
+            '<h3 style="margin:0;font-size:1.05rem">' + U().esc(p.name) + (p.recommended ? ' <span class="badge badge-ok" style="font-size:.7rem;vertical-align:middle">★ Khuy\u00ean d\u00f9ng</span>' : '') + '</h3>' +
+            '<div class="muted" style="font-size:.76rem;margin-top:2px">Ti\u1ec1n t\u1ed1: <code>' + U().esc(p.prefixHint) + '</code> • ' + U().esc(p.badgeText || "") + '</div>' +
+          '</div>' +
+          '<a href="' + U().esc(p.keyUrl) + '" target="_blank" rel="noopener noreferrer" class="btn btn-sm ' + (p.recommended ? "btn-primary" : "btn-outline") + '">L\u1ea5y Key ↗</a>' +
+        '</div>' +
+        '<p class="muted" style="font-size:.82rem;margin:0 0 10px">' + U().esc(p.freeTierSummary || "") + '</p>' +
+        '<ol class="guide-step-list">' + stepsHtml + '</ol>' +
+        '<div class="guide-models"><strong>Model h\u1ed7 tr\u1ee3:</strong><ul>' + modelsHtml + '</ul></div>' +
+      '</article>';
+    }).join("");
+
+    root.innerHTML =
+      '<div class="api-wrap">' +
+        '<section class="panel">' +
+          '<div class="panel-head">' +
+            '<div>' +
+              '<h2>📖 H\u01b0\u1edbng d\u1eabn l\u1ea5y API Key Mi\u1ec5n ph\u00ed &amp; Tr\u1ea3 ph\u00ed</h2>' +
+              '<p class="muted" style="margin:4px 0 0;font-size:.86rem">S\u1eed d\u1ee5ng API Key c\u00e1 nh\u00e2n gi\u00fap \u0111\u1ecdc \u1ea3nh/PDF si\u00eau nhanh, kh\u00f4ng b\u1ecb ngh\u1ebdn h\u1ea1n m\u1ee9c d\u00f9ng chung v\u00e0 b\u1ea3o m\u1eadt tuy\u1ec7t \u0111\u1ed1i tr\u00ean tr\u00ecnh duy\u1ec7t c\u1ee7a b\u1ea1n.</p>' +
+            '</div>' +
+            '<button type="button" class="btn btn-primary" data-guide-act="go-api">🔑 Nh\u1eadp API Key ngay →</button>' +
+          '</div>' +
+          '<div class="pro-tip-box">' +
+            '<strong>💡 ' + U().esc(proTip.title) + '</strong>' +
+            '<p style="margin:6px 0 0;font-size:.84rem">' + U().esc(proTip.body) + '</p>' +
+          '</div>' +
+        '</section>' +
+        '<div class="guide-grid">' + cardsHtml + '</div>' +
+        '<section class="guide-cta-bar">' +
+          '<div>' +
+            '<h3 style="margin:0 0 4px">S\u1eb5n s\u00e0ng b\u1eaft \u0111\u1ea7u?</h3>' +
+            '<p class="muted" style="margin:0;font-size:.84rem">API Key c\u00e1 nh\u00e2n c\u1ee7a b\u1ea1n ch\u1ec9 l\u01b0u c\u1ee5c b\u1ed9 trong tr\u00ecnh duy\u1ec7t (localStorage) v\u00e0 g\u1eedi tr\u1ef1c ti\u1ebfp t\u1edbi m\u00e1y ch\u1ee7 h\u00e3ng AI.</p>' +
+          '</div>' +
+          '<button type="button" class="btn btn-primary" data-guide-act="go-api">\u0110\u00e3 c\u00f3 Key? Nh\u1eadp ngay t\u1ea1i C\u00e0i \u0111\u1eb7t API →</button>' +
+        '</section>' +
+      '</div>';
+
+    if (!root.getAttribute("data-guide-bound")) {
+      root.setAttribute("data-guide-bound", "1");
+      root.addEventListener("click", function (ev) {
+        const b = ev.target.closest ? ev.target.closest("[data-guide-act='go-api']") : null;
+        if (b && U() && typeof U().showTab === "function") U().showTab("api");
+      });
+    }
+    if (typeof U().applyI18n === "function") U().applyI18n(root);
   }
 
   async function testSingleProviderKey(provider, apiKey) {
-    if (provider === "gemini") {
-      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?key=" + encodeURIComponent(apiKey));
+    const pMap = getProviderMap();
+    const info = pMap[provider] || FALLBACK_PROVIDER_INFO[provider];
+    try {
+      if (provider === "gemini") {
+        const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+          method: "GET",
+          headers: { "x-goog-api-key": apiKey }
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(function () { return {}; });
+          return { status: "bad", message: (err && err.error && err.error.message) || ("HTTP " + res.status) };
+        }
+        return { status: "ok", message: "K\u1ebft n\u1ed1i h\u1ee3p l\u1ec7 (OK)" };
+      }
+      const url = info && info.testEndpoint ? info.testEndpoint : "https://api.openai.com/v1/models";
+      const res = await fetch(url, {
+        method: "GET",
+        headers: { "Authorization": "Bearer " + apiKey }
+      });
       if (!res.ok) {
         const err = await res.json().catch(function () { return {}; });
-        throw new Error((err && err.error && err.error.message) || ("HTTP " + res.status));
+        const msg = (err && err.error && err.error.message) || ("HTTP " + res.status);
+        if (res.status === 429) return { status: "warn", message: "Key \u0111\u00fang nh\u01b0ng \u0111ang gi\u1edbi h\u1ea1n t\u1ed1c \u0111\u1ed9 (429): " + msg };
+        return { status: "bad", message: msg };
       }
-      return true;
+      return { status: "ok", message: "K\u1ebft n\u1ed1i h\u1ee3p l\u1ec7 (OK)" };
+    } catch (netErr) {
+      // Browser CORS can block GET /models even for valid keys; treat TypeError cleanly
+      return {
+        status: "warn",
+        message: "Tr\u00ecnh duy\u1ec7t ch\u1eb7n CORS khi test tr\u1ef1c ti\u1ebfp (Key v\u1eabn c\u00f3 th\u1ec3 ho\u1ea1t \u0111\u1ed9ng b\u00ecnh th\u01b0\u1eddng khi ch\u1ea1y Converter)."
+      };
     }
-    const url = provider === "groq"
-      ? "https://api.groq.com/openai/v1/models"
-      : (provider === "openrouter"
-          ? "https://openrouter.ai/api/v1/models"
-          : (provider === "deepseek" ? "https://api.deepseek.com/models" : "https://api.openai.com/v1/models"));
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { "Authorization": "Bearer " + apiKey }
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(function () { return {}; });
-      throw new Error((err && err.error && err.error.message) || ("HTTP " + res.status));
-    }
-    return true;
   }
 
-  async function testGeminiConnection() {
-    const inp = U().$("uetApiKeyInput");
-    const poolInp = U().$("uetApiPoolInput");
-    const typed = (inp ? inp.value : "").trim();
-    const typedPool = (poolInp ? poolInp.value : "").trim();
-    if (typed) setApiKey(typed);
-    if (poolInp) setPersonalApiPool(typedPool);
-    const items = parseKeyPoolItems(typed, getApiModel());
-    if (items.length === 0) { U().showToast("Vui l\u00f2ng nh\u1eadp Gemini API Key tr\u01b0\u1edbc.", "warning"); return; }
-    maskKeyEl();
+  async function testPersonalKeys() {
+    const store = syncActiveTextareaToStore(loadPersonalKeyStore());
+    savePersonalKeyStore(store);
+    const items = [];
+    PROVIDER_ORDER.forEach(function (p) {
+      (store.keysByProvider[p] || []).forEach(function (k) {
+        items.push({ provider: p, apiKey: k });
+      });
+    });
+    if (items.length === 0) {
+      U().showToast("Ch\u01b0a c\u00f3 API Key c\u00e1 nh\u00e2n n\u00e0o \u0111\u1ec3 ki\u1ec3m tra.", "warning");
+      return;
+    }
     const btn = U().$("uetApiTestBtn");
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>\u0110ang ki\u1ec3m tra...'; }
-    try {
-      let okCount = 0;
-      let lastErr = null;
-      for (let i = 0; i < items.length; i++) {
-        try {
-          await testSingleProviderKey(items[i].provider, items[i].apiKey);
-          okCount++;
-        } catch (err) {
-          lastErr = err;
-        }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>\u0110ang test...'; }
+    const results = [];
+    let okCount = 0;
+    let warnCount = 0;
+    let badCount = 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const fmt = validateProviderKeyFormat(it.provider, it.apiKey);
+      if (!fmt.valid) {
+        badCount++;
+        results.push({ provider: it.provider, masked: maskKeyPreview(it.apiKey), status: "bad", message: fmt.reason });
+        continue;
       }
-      if (okCount === 0 && lastErr) throw lastErr;
+      const r = await testSingleProviderKey(it.provider, it.apiKey);
+      if (r.status === "ok") okCount++;
+      else if (r.status === "warn") warnCount++;
+      else badCount++;
+      results.push({ provider: it.provider, masked: maskKeyPreview(it.apiKey), status: r.status, message: r.message });
+    }
+    cState.testResults = results;
+    if (okCount > 0 && badCount === 0) {
       cState.apiStatus = "ok";
-      cState.apiStatusMsg = "✅ K\u1ebft n\u1ed1i th\u00e0nh c\u00f4ng";
-      U().showToast("K\u1ebft n\u1ed1i Gemini API th\u00e0nh c\u00f4ng!", "success");
-    } catch (e) {
-      cState.apiStatus = "error";
-      cState.apiStatusMsg = "❌ Key kh\u00f4ng h\u1ee3p l\u1ec7";
-      U().showToast("Ki\u1ec3m tra th\u1ea5t b\u1ea1i: " + (e.message || "Kh\u00f4ng k\u1ebft n\u1ed1i \u0111\u01b0\u1ee3c"), "error");
+      cState.apiStatusMsg = "✅ " + okCount + " Key OK";
+      U().showToast("Ki\u1ec3m tra xong: " + okCount + " Key k\u1ebft n\u1ed1i th\u00e0nh c\u00f4ng!", "success");
+    } else if (warnCount > 0 && badCount === 0) {
+      cState.apiStatus = "saved";
+      cState.apiStatusMsg = "⚠️ " + warnCount + " CORS";
+      U().showToast("\u0110\u00e3 ki\u1ec3m tra " + items.length + " Key (tr\u00ecnh duy\u1ec7t ch\u1eb7n CORS \u1edf 1 s\u1ed1 h\u00e3ng, Key \u0111\u00fang \u0111\u1ecbnh d\u1ea1ng v\u1eabn d\u00f9ng \u0111\u01b0\u1ee3c).", "info");
+    } else {
+      cState.apiStatus = badCount === items.length ? "error" : "saved";
+      cState.apiStatusMsg = "❌ " + badCount + " Key l\u1ed7i";
+      U().showToast("C\u00f3 " + badCount + " Key b\u1ecb l\u1ed7i (" + okCount + " OK). Xem chi ti\u1ebft b\u00ean d\u01b0\u1edbi.", "warning");
     }
     renderApiPage();
+  }
+
+  function exportPersonalKeysJson() {
+    const store = syncActiveTextareaToStore(loadPersonalKeyStore());
+    const total = PROVIDER_ORDER.reduce(function (s, p) { return s + (store.keysByProvider[p] || []).length; }, 0);
+    if (total === 0) {
+      U().showToast("Ch\u01b0a c\u00f3 API Key c\u00e1 nh\u00e2n n\u00e0o \u0111\u1ec3 xu\u1ea5t.", "warning");
+      return;
+    }
+    U().showConfirm(
+      "C\u1ea3nh b\u00e1o b\u1ea3o m\u1eadt khi Export JSON",
+      "T\u1ec7p JSON t\u1ea3i v\u1ec1 s\u1ebd ch\u1ee9a API Key c\u00e1 nh\u00e2n c\u1ee7a b\u1ea1n d\u01b0\u1edbi d\u1ea1ng v\u0103n b\u1ea3n thu\u1ea7n (plain text). Tuy\u1ec7t \u0111\u1ed1i KH\u00d4NG chia s\u1ebb ho\u1eb7c t\u1ea3i t\u1ec7p n\u00e0y l\u00ean n\u01a1i c\u00f4ng c\u1ed9ng! Ti\u1ebfp t\u1ee5c t\u1ea3i xu\u1ed1ng?",
+      function () {
+        const payload = {
+          app: "AI Tutor",
+          exportedAt: new Date().toISOString(),
+          keysByProvider: store.keysByProvider
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "ai-tutor-personal-keys-" + dateStamp() + ".json";
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 200);
+        U().showToast("\u0110\u00e3 xu\u1ea5t " + total + " API Key c\u00e1 nh\u00e2n ra file JSON.", "success");
+      }
+    );
+  }
+
+  function importPersonalKeysJsonFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function (ev) {
+      try {
+        const parsed = JSON.parse(String((ev && ev.target && ev.target.result) || ""));
+        const srcMap = (parsed && parsed.keysByProvider && typeof parsed.keysByProvider === "object") ? parsed.keysByProvider : parsed;
+        if (!srcMap || typeof srcMap !== "object") throw new Error("\u0110\u1ecbnh d\u1ea1ng JSON kh\u00f4ng h\u1ee3p l\u1ec7.");
+        const store = syncActiveTextareaToStore(loadPersonalKeyStore());
+        let added = 0;
+        PROVIDER_ORDER.forEach(function (p) {
+          const list = Array.isArray(srcMap[p]) ? srcMap[p] : [];
+          list.forEach(function (k) {
+            const v = cleanRawKeyValue(k);
+            if (v && store.keysByProvider[p].indexOf(v) === -1) {
+              store.keysByProvider[p].push(v);
+              added++;
+            }
+          });
+        });
+        savePersonalKeyStore(store);
+        cState.testResults = null;
+        cState.apiStatus = added > 0 ? "ok" : "saved";
+        cState.apiStatusMsg = "\u0110\u00e3 nh\u1eadp +" + added + " Key";
+        U().showToast("\u0110\u00e3 nh\u1eadp th\u00eam " + added + " API Key t\u1eeb file JSON.", "success");
+        renderApiPage();
+      } catch (err) {
+        U().showToast("L\u1ed7i nh\u1eadp JSON: " + (err.message || "File kh\u00f4ng h\u1ee3p l\u1ec7"), "error");
+      }
+    };
+    reader.readAsText(file);
   }
 
   function onApiPageClick(e) {
@@ -431,75 +707,86 @@
       U().setLang(langBtn.getAttribute("data-lang-set"));
       return;
     }
+    const tabBtn = e.target.closest ? e.target.closest("[data-prov-tab]") : null;
+    if (tabBtn) {
+      const store = syncActiveTextareaToStore(loadPersonalKeyStore());
+      const nextProv = tabBtn.getAttribute("data-prov-tab");
+      if (PROVIDER_ORDER.indexOf(nextProv) !== -1) {
+        cState.activeProvTab = nextProv;
+        store.activeProvider = nextProv;
+        savePersonalKeyStore(store);
+        renderApiPage();
+      }
+      return;
+    }
     const t = e.target.closest ? e.target.closest("button") : null;
     if (!t) return;
-    if (t.id === "uetApiEyeBtn") {
-      const inp = U().$("uetApiKeyInput");
-      if (!inp) return;
-      const show = inp.type === "password";
-      inp.type = show ? "text" : "password";
-      t.textContent = show ? "🙈" : "👁️";
+    if (t.id === "uetApiGoGuideBtn") {
+      U().showTab("guide");
     } else if (t.id === "uetApiSaveBtn") {
-      const inp = U().$("uetApiKeyInput");
-      const poolInp = U().$("uetApiPoolInput");
-      const val = (inp ? inp.value : "").trim();
-      const poolVal = (poolInp ? poolInp.value : "").trim();
-      if (!val && !poolVal) { U().showToast("Vui l\u00f2ng d\u00e1n chu\u1ed7i Gemini API Key.", "warning"); return; }
-      setApiKey(val);
-      setPersonalApiPool(poolVal);
-      if (val) {
-        const detProv = detectProviderFromKey(val, detectProviderFromModel(getApiModel()));
-        const curProv = detectProviderFromModel(getApiModel());
-        if (detProv !== curProv && PROVIDER_INFO[detProv] && PROVIDER_INFO[detProv].models.length > 0) {
-          setApiModel(PROVIDER_INFO[detProv].models[0].id);
-        }
-      }
-      maskKeyEl();
-      cState.apiStatus = "saved";
-      cState.apiStatusMsg = "\u0110\u00e3 l\u01b0u Key";
-      U().showToast("\u0110\u00e3 l\u01b0u API Key c\u1ee5c b\u1ed9 tr\u00ean tr\u00ecnh duy\u1ec7t.", "success");
+      const store = syncActiveTextareaToStore(loadPersonalKeyStore());
+      savePersonalKeyStore(store);
+      cState.testResults = null;
+      const total = countPersonalKeys();
+      cState.apiStatus = total > 0 ? "ok" : "saved";
+      cState.apiStatusMsg = total > 0 ? ("🔑 " + total + " Key c\u00e1 nh\u00e2n") : "🌐 System Pool";
+      U().showToast(total > 0 ? ("\u0110\u00e3 l\u01b0u " + total + " API Key c\u00e1 nh\u00e2n v\u00e0o tr\u00ecnh duy\u1ec7t.") : "\u0110\u00e3 chuy\u1ec3n v\u1ec1 ch\u1ebf \u0111\u1ed9 System Pool m\u1eb7c \u0111\u1ecbnh.", "success");
       renderApiPage();
     } else if (t.id === "uetApiTestBtn") {
-      testGeminiConnection();
+      testPersonalKeys();
+    } else if (t.id === "uetApiExportBtn") {
+      exportPersonalKeysJson();
+    } else if (t.id === "uetApiImportBtn") {
+      const fi = U().$("uetApiImportFile");
+      if (fi) { fi.value = ""; fi.click(); }
     } else if (t.id === "uetApiDelBtn") {
-      U().showConfirm("X\u00f3a API Key", "B\u1ea1n c\u00f3 ch\u1eafc mu\u1ed1n x\u00f3a Gemini API Key c\u00e1 nh\u00e2n \u0111\u00e3 l\u01b0u?", function () {
-        setApiKey("");
-        setPersonalApiPool("");
-        cState.apiStatus = "none";
-        cState.apiStatusMsg = "Ch\u01b0a c\u1ea5u h\u00ecnh";
-        U().showToast("\u0110\u00e3 x\u00f3a API Key c\u00e1 nh\u00e2n.", "info");
+      U().showConfirm("X\u00f3a to\u00e0n b\u1ed9 Key c\u00e1 nh\u00e2n", "X\u00f3a t\u1ea5t c\u1ea3 API Key c\u00e1 nh\u00e2n \u0111\u00e3 l\u01b0u? Sau khi x\u00f3a, h\u1ec7 th\u1ed1ng s\u1ebd quay v\u1ec1 d\u00f9ng System Default Key Pool n\u1ebfu b\u1ea1n \u0111\u0103ng nh\u1eadp Google.", function () {
+        savePersonalKeyStore(emptyPersonalStore());
+        cState.testResults = null;
+        cState.apiStatus = getUserIdToken() ? "saved" : "none";
+        cState.apiStatusMsg = getUserIdToken() ? "🌐 System Pool" : "Ch\u01b0a c\u1ea5u h\u00ecnh";
+        U().showToast("\u0110\u00e3 x\u00f3a to\u00e0n b\u1ed9 Key c\u00e1 nh\u00e2n.", "info");
         renderApiPage();
       });
     }
   }
+
+  function onApiPageInput(e) {
+    if (e.target && e.target.id === "uetProvKeyTextarea") {
+      const chips = U().$("uetProvValidationChips");
+      const prov = cState.activeProvTab || "groq";
+      if (chips) chips.innerHTML = buildValidationChipsHtml(prov, e.target.value);
+    }
+  }
+
   function onApiPageChange(e) {
     if (e.target && e.target.id === "uetApiModelSelect") {
       const m = e.target.value;
       if (m.indexOf("pro") !== -1 && !U().can("proAi")) {
-        U().showToast("Model Gemini Pro \u0111\u01b0\u1ee3c \u01b0u ti\u00ean cho g\u00f3i Diamond VIP (b\u1ea1n v\u1eabn c\u00f3 th\u1ec3 d\u00f9ng n\u1ebfu c\u00f3 API Key c\u00e1 nh\u00e2n).", "info");
+        U().showToast("Model Pro \u0111\u01b0\u1ee3c \u01b0u ti\u00ean cho g\u00f3i Diamond VIP (b\u1ea1n v\u1eabn c\u00f3 th\u1ec3 d\u00f9ng v\u1edbi API Key c\u00e1 nh\u00e2n).", "info");
       }
       setApiModel(m);
+      const detP = detectProviderFromModel(m);
+      if (PROVIDER_ORDER.indexOf(detP) !== -1) {
+        const store = syncActiveTextareaToStore(loadPersonalKeyStore());
+        cState.activeProvTab = detP;
+        store.activeProvider = detP;
+        savePersonalKeyStore(store);
+      }
       renderApiPage();
+    } else if (e.target && e.target.id === "uetApiImportFile") {
+      const f = e.target.files && e.target.files[0];
+      if (f) importPersonalKeysJsonFile(f);
     }
   }
+
   function onApiPagePaste(e) {
-    if (e.target && e.target.id === "uetApiKeyInput") {
+    if (e.target && e.target.id === "uetProvKeyTextarea") {
       setTimeout(function () {
-        const val = (e.target.value || "").trim();
-        if (val) {
-          setApiKey(val);
-          const detProv = detectProviderFromKey(val, detectProviderFromModel(getApiModel()));
-          const curProv = detectProviderFromModel(getApiModel());
-          if (detProv !== curProv && PROVIDER_INFO[detProv] && PROVIDER_INFO[detProv].models.length > 0) {
-            setApiModel(PROVIDER_INFO[detProv].models[0].id);
-          }
-          maskKeyEl();
-          cState.apiStatus = "saved";
-          cState.apiStatusMsg = "\u0110\u00e3 l\u01b0u Key";
-          U().showToast("\u0110\u00e3 d\u00e1n & t\u1ef1 \u0111\u1ed9ng \u1ea9n API Key.", "info");
-          renderApiPage();
-        }
-      }, 40);
+        const chips = U().$("uetProvValidationChips");
+        const prov = cState.activeProvTab || "groq";
+        if (chips) chips.innerHTML = buildValidationChipsHtml(prov, e.target.value);
+      }, 30);
     }
   }
 
@@ -788,11 +1075,11 @@
         const img = new Image();
         img.onerror = function () { reject(new Error("File \u1ea3nh kh\u00f4ng h\u1ee3p l\u1ec7.")); };
         img.onload = function () {
-          const MAX = 2560;
+          const MAX = 1600;
           const w = img.naturalWidth, h = img.naturalHeight;
-          const keepOrig = w <= MAX && h <= MAX && ["image/jpeg", "image/png", "image/webp"].indexOf(file.type) !== -1;
+          const keepOrig = w <= MAX && h <= MAX && file.type === "image/jpeg" && file.size <= 450 * 1024;
           if (keepOrig) {
-            return resolve({ mimeType: file.type, data: String(ev.target.result || "").split(",")[1] || "" });
+            return resolve({ mimeType: "image/jpeg", data: String(ev.target.result || "").split(",")[1] || "" });
           }
           const scale = Math.min(1, MAX / Math.max(w, h));
           const cw = Math.round(w * scale), ch = Math.round(h * scale);
@@ -801,7 +1088,7 @@
           const ctx = cv.getContext("2d");
           ctx.fillStyle = "#FFFFFF"; ctx.fillRect(0, 0, cw, ch);
           ctx.drawImage(img, 0, 0, cw, ch);
-          resolve({ mimeType: "image/jpeg", data: cv.toDataURL("image/jpeg", 0.94).split(",")[1] || "" });
+          resolve({ mimeType: "image/jpeg", data: cv.toDataURL("image/jpeg", 0.82).split(",")[1] || "" });
         };
         img.src = ev.target.result;
       };
@@ -832,6 +1119,7 @@
   function buildExecutionPlan(primaryKey, preferredModel, payload) {
     const caps = inspectPayloadCapabilities(payload);
     const pool = parseKeyPoolItems(primaryKey, preferredModel);
+    const providerMap = getProviderMap();
     const prefModel = cState.activeFallbackModel || preferredModel || "gemini-2.5-flash";
     const prefProv = detectProviderFromModel(prefModel);
     const candidates = [];
@@ -854,21 +1142,21 @@
       });
     };
 
-    // 1. Prioritize keys matching the preferred model's provider first
+    // 1. Prioritize personal keys matching the preferred model's provider first
     pool.forEach(function (item) {
       if (item.provider !== prefProv) return;
-      const pInfo = PROVIDER_INFO[item.provider];
+      const pInfo = providerMap[item.provider];
       if (!pInfo) return;
-      const exact = pInfo.models.find(function (m) { return m.id === prefModel || m.rawModel === stripProviderPrefix(prefModel); });
+      const exact = (pInfo.models || []).find(function (m) { return m.id === prefModel || m.rawModel === stripProviderPrefix(prefModel); });
       if (exact) addCandidate(item.provider, item.apiKey, exact);
-      pInfo.models.forEach(function (m) { addCandidate(item.provider, item.apiKey, m); });
+      (pInfo.models || []).forEach(function (m) { addCandidate(item.provider, item.apiKey, m); });
     });
 
-    // 2. Then add all other keys & compatible models in the Multi-Key Pool as automatic fallback
+    // 2. Then add user's other personal keys & capability-compatible models
     pool.forEach(function (item) {
-      const pInfo = PROVIDER_INFO[item.provider];
+      const pInfo = providerMap[item.provider];
       if (!pInfo) return;
-      pInfo.models.forEach(function (m) { addCandidate(item.provider, item.apiKey, m); });
+      (pInfo.models || []).forEach(function (m) { addCandidate(item.provider, item.apiKey, m); });
     });
 
     return candidates;
@@ -962,23 +1250,111 @@
     return raw || "Kh\u00f4ng x\u00e1c \u0111\u1ecbnh";
   }
 
+  async function callSystemProxy(model, payload, signal) {
+    const idToken = getUserIdToken();
+    if (!idToken) {
+      throw new Error("Vui l\u00f2ng \u0111\u0103ng nh\u1eadp Google \u0111\u1ec3 s\u1eed d\u1ee5ng System AI mi\u1ec5n ph\u00ed ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n trong m\u1ee5c C\u00e0i \u0111\u1eb7t API.");
+    }
+    const reqBodyObj = {
+      model: model || "gemini-2.5-flash",
+      contents: payload && payload.contents,
+      systemInstruction: payload && payload.systemInstruction,
+      generationConfig: payload && payload.generationConfig,
+      stream: false
+    };
+    const bodyStr = JSON.stringify(reqBodyObj);
+    if (bodyStr.length > 3.6 * 1024 * 1024) {
+      throw new Error("K\u00edch th\u01b0\u1edbc \u1ea3nh / d\u1eef li\u1ec7u qu\u00e1 l\u1edbn (> 3.6MB m\u1ed7i l\u01b0\u1ee3t). H\u00e3y gi\u1ea3m b\u1edbt s\u1ed1 t\u1ec7p \u0111\u1ed3ng th\u1eddi ho\u1eb7c ch\u1ecdn \u1ea3nh nh\u1eb9 h\u01a1n.");
+    }
+
+    const TIMEOUT_MS = 90000;
+    const reqCtrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    let timedOut = false;
+    const timer = reqCtrl ? setTimeout(function () { timedOut = true; reqCtrl.abort(); }, TIMEOUT_MS) : null;
+    const onParentAbort = function () { if (reqCtrl) reqCtrl.abort(); };
+    if (signal && typeof signal.addEventListener === "function") signal.addEventListener("abort", onParentAbort, { once: true });
+
+    let res;
+    try {
+      res = await fetch("/api/ai/proxy", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + idToken
+        },
+        body: bodyStr,
+        signal: reqCtrl ? reqCtrl.signal : signal
+      });
+    } catch (fetchErr) {
+      if (timer) clearTimeout(timer);
+      if (signal && typeof signal.removeEventListener === "function") signal.removeEventListener("abort", onParentAbort);
+      if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+      if (timedOut) throw new Error("Y\u00eau c\u1ea7u t\u1edbi AI Proxy qu\u00e1 th\u1eddi gian ch\u1edd (90s).");
+      throw new Error(fetchErr.message || "L\u1ed7i k\u1ebft n\u1ed1i t\u1edbi m\u00e1y ch\u1ee7 AI Proxy.");
+    }
+    if (timer) clearTimeout(timer);
+    if (signal && typeof signal.removeEventListener === "function") signal.removeEventListener("abort", onParentAbort);
+
+    if (!res.ok) {
+      const errBody = await res.json().catch(function () { return {}; });
+      const msg = (errBody && errBody.error && errBody.error.message) || errBody.error || ("HTTP " + res.status);
+      if (res.status === 401) {
+        throw new Error("Phi\u00ean \u0111\u0103ng nh\u1eadp Google \u0111\u00e3 h\u1ebft h\u1ea1n ho\u1eb7c kh\u00f4ng h\u1ee3p l\u1ec7. H\u00e3y \u0111\u0103ng nh\u1eadp l\u1ea1i ho\u1eb7c d\u00f9ng API Key c\u00e1 nh\u00e2n. (" + msg + ")");
+      }
+      if (res.status === 429) {
+        throw new Error("System Key Pool \u0111\u00e3 ch\u1ea1m gi\u1edbi h\u1ea1n d\u00f9ng chung ho\u1eb7c quota t\u1ea1m th\u1eddi. H\u00e3y th\u00eam API Key c\u00e1 nh\u00e2n mi\u1ec5n ph\u00ed \u0111\u1ec3 d\u00f9ng kh\u00f4ng gi\u1edbi h\u1ea1n! (" + msg + ")");
+      }
+      throw new Error(formatFriendlyGeminiError(msg));
+    }
+
+    const fbProvider = res.headers.get("X-AI-Fallback-Provider") || "";
+    const fbModel = res.headers.get("X-AI-Fallback-Model") || "";
+    const data = await res.json();
+    const txt = (data && data.text) ||
+      (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) ||
+      (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content);
+
+    if (fbModel && fbModel !== model && cState.fallbackToastShownFor !== (fbProvider + ":" + fbModel)) {
+      cState.fallbackToastShownFor = fbProvider + ":" + fbModel;
+      U().showToast("Model " + model + " \u0111ang b\u1eadn — h\u1ec7 th\u1ed1ng \u0111\u00e3 t\u1ef1 \u0111\u1ed9ng chuy\u1ec3n sang " + (fbProvider ? (fbProvider + " / ") : "") + fbModel + ".", "info");
+    }
+    return parseJsonResponseText(txt);
+  }
+
   async function callGemini(apiKey, model, payload, signal) {
+    // STRICT PRIORITY:
+    // 1. Personal keys saved in browser -> direct calls to providers; NEVER silently fall back to System Pool on 401/429.
+    // 2. Zero personal keys -> System Default Pool via /api/ai/proxy (requires Google Sign-In ID token).
+    const personalItems = parseKeyPoolItems(apiKey, model);
+    if (personalItems.length === 0) {
+      return await callSystemProxy(model, payload, signal);
+    }
+
     const plan = buildExecutionPlan(apiKey, model, payload);
     if (plan.length === 0) {
-      throw new Error("Kh\u00f4ng t\u00ecm th\u1ea5y Model AI t\u01b0\u01a1ng th\u00edch v\u1edbi \u0111\u1ecbnh d\u1ea1ng t\u1ec7p n\u00e0y. N\u1ebfu \u0111\u1ecdc \u1ea3nh/PDF scan, h\u00e3y th\u00eam Key c\u1ee7a Gemini, Groq, OpenAI ho\u1eb7c OpenRouter.");
+      throw new Error("Kh\u00f4ng t\u00ecm th\u1ea5y Model AI t\u01b0\u01a1ng th\u00edch trong danh s\u00e1ch Key c\u00e1 nh\u00e2n c\u1ee7a b\u1ea1n. N\u1ebfu \u0111\u1ecdc \u1ea3nh/PDF scan, h\u00e3y th\u00eam Key Gemini, Groq, OpenAI ho\u1eb7c OpenRouter.");
     }
+    const providerMap = getProviderMap();
     const TIMEOUT_MS = 90000;
     let lastErrorMsg = "";
+    let lastStatus = 0;
 
     for (let i = 0; i < plan.length; i++) {
       const cand = plan[i];
       const isGemini = cand.provider === "gemini";
+      const pInfo = providerMap[cand.provider] || FALLBACK_PROVIDER_INFO[cand.provider];
       const url = isGemini
-        ? ("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(cand.rawModel) + ":generateContent?key=" + encodeURIComponent(cand.apiKey))
-        : PROVIDER_INFO[cand.provider].endpoint;
+        ? ("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(cand.rawModel) + ":generateContent")
+        : pInfo.endpoint;
       const headers = { "Content-Type": "application/json" };
-      if (!isGemini) {
+      if (isGemini) {
+        headers["x-goog-api-key"] = cand.apiKey;
+      } else {
         headers["Authorization"] = "Bearer " + cand.apiKey;
+        if (cand.provider === "openrouter" && typeof location !== "undefined") {
+          headers["HTTP-Referer"] = location.origin;
+          headers["X-Title"] = "AI Tutor";
+        }
       }
       const reqBodyObj = isGemini ? payload : convertGeminiPayloadToOpenAI(cand.rawModel, payload);
 
@@ -1003,7 +1379,7 @@
           if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
           if (timedOut) {
             if (attempt < 1) continue;
-            lastErrorMsg = "Y\u00eau c\u1ea7u t\u1edbi Gemini AI qu\u00e1 th\u1eddi gian ch\u1edd (Timeout 90s). Vui l\u00f2ng th\u1eed l\u1ea1i.";
+            lastErrorMsg = "Y\u00eau c\u1ea7u t\u1edbi AI qu\u00e1 th\u1eddi gian ch\u1edd (Timeout 90s). Vui l\u00f2ng th\u1eed l\u1ea1i.";
             break;
           }
           lastErrorMsg = fetchErr.message || "Network error";
@@ -1020,16 +1396,17 @@
           const parsed = parseJsonResponseText(txt);
           if (cand.modelId !== model && cState.activeFallbackModel !== cand.modelId) {
             cState.activeFallbackModel = cand.modelId;
-            U().showToast("Model " + model + " \u0111\u00e3 h\u1ebft l\u01b0\u1ee3t Free Tier — h\u1ec7 th\u1ed1ng t\u1ef1 \u0111\u1ed9ng chuy\u1ec3n sang " + cand.rawModel + " \u0111\u1ec3 ti\u1ebfp t\u1ee5c x\u1eed l\u00fd!", "info");
+            U().showToast("Model " + model + " (Key c\u00e1 nh\u00e2n) \u0111\u00e3 h\u1ebft l\u01b0\u1ee3t — t\u1ef1 \u0111\u1ed9ng chuy\u1ec3n sang Key c\u00e1 nh\u00e2n ti\u1ebfp theo: " + cand.rawModel, "info");
           }
           return parsed;
         }
 
         const errBody = await res.json().catch(function () { return {}; });
         const errMsg = (errBody && errBody.error && errBody.error.message) || ("HTTP " + res.status);
+        lastStatus = res.status;
         lastErrorMsg = errMsg;
 
-        // If quota exceeded (429), auth issue on one key (401/403), or model unavailable (400/404/503), fail over to next candidate in pool!
+        // Rotate across the user's OWN personal keys on quota/auth/model errors (NEVER to System Pool)
         if (isQuotaOrRateLimitError(res.status, errMsg) || res.status === 400 || res.status === 401 || res.status === 403 || res.status === 404 || res.status === 503) {
           break;
         }
@@ -1041,7 +1418,10 @@
         break;
       }
     }
-    throw new Error(formatFriendlyGeminiError(lastErrorMsg || "V\u01b0\u1ee3t qu\u00e1 s\u1ed1 l\u1ea7n th\u1eed l\u1ea1i API."));
+    const statusHint = (lastStatus === 401 || lastStatus === 403)
+      ? "Key c\u00e1 nh\u00e2n kh\u00f4ng h\u1ee3p l\u1ec7 ho\u1eb7c b\u1ecb thu h\u1ed3i (HTTP " + lastStatus + "). Ki\u1ec3m tra l\u1ea1i Key c\u00e1 nh\u00e2n trong C\u00e0i \u0111\u1eb7t API (h\u1ec7 th\u1ed1ng kh\u00f4ng t\u1ef1 chuy\u1ec3n sang System Pool)."
+      : formatFriendlyGeminiError(lastErrorMsg || "T\u1ea5t c\u1ea3 Key c\u00e1 nh\u00e2n \u0111\u1ec1u th\u1ea5t b\u1ea1i ho\u1eb7c h\u1ebft h\u1ea1n m\u1ee9c.");
+    throw new Error(statusHint);
   }
 
   function ocrPrompt(subject, keepPrefix) {
@@ -1928,12 +2308,26 @@
     const verifiedCnt = cState.questions.filter(function (q) { return q.verified; }).length;
     const suspectCnt = cState.questions.filter(function (q) { return q.suspect; }).length;
     const userDecks = U().getUserDecks();
-    const hasKey = !!getApiKey();
+    const hasPersonal = hasPersonalKeys();
+    const isSignedIn = !!getUserIdToken();
+    const disclaimerTxt = (CFG() && CFG().DISCLAIMER_BANNER_TEXT) || "B\u1ea1n \u0111ang s\u1eed d\u1ee5ng API Key mi\u1ec5n ph\u00ed m\u1eb7c \u0111\u1ecbnh \u0111\u01b0\u1ee3c cung c\u1ea5p b\u1edfi h\u1ec7 th\u1ed1ng. Do d\u00f9ng chung n\u00ean h\u1ea1n m\u1ee9c (quota) th\u1ea5p v\u00e0 c\u00f3 th\u1ec3 b\u1ecb ch\u1eadm ho\u1eb7c gi\u00e1n \u0111o\u1ea1n. \u0110\u1ec3 c\u00f3 tr\u1ea3i nghi\u1ec7m m\u01b0\u1ee3t m\u00e0 v\u00e0 kh\u00f4ng gi\u1edbi h\u1ea1n, h\u00e3y c\u00e2n nh\u1eafc s\u1eed d\u1ee5ng API Key c\u00e1 nh\u00e2n c\u1ee7a b\u1ea1n.";
 
     let h = "";
-    if (!hasKey) {
-      h += '<div class="pending-banner"><span>⚠️ B\u1ea1n ch\u01b0a c\u00e0i \u0111\u1eb7t Gemini API Key (c\u1ea7n thi\u1ebft \u0111\u1ec3 d\u00f9ng AI \u0111\u1ecdc \u1ea3nh, gi\u1ea3i \u0111\u1ec1 &amp; Double-Check).</span>' +
-        '<button type="button" class="btn btn-primary btn-sm" data-cact="go-api">\u0110i t\u1edbi trang C\u00e0i \u0111\u1eb7t API →</button></div>';
+    if (!hasPersonal && !cState.disclaimerDismissed) {
+      h += '<div class="sys-disclaimer-banner" id="sysDisclaimerBanner">' +
+        '<div class="sys-disclaimer-body">' +
+          '<span style="font-size:1.1rem;line-height:1.2">ℹ️</span>' +
+          '<div>' +
+            '<div>' + U().esc(disclaimerTxt) + '</div>' +
+            (!isSignedIn ? '<div class="muted" style="font-size:.78rem;margin-top:4px">💡 <em>G\u1ee3i \u00fd: \u0110\u0103ng nh\u1eadp Google \u1edf g\u00f3c tr\u00ean \u0111\u1ec3 k\u00edch ho\u1ea1t System Pool mi\u1ec5n ph\u00ed, ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n \u0111\u1ec3 d\u00f9ng ngay kh\u00f4ng c\u1ea7n ch\u1edd.</em></div>' : '') +
+            '<div class="sys-disclaimer-actions">' +
+              '<button type="button" class="btn btn-primary btn-sm" data-cact="go-guide">Xem h\u01b0\u1edbng d\u1eabn l\u1ea5y API Key mi\u1ec5n ph\u00ed →</button>' +
+              '<button type="button" class="btn btn-outline btn-sm" data-cact="go-api">Nh\u1eadp Key c\u00e1 nh\u00e2n</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<button type="button" class="sys-disclaimer-close" data-cact="dismiss-disclaimer" title="\u1ea8n th\u00f4ng b\u00e1o n\u00e0y" aria-label="\u1ea8n th\u00f4ng b\u00e1o">✕</button>' +
+      '</div>';
     }
 
     // 3 Top Cards
@@ -2257,6 +2651,8 @@
     if (!b || b.disabled) return;
     const act = b.getAttribute("data-cact");
     if (act === "go-api") U().showTab("api");
+    else if (act === "go-guide") U().showTab("guide");
+    else if (act === "dismiss-disclaimer") { cState.disclaimerDismissed = true; renderConverter(); }
     else if (act === "vmode") {
       const m = b.getAttribute("data-val");
       if (m === "split" && !U().requireFeature("splitReview")) return;
@@ -2373,6 +2769,8 @@
   window.UETConverter = {
     renderConverter: renderConverter,
     renderApiPage: renderApiPage,
+    renderApiGuide: renderApiGuide,
+    hasPersonalKeys: hasPersonalKeys,
     applySubRoute: applySubRoute,
     getValidQuestions: function () { return validateAll().validItems; }
   };

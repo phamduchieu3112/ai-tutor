@@ -14,14 +14,15 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-  <link rel="stylesheet" href="/style.css?v=20261122b">
+  <link rel="stylesheet" href="/style.css?v=20261122c">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" defer></script>
-  <script src="/app.js?v=20261122b" defer></script>
-  <script src="/converter.js?v=20261122b" defer></script>
-  <script src="/studio.js?v=20261122b" defer></script>
-  <script src="/cloud-share-pdf.js?v=20261122b" defer></script>
+  <script src="/ai-providers-config.js?v=20261122c" defer></script>
+  <script src="/app.js?v=20261122c" defer></script>
+  <script src="/converter.js?v=20261122c" defer></script>
+  <script src="/studio.js?v=20261122c" defer></script>
+  <script src="/cloud-share-pdf.js?v=20261122c" defer></script>
 </head>
 <body>
   <header class="topbar no-print" id="topbar">
@@ -81,6 +82,7 @@
           <button type="button" class="dd-item" data-dd="profile" role="menuitem">👤 H&#x1ed3; s&#x1a1; c&#xe1; nh&#xe2;n</button>
           <button type="button" class="dd-item" data-dd="pricing" role="menuitem">🏆 G&#xf3;i n&#xe2;ng c&#x1ea5;p</button>
           <button type="button" class="dd-item" data-dd="api" role="menuitem">🔑 C&#xe0;i &#x111;&#x1eb7;t API &amp; Ng&#xf4;n ng&#x1eef; <span class="nav-dot" id="navApiDot"></span></button>
+          <button type="button" class="dd-item" data-dd="guide" role="menuitem">📖 H&#x1b0;&#x1edb;ng d&#x1eab;n l&#x1ea5;y API Key</button>
           <button type="button" class="dd-item" data-dd="backup" role="menuitem">☁️ Sao l&#x1b0;u &amp; Kh&#xf4;i ph&#x1ee5;c d&#x1eef; li&#x1ec7;u</button>
           <button type="button" class="dd-item dd-admin hidden" data-dd="admin" id="navAdmin" role="menuitem">🛡️ Qu&#x1ea3;n tr&#x1ecb; duy&#x1ec7;t &#x111;&#x1a1;n (Admin Panel) <span class="nav-badge hidden" id="navAdminBadge">0</span></button>
           <div class="dd-sep"></div>
@@ -117,6 +119,7 @@
       <button type="button" class="drawer-item" data-tab="profile">👤 H&#x1ed3; s&#x1a1; c&#xe1; nh&#xe2;n</button>
       <button type="button" class="drawer-item" data-tab="pricing">🏆 G&#xf3;i n&#xe2;ng c&#x1ea5;p</button>
       <button type="button" class="drawer-item" data-tab="api">🔑 C&#xe0;i &#x111;&#x1eb7;t API &amp; Ng&#xf4;n ng&#x1eef;</button>
+      <button type="button" class="drawer-item" data-tab="guide">📖 H&#x1b0;&#x1edb;ng d&#x1eab;n l&#x1ea5;y API Key</button>
       <button type="button" class="drawer-item" data-tab="backup">☁️ Sao l&#x1b0;u &amp; Kh&#xf4;i ph&#x1ee5;c</button>
       <button type="button" class="drawer-item hidden" data-tab="admin" id="drawerAdminBtn">🛡️ Qu&#x1ea3;n tr&#x1ecb; duy&#x1ec7;t &#x111;&#x1a1;n <span class="nav-badge hidden" id="drawerAdminBadge">0</span></button>
       <div class="dd-sep"></div>
@@ -368,6 +371,9 @@
 
       <!-- ==================== API SETTINGS ==================== -->
       <section id="viewApi" class="view hidden"><div id="apiSettingsRoot"></div></section>
+
+      <!-- ==================== API KEY GUIDE ==================== -->
+      <section id="viewApiGuide" class="view hidden"><div id="apiGuideRoot"></div></section>
 
       <!-- ==================== BACKUP & RESTORE ==================== -->
       <section id="viewBackup" class="view hidden"><div id="backupRoot"></div></section>

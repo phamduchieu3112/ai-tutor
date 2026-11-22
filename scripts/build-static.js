@@ -8,6 +8,7 @@ const DIST = path.join(ROOT, "dist");
 const STATIC_FILES = [
   "index.html",
   "style.css",
+  "ai-providers-config.js",
   "app.js",
   "converter.js",
   "studio.js",

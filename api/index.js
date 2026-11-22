@@ -6,6 +6,9 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const tls = require("tls");
+const { maskApiKey, encryptSecret, isEncryptionConfigured } = require("./lib/crypto");
+const { handleAiProxy } = require("./lib/ai-proxy");
+const { handleAdminSystemKeys } = require("./lib/admin-keys");
 
 // Load local .env if present (zero-dependency)
 (function loadDotEnv() {
@@ -671,7 +674,7 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
     }
   }
 
-  // 5. Merge Admin-assigned user Gemini API keys
+  // 5. Merge Admin-assigned user AI key metadata (encrypted/masked on server; never push raw keys out)
   if (!db.userApis || typeof db.userApis !== "object") db.userApis = {};
   if (!db.revokedUserApis || typeof db.revokedUserApis !== "object") db.revokedUserApis = {};
   if (isAdminCaller && body.userApis && typeof body.userApis === "object") {
@@ -684,10 +687,12 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
       if (revAt && inTs <= revAt) return;
       const cur = db.userApis[em];
       if (!cur || inTs > (Number(cur.ts) || 0)) {
+        const rawPrimary = String(item.apiKey).trim();
+        const isAlreadyMasked = rawPrimary.indexOf("\u2022") !== -1;
         db.userApis[em] = {
           email: em,
-          apiKey: String(item.apiKey).trim(),
-          apiPool: String(item.apiPool || "").trim(),
+          maskedKey: item.maskedKey || (isAlreadyMasked ? rawPrimary : maskApiKey(rawPrimary)),
+          encrypted: (!isAlreadyMasked && isEncryptionConfigured()) ? encryptSecret(rawPrimary) : (cur && cur.encrypted ? cur.encrypted : null),
           model: String(item.model || "gemini-2.5-flash"),
           assignedBy: ADMIN_EMAIL,
           updatedAt: item.updatedAt || new Date().toISOString(),
@@ -701,16 +706,36 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
   return changed;
 }
 
+function toSafeMaskedUserApisMap(rawMap) {
+  const safe = {};
+  Object.keys(rawMap || {}).forEach(function (em) {
+    const it = rawMap[em];
+    if (!it || typeof it !== "object") return;
+    const masked = it.maskedKey || maskApiKey(it.apiKey || "");
+    if (!masked) return;
+    safe[em] = {
+      email: em,
+      maskedKey: masked,
+      model: String(it.model || "gemini-2.5-flash"),
+      assignedBy: it.assignedBy || ADMIN_EMAIL,
+      updatedAt: it.updatedAt || "",
+      ts: Number(it.ts) || 0
+    };
+  });
+  return safe;
+}
+
 function buildBillingResponse(db, isAdminCaller, caller) {
   if (!db.userApis || typeof db.userApis !== "object") db.userApis = {};
   if (!db.revokedUserApis || typeof db.revokedUserApis !== "object") db.revokedUserApis = {};
   if (!db.registeredUsers || typeof db.registeredUsers !== "object") db.registeredUsers = {};
+  const safeAllApis = toSafeMaskedUserApisMap(db.userApis);
   if (isAdminCaller) {
     return {
       registeredUsers: db.registeredUsers,
       subscriptions: db.subscriptions,
       revokedSubscriptions: db.revokedSubscriptions || {},
-      userApis: db.userApis,
+      userApis: safeAllApis,
       revokedUserApis: db.revokedUserApis,
       payment_requests: db.payment_requests,
       paymentConfig: db.paymentConfig,
@@ -723,7 +748,7 @@ function buildBillingResponse(db, isAdminCaller, caller) {
   const ownSubs = {};
   if (caller && db.subscriptions[caller]) ownSubs[caller] = db.subscriptions[caller];
   const ownApis = {};
-  if (caller && db.userApis[caller]) ownApis[caller] = db.userApis[caller];
+  if (caller && safeAllApis[caller]) ownApis[caller] = safeAllApis[caller];
   const ownReqs = db.payment_requests.filter(function (r) {
     return r && String(r.userEmail || "").toLowerCase() === caller;
   });
@@ -743,11 +768,20 @@ module.exports = async function apiHandler(req, res) {
   const p = resolveApiPath(req);
   const method = String((req && req.method) || "GET").toUpperCase();
 
+  // Enterprise Zero-Exposure AI Proxy & System Key Pool Management
+  if (p === "/api/ai/proxy") {
+    return handleAiProxy(req, res);
+  }
+  if (p === "/api/admin/system-keys" || p.indexOf("/api/admin/system-keys/") === 0) {
+    return handleAdminSystemKeys(req, res, p);
+  }
+
   if (method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type,Authorization,X-User-Email"
+      "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type,Authorization,X-User-Email",
+      "Access-Control-Expose-Headers": "X-AI-Fallback-Provider, X-AI-Fallback-Model, X-AI-RateLimit-Remaining, X-AI-RateLimit-Limit"
     });
     return res.end();
   }
@@ -1026,8 +1060,8 @@ module.exports = async function apiHandler(req, res) {
         const now = Date.now();
         db.userApis[em] = {
           email: em,
-          apiKey: primaryKey,
-          apiPool: apiPool,
+          maskedKey: maskApiKey(primaryKey),
+          encrypted: isEncryptionConfigured() ? encryptSecret(primaryKey) : null,
           model: model,
           assignedBy: ADMIN_EMAIL,
           updatedAt: new Date(now).toISOString(),
@@ -1036,7 +1070,8 @@ module.exports = async function apiHandler(req, res) {
         delete db.revokedUserApis[em];
         upsertRegisteredUser(db, { email: em }, { suppressEmail: true });
         saveDb(db);
-        return sendJson(res, 200, { ok: true, entry: db.userApis[em], userApis: db.userApis });
+        const safeMap = toSafeMaskedUserApisMap(db.userApis);
+        return sendJson(res, 200, { ok: true, entry: safeMap[em], userApis: safeMap });
       }
 
       const delApiMatch = p.match(/^\/api\/admin\/user-apis\/([^/]+)$/);
@@ -1045,7 +1080,7 @@ module.exports = async function apiHandler(req, res) {
         delete db.userApis[em];
         db.revokedUserApis[em] = Date.now();
         saveDb(db);
-        return sendJson(res, 200, { ok: true, userApis: db.userApis });
+        return sendJson(res, 200, { ok: true, userApis: toSafeMaskedUserApisMap(db.userApis) });
       }
 
       return sendJson(res, 404, { error: "API route not found" });
