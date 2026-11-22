@@ -2632,8 +2632,12 @@ function adminMembersHTML() {
   const apiEmails = Object.keys(apis).filter(function (e) { return apis[e] && apis[e].apiKey; });
   const apiRows = apiEmails.length ? apiEmails.map(function (e) {
     const item = apis[e];
+    const poolCount = item.apiPool
+      ? item.apiPool.split(/[\r\n,;]+/).map(function (x) { return x.trim(); }).filter(Boolean).length
+      : 0;
+    const poolBadge = poolCount > 0 ? (' <span class="badge badge-ok">+' + poolCount + ' Key d\u1ef1 ph\u00f2ng</span>') : "";
     return "<tr><td><strong>" + esc(e) + "</strong></td>" +
-      "<td><code>" + esc(maskApiKeyDisplay(item.apiKey)) + "</code></td>" +
+      "<td><code>" + esc(maskApiKeyDisplay(item.apiKey)) + "</code>" + poolBadge + "</td>" +
       "<td>" + esc(item.model || "gemini-2.5-flash") + "</td>" +
       "<td>" + esc(item.updatedAt ? fmtDateTime(item.updatedAt) : "—") + "</td>" +
       '<td><div class="deck-actions">' +
@@ -2666,20 +2670,48 @@ function adminMembersHTML() {
 
     '<div style="padding-top:16px;border-top:2px dashed var(--border)">' +
       '<h3>2. 🔑 G\u00e1n h\u1ed9 Google Gemini API Key theo Email ng\u01b0\u1eddi d\u00f9ng</h3>' +
-      '<p class="muted" style="font-size:.82rem;margin:0 0 10px">Khi ng\u01b0\u1eddi d\u00f9ng \u0111\u0103ng nh\u1eadp b\u1eb1ng Email \u0111\u00e3 \u0111\u01b0\u1ee3c g\u00e1n, h\u1ec7 th\u1ed1ng s\u1ebd t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t Gemini API Key \u0111\u00f3 cho t\u00e0i kho\u1ea3n c\u1ee7a h\u1ecd trong AI Converter.</p>' +
-      '<div class="admin-form">' +
+      '<p class="muted" style="font-size:.82rem;margin:0 0 10px">H\u1ed7 tr\u1ee3 g\u00e1n API Key \u0111a n\u1ec1n t\u1ea3ng (Google Gemini, Groq Cloud, OpenAI, OpenRouter, DeepSeek) k\u00e8m h\u1ed9p ch\u1ee9a nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng t\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng khi h\u1ebft Quota 429.</p>' +
+      '<div class="admin-form" style="align-items:flex-start">' +
         '<label class="field">Email ng\u01b0\u1eddi d\u00f9ng<input type="email" id="assignApiEmail" placeholder="email@example.com"></label>' +
-        '<label class="field" style="min-width:240px">Google Gemini API Key' +
+        '<label class="field" style="min-width:240px">API Key ch\u00ednh (Gemini / Groq / OpenAI / OpenRouter / DeepSeek)' +
           '<div class="key-input-wrap">' +
-            '<input type="password" id="assignApiKey" autocomplete="off" spellcheck="false" placeholder="AIza...">' +
+            '<input type="password" id="assignApiKey" autocomplete="off" spellcheck="false" placeholder="AIza..., gsk_..., sk-or-... ho\u1eb7c sk-...">' +
             '<button type="button" class="eye-btn" data-act="toggle-assign-eye" title="Hi\u1ec7n / \u1ea8n API Key">👁️</button>' +
           '</div>' +
         '</label>' +
         '<label class="field">Model m\u1eb7c \u0111\u1ecbnh<select id="assignApiModel">' +
-          '<option value="gemini-2.5-flash">Gemini 2.5 Flash (Nhanh)</option>' +
-          '<option value="gemini-2.5-pro">Gemini 2.5 Pro (Ch\u00ednh x\u00e1c cao)</option>' +
-          '<option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>' +
+          '<optgroup label="Google Gemini (AIza...)">' +
+            '<option value="gemini-2.5-flash">Gemini 2.5 Flash (Nhanh)</option>' +
+            '<option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite (Si\u00eau nhanh / Quota l\u1edbn)</option>' +
+            '<option value="gemini-2.0-flash">Gemini 2.0 Flash (\u1ed4n \u0111\u1ecbnh)</option>' +
+            '<option value="gemini-2.5-pro">Gemini 2.5 Pro (Ch\u00ednh x\u00e1c cao)</option>' +
+            '<option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>' +
+          '</optgroup>' +
+          '<optgroup label="Groq Cloud – Mi\u1ec5n ph\u00ed &amp; Si\u00eau t\u1ed1c (gsk_...)">' +
+            '<option value="groq:meta-llama/llama-4-scout-17b-16e-instruct">Groq Llama 4 Scout 17B (Mi\u1ec5n ph\u00ed &amp; Vision)</option>' +
+            '<option value="groq:meta-llama/llama-4-maverick-17b-128e-instruct">Groq Llama 4 Maverick 17B (Vision)</option>' +
+            '<option value="groq:llama-3.3-70b-versatile">Groq Llama 3.3 70B (Si\u00eau t\u1ed1c)</option>' +
+          '</optgroup>' +
+          '<optgroup label="OpenAI ChatGPT API (sk-...)">' +
+            '<option value="openai:gpt-4o-mini">OpenAI GPT-4o Mini (Nhanh &amp; Vision)</option>' +
+            '<option value="openai:gpt-4o">OpenAI GPT-4o (Ch\u00ednh x\u00e1c cao &amp; Vision)</option>' +
+            '<option value="openai:gpt-4.1-mini">OpenAI GPT-4.1 Mini (Vision)</option>' +
+          '</optgroup>' +
+          '<optgroup label="OpenRouter – \u0110a Model Free &amp; Pro (sk-or-...)">' +
+            '<option value="openrouter:google/gemini-2.0-flash-exp:free">OpenRouter: Gemini 2.0 Flash (Free &amp; Vision)</option>' +
+            '<option value="openrouter:qwen/qwen2.5-vl-72b-instruct:free">OpenRouter: Qwen 2.5 VL 72B (Free &amp; Vision)</option>' +
+            '<option value="openrouter:google/gemini-2.5-flash">OpenRouter: Gemini 2.5 Flash (Vision)</option>' +
+            '<option value="openrouter:deepseek/deepseek-chat-v3-0324:free">OpenRouter: DeepSeek V3 (Free)</option>' +
+            '<option value="openrouter:openai/gpt-4o-mini">OpenRouter: GPT-4o Mini (Vision)</option>' +
+          '</optgroup>' +
+          '<optgroup label="DeepSeek API (deepseek:sk-...)">' +
+            '<option value="deepseek:deepseek-chat">DeepSeek V3 Chat (Gi\u1ea3i \u0111\u1ec1 &amp; Chu\u1ea9n h\u00f3a)</option>' +
+            '<option value="deepseek:deepseek-reasoner">DeepSeek R1 Reasoner (To\u00e1n/L\u00fd/H\u00f3a chuy\u00ean s\u00e2u)</option>' +
+          '</optgroup>' +
         '</select></label>' +
+        '<label class="field" style="width:100%;flex-basis:100%">📦 H\u1ed9p ch\u1ee9a nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng g\u00e1n cho ng\u01b0\u1eddi d\u00f9ng (t\u00f9y ch\u1ecdn – m\u1ed7i d\u00f2ng 1 Key ho\u1eb7c c\u00e1ch b\u1eb1ng d\u1ea5u ph\u1ea9y)' +
+          '<textarea id="assignApiPool" rows="3" spellcheck="false" placeholder="D\u00e1n th\u00eam nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng (AIza..., gsk_..., sk-or-..., sk-...) \u0111\u1ec3 t\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng khi Key ch\u00ednh h\u1ebft Quota 429"></textarea>' +
+        '</label>' +
         '<button type="button" class="btn btn-primary" data-act="assign-user-api">🔑 G\u00e1n API cho Email</button>' +
         '<button type="button" class="btn btn-danger" data-act="revoke-user-api-form">Thu h\u1ed3i API</button>' +
       '</div>' +
@@ -2859,25 +2891,30 @@ async function onAdminClick(e) {
       const em = String(b.getAttribute("data-email") || "").trim().toLowerCase();
       const emInp = $("assignApiEmail");
       const keyInp = $("assignApiKey");
+      const poolInp = $("assignApiPool");
       const modSel = $("assignApiModel");
       const cur = getAssignedApiForEmail(em);
       if (emInp) emInp.value = em;
       if (keyInp) { keyInp.value = cur ? cur.apiKey : ""; keyInp.type = "password"; keyInp.focus(); }
+      if (poolInp) poolInp.value = (cur && cur.apiPool) ? cur.apiPool : "";
       if (modSel && cur && cur.model) modSel.value = cur.model;
       showToast("\u0110\u00e3 ch\u1ecdn email " + em + " \u0111\u1ec3 g\u00e1n Gemini API Key.", "info");
     } else if (act === "assign-user-api") {
       const email = ($("assignApiEmail") ? $("assignApiEmail").value : "").trim().toLowerCase();
-      const apiKey = ($("assignApiKey") ? $("assignApiKey").value : "").trim();
+      const rawKey = ($("assignApiKey") ? $("assignApiKey").value : "").trim();
+      const apiPool = ($("assignApiPool") ? $("assignApiPool").value : "").trim();
       const model = ($("assignApiModel") ? $("assignApiModel").value : "gemini-2.5-flash").trim();
+      const apiKey = rawKey || (apiPool.split(/[\r\n,;]+/).map(function (x) { return x.trim(); }).filter(Boolean)[0] || "");
       if (!isValidEmail(email)) { showToast("Vui l\u00f2ng nh\u1eadp \u0111\u1ecba ch\u1ec9 email ng\u01b0\u1eddi d\u00f9ng h\u1ee3p l\u1ec7.", "warning"); return; }
       if (!apiKey) { showToast("Vui l\u00f2ng d\u00e1n Google Gemini API Key \u0111\u1ec3 g\u00e1n cho ng\u01b0\u1eddi d\u00f9ng.", "warning"); return; }
-      const r = await apiCall("/api/admin/user-apis", "POST", { email: email, apiKey: apiKey, model: model });
+      const r = await apiCall("/api/admin/user-apis", "POST", { email: email, apiKey: apiKey, apiPool: apiPool, model: model });
       if (r && r._err) { showToast("L\u1ed7i m\u00e1y ch\u1ee7: " + r._err, "error"); return; }
       const now = Date.now();
       const all = loadObj(KEYS.userApis);
       all[email] = {
         email: email,
         apiKey: apiKey,
+        apiPool: apiPool,
         model: model,
         assignedBy: ADMIN_EMAIL,
         updatedAt: new Date(now).toISOString(),
@@ -3181,6 +3218,7 @@ function onKeyDown(e) {
 }
 
 /* ------------------------------ Multi-Language Engine (VI / EN / JA - Zero Font Change) ------------------------------ */
+/* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
 /* BEGIN_VI_TRANSLATION_DICTIONARY */
@@ -4162,7 +4200,30 @@ const I18N_MAP = {
   "Chưa có người dùng nào phù hợp với bộ lọc.": { vi: "Chưa có người dùng nào phù hợp với bộ lọc.", en: "No registered users match the current filter.", ja: "条件に一致する登録ユーザーはいません。" },
   "Hiển thị toàn bộ tài khoản đã đăng ký trên hệ thống. Khi có người dùng mới đăng ký hoặc gửi yêu cầu xác nhận thanh toán, hệ thống sẽ tự động gửi thông báo về email quản trị (": { vi: "Hiển thị toàn bộ tài khoản đã đăng ký trên hệ thống. Khi có người dùng mới đăng ký hoặc gửi yêu cầu xác nhận thanh toán, hệ thống sẽ tự động gửi thông báo về email quản trị (", en: "Displays all registered accounts in the system. Whenever a new user registers or submits a payment confirmation request, an email alert is automatically sent to the admin email (", ja: "システムに登録された全アカウントを表示します。新規ユーザー登録または支払い確認リクエストが送信されると、管理者メール (" },
   ").": { vi: ").", en: ").", ja: ") に自動通知されます。" },
-  "Hiển thị toàn bộ tài khoản đã đăng ký trên hệ thống. Khi có người dùng mới đăng ký hoặc gửi yêu cầu xác nhận thanh toán, hệ thống sẽ tự động gửi thông báo về email quản trị (phamduchieu.robotics@gmail.com).": { vi: "Hiển thị toàn bộ tài khoản đã đăng ký trên hệ thống. Khi có người dùng mới đăng ký hoặc gửi yêu cầu xác nhận thanh toán, hệ thống sẽ tự động gửi thông báo về email quản trị (phamduchieu.robotics@gmail.com).", en: "Displays all registered accounts in the system. Whenever a new user registers or submits a payment confirmation request, an email alert is automatically sent to the admin email (phamduchieu.robotics@gmail.com).", ja: "システムに登録された全アカウントを表示します。新規ユーザー登録または支払い確認リクエストが送信されると、管理者メール (phamduchieu.robotics@gmail.com) に自動通知されます。" }
+  "Hiển thị toàn bộ tài khoản đã đăng ký trên hệ thống. Khi có người dùng mới đăng ký hoặc gửi yêu cầu xác nhận thanh toán, hệ thống sẽ tự động gửi thông báo về email quản trị (phamduchieu.robotics@gmail.com).": { vi: "Hiển thị toàn bộ tài khoản đã đăng ký trên hệ thống. Khi có người dùng mới đăng ký hoặc gửi yêu cầu xác nhận thanh toán, hệ thống sẽ tự động gửi thông báo về email quản trị (phamduchieu.robotics@gmail.com).", en: "Displays all registered accounts in the system. Whenever a new user registers or submits a payment confirmation request, an email alert is automatically sent to the admin email (phamduchieu.robotics@gmail.com).", ja: "システムに登録された全アカウントを表示します。新規ユーザー登録または支払い確認リクエストが送信されると、管理者メール (phamduchieu.robotics@gmail.com) に自動通知されます。" },
+  "Hỗ trợ đa nền tảng AI (Google Gemini, OpenAI, Groq Cloud, OpenRouter, DeepSeek), hộp chứa nhiều API Key dự phòng tự động xoay vòng khi hết Quota 429 và API do Quản trị viên gán theo Email.": { vi: "Hỗ trợ đa nền tảng AI (Google Gemini, OpenAI, Groq Cloud, OpenRouter, DeepSeek), hộp chứa nhiều API Key dự phòng tự động xoay vòng khi hết Quota 429 và API do Quản trị viên gán theo Email.", en: "Supports multi-platform AI (Google Gemini, OpenAI, Groq Cloud, OpenRouter, DeepSeek), a Multi-Key Backup Pool that auto-rotates on 429 Quota limits, and Admin-assigned APIs by Email.", ja: "マルチプラットフォーム AI (Google Gemini, OpenAI, Groq Cloud, OpenRouter, DeepSeek)、Quota 429 制限時に自動ローテーションする予備 API Key プール、および管理者割当 API をサポートします。" },
+  "Chọn Nền tảng & Model AI chủ đạo": { vi: "Chọn Nền tảng & Model AI chủ đạo", en: "Select Primary AI Platform & Model", ja: "メイン AI プラットフォーム＆モデルを選択" },
+  "Gemini 2.5 Flash-Lite (Siêu nhanh / Quota lớn)": { vi: "Gemini 2.5 Flash-Lite (Siêu nhanh / Quota lớn)", en: "Gemini 2.5 Flash-Lite (Ultra Fast / High Quota)", ja: "Gemini 2.5 Flash-Lite (超高速 / 大容量クォータ)" },
+  "Groq Llama 4 Scout 17B (Miễn phí & Vision)": { vi: "Groq Llama 4 Scout 17B (Miễn phí & Vision)", en: "Groq Llama 4 Scout 17B (Free & Vision)", ja: "Groq Llama 4 Scout 17B (無料 & Vision)" },
+  "Groq Llama 4 Maverick 17B (Vision)": { vi: "Groq Llama 4 Maverick 17B (Vision)", en: "Groq Llama 4 Maverick 17B (Vision)", ja: "Groq Llama 4 Maverick 17B (Vision)" },
+  "Groq Llama 3.3 70B (Siêu tốc)": { vi: "Groq Llama 3.3 70B (Siêu tốc)", en: "Groq Llama 3.3 70B (Ultra Fast)", ja: "Groq Llama 3.3 70B (超高速)" },
+  "OpenAI GPT-4o Mini (Nhanh & Vision)": { vi: "OpenAI GPT-4o Mini (Nhanh & Vision)", en: "OpenAI GPT-4o Mini (Fast & Vision)", ja: "OpenAI GPT-4o Mini (高速 & Vision)" },
+  "OpenAI GPT-4o (Chính xác cao & Vision)": { vi: "OpenAI GPT-4o (Chính xác cao & Vision)", en: "OpenAI GPT-4o (High Accuracy & Vision)", ja: "OpenAI GPT-4o (高精度 & Vision)" },
+  "OpenAI GPT-4.1 Mini (Vision)": { vi: "OpenAI GPT-4.1 Mini (Vision)", en: "OpenAI GPT-4.1 Mini (Vision)", ja: "OpenAI GPT-4.1 Mini (Vision)" },
+  "DeepSeek V3 Chat (Giải đề & Chuẩn hóa)": { vi: "DeepSeek V3 Chat (Giải đề & Chuẩn hóa)", en: "DeepSeek V3 Chat (Solving & Formatting)", ja: "DeepSeek V3 Chat (解答・フォーマット正規化)" },
+  "DeepSeek R1 Reasoner (Toán/Lý/Hóa chuyên sâu)": { vi: "DeepSeek R1 Reasoner (Toán/Lý/Hóa chuyên sâu)", en: "DeepSeek R1 Reasoner (Advanced STEM Reasoning)", ja: "DeepSeek R1 Reasoner (理系・数学高度推論)" },
+  "API Key chính (Gemini AIza..., Groq gsk_..., OpenRouter sk-or-..., OpenAI/DeepSeek sk-...)": { vi: "API Key chính (Gemini AIza..., Groq gsk_..., OpenRouter sk-or-..., OpenAI/DeepSeek sk-...)", en: "Primary API Key (Gemini AIza..., Groq gsk_..., OpenRouter sk-or-..., OpenAI/DeepSeek sk-...)", ja: "メイン API Key (Gemini AIza..., Groq gsk_..., OpenRouter sk-or-..., OpenAI/DeepSeek sk-...)" },
+  "API Key chính (Gemini / Groq / OpenAI / OpenRouter / DeepSeek)": { vi: "API Key chính (Gemini / Groq / OpenAI / OpenRouter / DeepSeek)", en: "Primary API Key (Gemini / Groq / OpenAI / OpenRouter / DeepSeek)", ja: "メイン API Key (Gemini / Groq / OpenAI / OpenRouter / DeepSeek)" },
+  "Dán chuỗi khóa AIza..., gsk_..., sk-or-... hoặc sk-...": { vi: "Dán chuỗi khóa AIza..., gsk_..., sk-or-... hoặc sk-...", en: "Paste key starting with AIza..., gsk_..., sk-or-..., or sk-...", ja: "AIza..., gsk_..., sk-or-..., または sk-... で始まるキーを貼り付け" },
+  "AIza..., gsk_..., sk-or-... hoặc sk-...": { vi: "AIza..., gsk_..., sk-or-... hoặc sk-...", en: "AIza..., gsk_..., sk-or-..., or sk-...", ja: "AIza..., gsk_..., sk-or-..., または sk-..." },
+  "📦 Hộp chứa nhiều API Key dự phòng (Multi-Key Pool – Tự động xoay vòng khi hết Quota 429)": { vi: "📦 Hộp chứa nhiều API Key dự phòng (Multi-Key Pool – Tự động xoay vòng khi hết Quota 429)", en: "📦 Multi-Key Backup Pool (Auto-Rotates When Quota 429 Is Reached)", ja: "📦 予備 API Key プール (Multi-Key Pool – Quota 429 上限時に自動ローテーション)" },
+  "📦 Hộp chứa nhiều API Key dự phòng gán cho người dùng (tùy chọn – mỗi dòng 1 Key hoặc cách bằng dấu phẩy)": { vi: "📦 Hộp chứa nhiều API Key dự phòng gán cho người dùng (tùy chọn – mỗi dòng 1 Key hoặc cách bằng dấu phẩy)", en: "📦 Multi-Key Backup Pool Assigned to User (optional – one key per line or comma-separated)", ja: "📦 ユーザーに割り当てる予備 API Key プール（任意 – 1行に1キーまたはカンマ区切り）" },
+  "Dán thêm nhiều API Key dự phòng (AIza..., gsk_..., sk-or-..., sk-...) để tự động xoay vòng khi Key chính hết Quota 429": { vi: "Dán thêm nhiều API Key dự phòng (AIza..., gsk_..., sk-or-..., sk-...) để tự động xoay vòng khi Key chính hết Quota 429", en: "Paste additional backup API Keys (AIza..., gsk_..., sk-or-..., sk-...) to auto-rotate when the primary key hits 429 Quota", ja: "メインキーが Quota 429 に達した際に自動ローテーションするための予備 API Key (AIza..., gsk_..., sk-or-..., sk-...) を貼り付け" },
+  "Hỗ trợ gán API Key đa nền tảng (Google Gemini, Groq Cloud, OpenAI, OpenRouter, DeepSeek) kèm hộp chứa nhiều API Key dự phòng tự động xoay vòng khi hết Quota 429.": { vi: "Hỗ trợ gán API Key đa nền tảng (Google Gemini, Groq Cloud, OpenAI, OpenRouter, DeepSeek) kèm hộp chứa nhiều API Key dự phòng tự động xoay vòng khi hết Quota 429.", en: "Assign multi-platform API Keys (Google Gemini, Groq Cloud, OpenAI, OpenRouter, DeepSeek) along with a Multi-Key Backup Pool that auto-rotates on 429 Quota limits.", ja: "マルチプラットフォーム API Key (Google Gemini, Groq Cloud, OpenAI, OpenRouter, DeepSeek) と Quota 429 時に自動ローテーションする予備 API Key プールを割り当てます。" },
+  "Không tìm thấy Model AI tương thích với định dạng tệp này. Nếu đọc ảnh/PDF scan, hãy thêm Key của Gemini, Groq, OpenAI hoặc OpenRouter.": { vi: "Không tìm thấy Model AI tương thích với định dạng tệp này. Nếu đọc ảnh/PDF scan, hãy thêm Key của Gemini, Groq, OpenAI hoặc OpenRouter.", en: "No compatible AI model found for this file format. For images/scanned PDFs, please add a Gemini, Groq, OpenAI, or OpenRouter API Key.", ja: "このファイル形式に対応する AI モデルが見つかりません。画像やスキャン PDF の場合は Gemini, Groq, OpenAI, または OpenRouter の API Key を追加してください。" },
+  "Groq Cloud – Miễn phí & Siêu tốc (gsk_...)": { vi: "Groq Cloud – Miễn phí & Siêu tốc (gsk_...)", en: "Groq Cloud – Free & Ultra Fast (gsk_...)", ja: "Groq Cloud – 無料＆超高速 (gsk_...)" },
+  "OpenRouter – Đa Model Free & Pro (sk-or-...)": { vi: "OpenRouter – Đa Model Free & Pro (sk-or-...)", en: "OpenRouter – Multi-Model Free & Pro (sk-or-...)", ja: "OpenRouter – マルチモデル Free & Pro (sk-or-...)" },
+  "Dán nhiều API Key dự phòng (mỗi dòng 1 Key hoặc cách nhau bằng dấu phẩy). Hỗ trợ trộn nhiều hãng cùng lúc:\nAIzaSy... (Google Gemini)\ngsk_... (Groq Cloud Free)\nsk-or-v1-... (OpenRouter)\nopenai:sk-... hoặc deepseek:sk-...": { vi: "Dán nhiều API Key dự phòng (mỗi dòng 1 Key hoặc cách nhau bằng dấu phẩy). Hỗ trợ trộn nhiều hãng cùng lúc:\nAIzaSy... (Google Gemini)\ngsk_... (Groq Cloud Free)\nsk-or-v1-... (OpenRouter)\nopenai:sk-... hoặc deepseek:sk-...", en: "Paste multiple backup API Keys (one per line or comma-separated). Supports mixing multiple AI providers:\nAIzaSy... (Google Gemini)\ngsk_... (Groq Cloud Free)\nsk-or-v1-... (OpenRouter)\nopenai:sk-... or deepseek:sk-...", ja: "複数の予備 API Key を貼り付け（1行に1キーまたはカンマ区切り）。複数プロバイダーの混在に対応:\nAIzaSy... (Google Gemini)\ngsk_... (Groq Cloud Free)\nsk-or-v1-... (OpenRouter)\nopenai:sk-... または deepseek:sk-..." }
 };
 
 const I18N_PATTERNS = [
@@ -5085,6 +5146,16 @@ const I18N_PATTERNS = [
     re: /^API Key hiện tại đã hết hạn mức miễn phí \(Free Tier Quota\) trên các model khả dụng(.*)$/,
     en: () => "Current API Key has reached Google's Free Tier quota across available models. Please switch to another Gemini API Key in API Settings or upgrade your Google AI Studio quota.",
     ja: () => "現在の API Key は利用可能なモデルの無料枠 (Free Tier Quota) の上限に達しました。API設定で別の Gemini API Key に変更するか、Google AI Studio のクォータをアップグレードしてください。"
+  },
+  {
+    re: /^\+(\d+)\s+Key dự phòng$/,
+    en: (m) => "+" + m[1] + " Backup Key(s)",
+    ja: (m) => "+" + m[1] + " 予備キー"
+  },
+  {
+    re: /^🔄 Đang kích hoạt\s+(\d+)\s+API Key trong hàng đợi tự động xoay vòng:$/,
+    en: (m) => "🔄 Active in auto-rotation pool: " + m[1] + " API Key(s):",
+    ja: (m) => "🔄 自動ローテーションプールで有効な API Key (" + m[1] + " 件):"
   }
 ];
 /* END_VI_TRANSLATION_DICTIONARY */
@@ -5151,9 +5222,9 @@ function applyI18n(root) {
       }
     }
 
-    // 2. Translate attributes: placeholder, title, aria-label
+    // 2. Translate attributes: placeholder, title, aria-label, label (on optgroup)
     if (typeof container.querySelectorAll === "function") {
-      const attrs = ["placeholder", "title", "aria-label"];
+      const attrs = ["placeholder", "title", "aria-label", "label"];
       for (let a = 0; a < attrs.length; a++) {
         const attr = attrs[a];
         const propVi = "__vi_" + attr;
@@ -5231,7 +5302,7 @@ window.UET = {
   isAdmin: isAdmin, isAdminUser: isAdminUser, currentTier: currentTier, tierRank: tierRank, effectiveLimits: effectiveLimits,
   can: can, requireFeature: requireFeature, promptUpgrade: promptUpgrade,
   getAssignedApiForUser: getActiveUserAssignedApi, getAssignedApiForEmail: getAssignedApiForEmail,
-  getLang: getLang, setLang: setLang, applyI18n: applyI18n, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString,
+  getLang: getLang, setLang: setLang, applyI18n: applyI18n, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString, translateString: translateString,
   getDecks: function () { return state.decks; }, getUserDecks: getUserDecks, getDeck: getDeck,
   normalizeQuestion: normalizeQuestion, parseWorkbookRows: parseWorkbookRows, addOrMergeDeck: addOrMergeDeck,
   downloadTemplate: downloadTemplate, showTab: showTab, navigateTo: navigateTo, syncHistory: syncHistory, renderTab: renderTab, updateChrome: updateChrome,

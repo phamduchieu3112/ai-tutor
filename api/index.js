@@ -687,6 +687,7 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
         db.userApis[em] = {
           email: em,
           apiKey: String(item.apiKey).trim(),
+          apiPool: String(item.apiPool || "").trim(),
           model: String(item.model || "gemini-2.5-flash"),
           assignedBy: ADMIN_EMAIL,
           updatedAt: item.updatedAt || new Date().toISOString(),
@@ -1016,14 +1017,17 @@ module.exports = async function apiHandler(req, res) {
         const body = await readBody(req);
         const em = String((body && body.email) || "").trim().toLowerCase();
         const apiKey = String((body && body.apiKey) || "").trim();
+        const apiPool = String((body && body.apiPool) || "").trim();
         const model = String((body && body.model) || "gemini-2.5-flash").trim();
-        if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em) || !apiKey) {
+        const primaryKey = apiKey || (apiPool.split(/[\r\n,;]+/).map(function (x) { return x.trim(); }).filter(Boolean)[0] || "");
+        if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em) || !primaryKey) {
           return sendJson(res, 400, { error: "Email ho\u1eb7c Gemini API Key kh\u00f4ng h\u1ee3p l\u1ec7." });
         }
         const now = Date.now();
         db.userApis[em] = {
           email: em,
-          apiKey: apiKey,
+          apiKey: primaryKey,
+          apiPool: apiPool,
           model: model,
           assignedBy: ADMIN_EMAIL,
           updatedAt: new Date(now).toISOString(),

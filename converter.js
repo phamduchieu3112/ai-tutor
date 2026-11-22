@@ -45,6 +45,87 @@
     apiMounted: false
   };
 
+  const API_POOL_KEY = "uet_master_api_pool";
+
+  const PROVIDER_INFO = {
+    gemini: {
+      name: "Google Gemini",
+      endpoint: "https://generativelanguage.googleapis.com/v1beta/models/",
+      models: [
+        { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash (Nhanh)", vision: true, pdf: true },
+        { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite (Si\u00eau nhanh / Quota l\u1edbn)", vision: true, pdf: true },
+        { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash (\u1ed4n \u0111\u1ecbnh)", vision: true, pdf: true },
+        { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro (Ch\u00ednh x\u00e1c cao)", vision: true, pdf: true },
+        { id: "gemini-3-flash-preview", label: "Gemini 3 Flash Preview", vision: true, pdf: true }
+      ]
+    },
+    groq: {
+      name: "Groq Cloud",
+      endpoint: "https://api.groq.com/openai/v1/chat/completions",
+      models: [
+        { id: "groq:meta-llama/llama-4-scout-17b-16e-instruct", rawModel: "meta-llama/llama-4-scout-17b-16e-instruct", label: "Groq Llama 4 Scout 17B (Mi\u1ec5n ph\u00ed & Vision)", vision: true, pdf: false },
+        { id: "groq:meta-llama/llama-4-maverick-17b-128e-instruct", rawModel: "meta-llama/llama-4-maverick-17b-128e-instruct", label: "Groq Llama 4 Maverick 17B (Vision)", vision: true, pdf: false },
+        { id: "groq:llama-3.3-70b-versatile", rawModel: "llama-3.3-70b-versatile", label: "Groq Llama 3.3 70B (Si\u00eau t\u1ed1c)", vision: false, pdf: false }
+      ]
+    },
+    openai: {
+      name: "OpenAI",
+      endpoint: "https://api.openai.com/v1/chat/completions",
+      models: [
+        { id: "openai:gpt-4o-mini", rawModel: "gpt-4o-mini", label: "OpenAI GPT-4o Mini (Nhanh & Vision)", vision: true, pdf: false },
+        { id: "openai:gpt-4o", rawModel: "gpt-4o", label: "OpenAI GPT-4o (Ch\u00ednh x\u00e1c cao & Vision)", vision: true, pdf: false },
+        { id: "openai:gpt-4.1-mini", rawModel: "gpt-4.1-mini", label: "OpenAI GPT-4.1 Mini (Vision)", vision: true, pdf: false }
+      ]
+    },
+    openrouter: {
+      name: "OpenRouter",
+      endpoint: "https://openrouter.ai/api/v1/chat/completions",
+      models: [
+        { id: "openrouter:google/gemini-2.0-flash-exp:free", rawModel: "google/gemini-2.0-flash-exp:free", label: "OpenRouter: Gemini 2.0 Flash (Free & Vision)", vision: true, pdf: false },
+        { id: "openrouter:qwen/qwen2.5-vl-72b-instruct:free", rawModel: "qwen/qwen2.5-vl-72b-instruct:free", label: "OpenRouter: Qwen 2.5 VL 72B (Free & Vision)", vision: true, pdf: false },
+        { id: "openrouter:google/gemini-2.5-flash", rawModel: "google/gemini-2.5-flash", label: "OpenRouter: Gemini 2.5 Flash (Vision)", vision: true, pdf: false },
+        { id: "openrouter:deepseek/deepseek-chat-v3-0324:free", rawModel: "deepseek/deepseek-chat-v3-0324:free", label: "OpenRouter: DeepSeek V3 (Free)", vision: false, pdf: false },
+        { id: "openrouter:openai/gpt-4o-mini", rawModel: "openai/gpt-4o-mini", label: "OpenRouter: GPT-4o Mini (Vision)", vision: true, pdf: false }
+      ]
+    },
+    deepseek: {
+      name: "DeepSeek",
+      endpoint: "https://api.deepseek.com/chat/completions",
+      models: [
+        { id: "deepseek:deepseek-chat", rawModel: "deepseek-chat", label: "DeepSeek V3 Chat (Gi\u1ea3i \u0111\u1ec1 & Chu\u1ea9n h\u00f3a)", vision: false, pdf: false },
+        { id: "deepseek:deepseek-reasoner", rawModel: "deepseek-reasoner", label: "DeepSeek R1 Reasoner (To\u00e1n/L\u00fd/H\u00f3a chuy\u00ean s\u00e2u)", vision: false, pdf: false }
+      ]
+    }
+  };
+
+  function detectProviderFromModel(modelId) {
+    const m = String(modelId || "").trim().toLowerCase();
+    if (m.indexOf("groq:") === 0) return "groq";
+    if (m.indexOf("openai:") === 0) return "openai";
+    if (m.indexOf("openrouter:") === 0) return "openrouter";
+    if (m.indexOf("deepseek:") === 0) return "deepseek";
+    return "gemini";
+  }
+
+  function detectProviderFromKey(rawKey, fallbackProvider) {
+    const s = String(rawKey || "").trim();
+    if (!s) return fallbackProvider || "gemini";
+    const prefMatch = s.match(/^(gemini|groq|openai|openrouter|deepseek)\s*:\s*(.+)$/i);
+    if (prefMatch) return prefMatch[1].toLowerCase();
+    if (/^AIza/i.test(s)) return "gemini";
+    if (/^gsk_/i.test(s)) return "groq";
+    if (/^sk-or-/i.test(s)) return "openrouter";
+    if (/^sk-proj-/i.test(s)) return "openai";
+    if (/^sk-/i.test(s)) return fallbackProvider === "deepseek" ? "deepseek" : "openai";
+    return fallbackProvider || "gemini";
+  }
+
+  function cleanRawKeyValue(rawKey) {
+    const s = String(rawKey || "").trim();
+    const prefMatch = s.match(/^(?:gemini|groq|openai|openrouter|deepseek)\s*:\s*(.+)$/i);
+    return prefMatch ? prefMatch[1].trim() : s;
+  }
+
   function U() { return window.UET; }
   function getAssignedApi() {
     return (U() && typeof U().getAssignedApiForUser === "function") ? U().getAssignedApiForUser() : null;
@@ -52,9 +133,24 @@
   function getPersonalApiKey() {
     try { return (localStorage.getItem(U().KEYS.apiKey) || "").trim(); } catch (e) { return ""; }
   }
+  function getPersonalApiPool() {
+    try { return (localStorage.getItem(API_POOL_KEY) || "").trim(); } catch (e) { return ""; }
+  }
+  function setPersonalApiPool(v) {
+    try {
+      if (v && v.trim()) localStorage.setItem(API_POOL_KEY, v.trim());
+      else localStorage.removeItem(API_POOL_KEY);
+    } catch (e) { /* */ }
+    U().updateChrome();
+  }
   function getApiKey() {
     const personal = getPersonalApiKey();
     if (personal) return personal;
+    const pool = getPersonalApiPool();
+    if (pool) {
+      const first = pool.split(/[\r\n,;]+/).map(function (x) { return x.trim(); }).filter(Boolean)[0];
+      if (first) return first;
+    }
     const assigned = getAssignedApi();
     return (assigned && assigned.apiKey) ? String(assigned.apiKey).trim() : "";
   }
@@ -70,7 +166,42 @@
     const assigned = getAssignedApi();
     return (assigned && assigned.model) ? assigned.model : "gemini-2.5-flash";
   }
-  function setApiModel(m) { try { localStorage.setItem(U().KEYS.apiModel, m); } catch (e) { /* */ } }
+  function setApiModel(m) {
+    cState.activeFallbackModel = "";
+    try { localStorage.setItem(U().KEYS.apiModel, m); } catch (e) { /* */ }
+  }
+
+  function parseKeyPoolItems(primaryKeyHint, preferredModelHint) {
+    const defProvider = detectProviderFromModel(preferredModelHint || getApiModel());
+    const rawTokens = [];
+    const pushRaw = function (block) {
+      if (!block) return;
+      String(block).split(/[\r\n,;]+/).forEach(function (line) {
+        const t = line.trim();
+        if (t && !t.startsWith("#")) rawTokens.push(t);
+      });
+    };
+    pushRaw(primaryKeyHint);
+    pushRaw(getPersonalApiKey());
+    pushRaw(getPersonalApiPool());
+    const assigned = getAssignedApi();
+    if (assigned) {
+      pushRaw(assigned.apiKey);
+      pushRaw(assigned.apiPool);
+    }
+    const seen = {};
+    const out = [];
+    rawTokens.forEach(function (tok) {
+      const provider = detectProviderFromKey(tok, defProvider);
+      const key = cleanRawKeyValue(tok);
+      if (!key) return;
+      const sig = provider + ":" + key;
+      if (seen[sig]) return;
+      seen[sig] = true;
+      out.push({ provider: provider, apiKey: key });
+    });
+    return out;
+  }
 
   function dateStamp() {
     const d = new Date();
@@ -92,11 +223,13 @@
     const root = U().$("apiSettingsRoot");
     if (!root) return;
     const personalKey = getPersonalApiKey();
+    const personalPool = getPersonalApiPool();
     const assigned = getAssignedApi();
     const key = getApiKey();
     const model = getApiModel();
+    const poolItems = parseKeyPoolItems("", model);
     const curLang = (U() && typeof U().getLang === "function") ? U().getLang() : "vi";
-    if (!personalKey && assigned && assigned.apiKey) {
+    if (!personalKey && !personalPool && assigned && assigned.apiKey) {
       cState.apiStatus = "ok";
       cState.apiStatusMsg = "✅ \u0110\u00e3 g\u00e1n b\u1edfi Admin";
     } else if (key && cState.apiStatus === "none") {
@@ -107,13 +240,20 @@
       cState.apiStatusMsg = "Ch\u01b0a c\u1ea5u h\u00ecnh";
     }
     const badgeCls = cState.apiStatus === "ok" ? "badge-ok" : (cState.apiStatus === "error" ? "badge-bad" : (cState.apiStatus === "saved" ? "" : "badge-warn"));
-    const isPro = model.indexOf("pro") !== -1;
+    const isPro = model.indexOf("pro") !== -1 || model.indexOf("gpt-4o") !== -1 || model.indexOf("reasoner") !== -1;
     const userEmail = (U().state && U().state.user && U().state.user.email) ? U().state.user.email : "";
+
+    const providerCounts = {};
+    poolItems.forEach(function (it) {
+      const pName = PROVIDER_INFO[it.provider] ? PROVIDER_INFO[it.provider].name : it.provider;
+      providerCounts[pName] = (providerCounts[pName] || 0) + 1;
+    });
+    const poolSummary = Object.keys(providerCounts).map(function (p) { return p + " (" + providerCounts[p] + ")"; }).join(" • ");
 
     root.innerHTML =
       '<div class="api-wrap">' +
         '<section class="panel">' +
-          '<div class="panel-head"><div><h2>C\u00e0i \u0111\u1eb7t Google Gemini API</h2><p class="muted" style="margin:0;font-size:.84rem">H\u1ed7 tr\u1ee3 c\u1ea3 API t\u1eeb t\u00e0i kho\u1ea3n Google AI Pro / Ultra / Paid, API Free v\u00e0 API \u0111\u01b0\u1ee3c Qu\u1ea3n tr\u1ecb vi\u00ean g\u00e1n theo Email.</p></div>' +
+          '<div class="panel-head"><div><h2>C\u00e0i \u0111\u1eb7t Google Gemini API</h2><p class="muted" style="margin:0;font-size:.84rem">H\u1ed7 tr\u1ee3 \u0111a n\u1ec1n t\u1ea3ng AI (Google Gemini, OpenAI, Groq Cloud, OpenRouter, DeepSeek), h\u1ed9p ch\u1ee9a nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng t\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng khi h\u1ebft Quota 429 v\u00e0 API do Qu\u1ea3n tr\u1ecb vi\u00ean g\u00e1n theo Email.</p></div>' +
           '<span class="badge ' + badgeCls + '" id="apiPageBadge">' + U().esc(cState.apiStatusMsg) + '</span></div>' +
 
           (assigned && assigned.apiKey
@@ -122,13 +262,54 @@
               '</div>'
             : '') +
 
-          '<label class="field">Gemini API Key c\u00e1 nh\u00e2n (t\u00f9y ch\u1ecdn ghi \u0111\u00e8)' +
+          '<label class="field">Ch\u1ecdn N\u1ec1n t\u1ea3ng &amp; Model AI ch\u1ee7 \u0111\u1ea1o' +
+            '<select id="uetApiModelSelect">' +
+              '<optgroup label="Google Gemini (AIza...)">' +
+                '<option value="gemini-2.5-flash"' + (model === "gemini-2.5-flash" ? " selected" : "") + '>Gemini 2.5 Flash – Ch\u1ebf \u0111\u1ed9 Nhanh / Ti\u1ebft ki\u1ec7m (API Free)</option>' +
+                '<option value="gemini-2.5-flash-lite"' + (model === "gemini-2.5-flash-lite" ? " selected" : "") + '>Gemini 2.5 Flash-Lite (Si\u00eau nhanh / Quota l\u1edbn)</option>' +
+                '<option value="gemini-2.0-flash"' + (model === "gemini-2.0-flash" ? " selected" : "") + '>Gemini 2.0 Flash (\u1ed4n \u0111\u1ecbnh)</option>' +
+                '<option value="gemini-2.5-pro"' + (model === "gemini-2.5-pro" ? " selected" : "") + '>Gemini 2.5 Pro – Ch\u1ebf \u0111\u1ed9 Ch\u00ednh x\u00e1c cao (Khuy\u00ean d\u00f9ng cho Google AI Pro / Ultra / Paid)</option>' +
+                '<option value="gemini-3-flash-preview"' + (model === "gemini-3-flash-preview" ? " selected" : "") + '>Gemini 3 Flash Preview – T\u1ed1c \u0111\u1ed9 cao (API Free / Preview)</option>' +
+              '</optgroup>' +
+              '<optgroup label="Groq Cloud – Mi\u1ec5n ph\u00ed &amp; Si\u00eau t\u1ed1c (gsk_...)">' +
+                '<option value="groq:meta-llama/llama-4-scout-17b-16e-instruct"' + (model === "groq:meta-llama/llama-4-scout-17b-16e-instruct" ? " selected" : "") + '>Groq Llama 4 Scout 17B (Mi\u1ec5n ph\u00ed &amp; Vision)</option>' +
+                '<option value="groq:meta-llama/llama-4-maverick-17b-128e-instruct"' + (model === "groq:meta-llama/llama-4-maverick-17b-128e-instruct" ? " selected" : "") + '>Groq Llama 4 Maverick 17B (Vision)</option>' +
+                '<option value="groq:llama-3.3-70b-versatile"' + (model === "groq:llama-3.3-70b-versatile" ? " selected" : "") + '>Groq Llama 3.3 70B (Si\u00eau t\u1ed1c)</option>' +
+              '</optgroup>' +
+              '<optgroup label="OpenAI ChatGPT API (sk-...)">' +
+                '<option value="openai:gpt-4o-mini"' + (model === "openai:gpt-4o-mini" ? " selected" : "") + '>OpenAI GPT-4o Mini (Nhanh &amp; Vision)</option>' +
+                '<option value="openai:gpt-4o"' + (model === "openai:gpt-4o" ? " selected" : "") + '>OpenAI GPT-4o (Ch\u00ednh x\u00e1c cao &amp; Vision)</option>' +
+                '<option value="openai:gpt-4.1-mini"' + (model === "openai:gpt-4.1-mini" ? " selected" : "") + '>OpenAI GPT-4.1 Mini (Vision)</option>' +
+              '</optgroup>' +
+              '<optgroup label="OpenRouter – \u0110a Model Free &amp; Pro (sk-or-...)">' +
+                '<option value="openrouter:google/gemini-2.0-flash-exp:free"' + (model === "openrouter:google/gemini-2.0-flash-exp:free" ? " selected" : "") + '>OpenRouter: Gemini 2.0 Flash (Free &amp; Vision)</option>' +
+                '<option value="openrouter:qwen/qwen2.5-vl-72b-instruct:free"' + (model === "openrouter:qwen/qwen2.5-vl-72b-instruct:free" ? " selected" : "") + '>OpenRouter: Qwen 2.5 VL 72B (Free &amp; Vision)</option>' +
+                '<option value="openrouter:google/gemini-2.5-flash"' + (model === "openrouter:google/gemini-2.5-flash" ? " selected" : "") + '>OpenRouter: Gemini 2.5 Flash (Vision)</option>' +
+                '<option value="openrouter:deepseek/deepseek-chat-v3-0324:free"' + (model === "openrouter:deepseek/deepseek-chat-v3-0324:free" ? " selected" : "") + '>OpenRouter: DeepSeek V3 (Free)</option>' +
+                '<option value="openrouter:openai/gpt-4o-mini"' + (model === "openrouter:openai/gpt-4o-mini" ? " selected" : "") + '>OpenRouter: GPT-4o Mini (Vision)</option>' +
+              '</optgroup>' +
+              '<optgroup label="DeepSeek API (deepseek:sk-...)">' +
+                '<option value="deepseek:deepseek-chat"' + (model === "deepseek:deepseek-chat" ? " selected" : "") + '>DeepSeek V3 Chat (Gi\u1ea3i \u0111\u1ec1 &amp; Chu\u1ea9n h\u00f3a)</option>' +
+                '<option value="deepseek:deepseek-reasoner"' + (model === "deepseek:deepseek-reasoner" ? " selected" : "") + '>DeepSeek R1 Reasoner (To\u00e1n/L\u00fd/H\u00f3a chuy\u00ean s\u00e2u)</option>' +
+              '</optgroup>' +
+            '</select>' +
+          '</label>' +
+
+          '<label class="field">API Key ch\u00ednh (Gemini AIza..., Groq gsk_..., OpenRouter sk-or-..., OpenAI/DeepSeek sk-...)' +
             '<div class="key-input-wrap">' +
-              '<input type="password" id="uetApiKeyInput" autocomplete="off" spellcheck="false" value="' + U().esc(personalKey) + '" placeholder="' + (assigned && assigned.apiKey ? "\u0110ang d\u00f9ng API Key do Qu\u1ea3n tr\u1ecb vi\u00ean g\u00e1n cho " + U().esc(userEmail) + " (ho\u1eb7c d\u00e1n Key ri\u00eang \u0111\u1ec3 ghi \u0111\u00e8)" : "D\u00e1n chu\u1ed7i kh\u00f3a b\u1eaft \u0111\u1ea7u b\u1eb1ng AIza...") + '">' +
+              '<input type="password" id="uetApiKeyInput" autocomplete="off" spellcheck="false" value="' + U().esc(personalKey) + '" placeholder="' + (assigned && assigned.apiKey ? "\u0110ang d\u00f9ng API Key do Qu\u1ea3n tr\u1ecb vi\u00ean g\u00e1n cho " + U().esc(userEmail) + " (ho\u1eb7c d\u00e1n Key ri\u00eang \u0111\u1ec3 ghi \u0111\u00e8)" : "D\u00e1n chu\u1ed7i kh\u00f3a AIza..., gsk_..., sk-or-... ho\u1eb7c sk-...") + '">' +
               '<button type="button" class="eye-btn" id="uetApiEyeBtn" title="Hi\u1ec7n / \u1ea8n API Key" aria-label="Hi\u1ec7n ho\u1eb7c \u1ea9n API Key">👁️</button>' +
             '</div>' +
           '</label>' +
-          '<p class="muted" style="font-size:.78rem;margin:0 0 12px">Sau khi d\u00e1n ho\u1eb7c b\u1ea5m L\u01b0u Key, \u00f4 nh\u1eadp t\u1ef1 \u0111\u1ed9ng \u1ea9n d\u01b0\u1edbi d\u1ea1ng m\u1eadt kh\u1ea9u (••••••••). B\u1ea5m bi\u1ec3u t\u01b0\u1ee3ng con m\u1eaft \u0111\u1ec3 xem l\u1ea1i b\u1ea5t c\u1ee9 l\u00fac n\u00e0o.</p>' +
+
+          '<label class="field">📦 H\u1ed9p ch\u1ee9a nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng (Multi-Key Pool – T\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng khi h\u1ebft Quota 429)' +
+            '<textarea id="uetApiPoolInput" rows="4" spellcheck="false" placeholder="D\u00e1n nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng (m\u1ed7i d\u00f2ng 1 Key ho\u1eb7c c\u00e1ch nhau b\u1eb1ng d\u1ea5u ph\u1ea9y). H\u1ed7 tr\u1ee3 tr\u1ed9n nhi\u1ec1u h\u00e3ng c\u00f9ng l\u00fac:&#10;AIzaSy... (Google Gemini)&#10;gsk_... (Groq Cloud Free)&#10;sk-or-v1-... (OpenRouter)&#10;openai:sk-... ho\u1eb7c deepseek:sk-...">' + U().esc(personalPool) + '</textarea>' +
+          '</label>' +
+          '<p class="muted" style="font-size:.78rem;margin:0 0 12px">' +
+            (poolItems.length > 0
+              ? ('🔄 <strong>\u0110ang k\u00edch ho\u1ea1t ' + poolItems.length + ' API Key trong h\u00e0ng \u0111\u1ee3i t\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng:</strong> ' + U().esc(poolSummary) + '. Khi 1 model ho\u1eb7c 1 Key ch\u1ea1m gi\u1edbi h\u1ea1n 429, h\u1ec7 th\u1ed1ng t\u1ef1 \u0111\u1ed9ng nh\u1ea3y sang model/Key ti\u1ebfp theo.')
+              : 'H\u1ec7 th\u1ed1ng t\u1ef1 \u0111\u1ed9ng nh\u1eadn di\u1ec7n h\u00e3ng AI theo \u0111\u1ea7u m\u00e3 kh\u00f3a (<code>AIza...</code> = Gemini, <code>gsk_...</code> = Groq, <code>sk-or-...</code> = OpenRouter, <code>sk-...</code> = OpenAI, <code>deepseek:sk-...</code> = DeepSeek).') +
+          '</p>' +
 
           '<div class="deck-actions" style="margin-bottom:16px">' +
             '<button type="button" class="btn btn-primary" id="uetApiSaveBtn">L\u01b0u Key</button>' +
@@ -136,13 +317,6 @@
             '<button type="button" class="btn btn-outline" id="uetApiDelBtn">X\u00f3a Key c\u00e1 nh\u00e2n</button>' +
           '</div>' +
 
-          '<label class="field">Ch\u1ecdn Model Gemini AI' +
-            '<select id="uetApiModelSelect">' +
-              '<option value="gemini-2.5-pro"' + (model === "gemini-2.5-pro" ? " selected" : "") + '>Gemini 2.5 Pro – Ch\u1ebf \u0111\u1ed9 Ch\u00ednh x\u00e1c cao (Khuy\u00ean d\u00f9ng cho Google AI Pro / Ultra / Paid)</option>' +
-              '<option value="gemini-2.5-flash"' + (model === "gemini-2.5-flash" ? " selected" : "") + '>Gemini 2.5 Flash – Ch\u1ebf \u0111\u1ed9 Nhanh / Ti\u1ebft ki\u1ec7m (API Free)</option>' +
-              '<option value="gemini-3-flash-preview"' + (model === "gemini-3-flash-preview" ? " selected" : "") + '>Gemini 3 Flash Preview – T\u1ed1c \u0111\u1ed9 cao (API Free / Preview)</option>' +
-            '</select>' +
-          '</label>' +
           '<div class="' + (isPro ? "checkout-notice" : "pending-banner") + '" style="margin:8px 0 16px;font-weight:500;font-size:.82rem">' +
             (isPro
               ? "💎 <strong>Ch\u1ebf \u0111\u1ed9 Ch\u00ednh x\u00e1c cao (Gemini 2.5 Pro):</strong> T\u1ed1i \u01b0u t\u1ed1i \u0111a cho c\u00f4ng th\u1ee9c To\u00e1n/L\u00fd/H\u00f3a ph\u1ee9c t\u1ea1p v\u00e0 t\u1ef1 \u0111\u1ed9ng gi\u1ea3i \u0111\u1ec1 chu\u1ea9n x\u00e1c."
@@ -161,15 +335,18 @@
 
         '<section class="panel">' +
           '<div class="panel-head"><h2>H\u01b0\u1edbng d\u1eabn l\u1ea5y Gemini API Key</h2>' +
-            '<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">M\u1edf Google AI Studio ↗</a>' +
+            '<div class="deck-actions">' +
+              '<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm">M\u1edf Google AI Studio ↗</a>' +
+              '<a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">Groq Cloud (Free) ↗</a>' +
+              '<a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">OpenRouter ↗</a>' +
+            '</div>' +
           '</div>' +
           '<ol class="guide-steps">' +
-            '<li><span class="step-num">1</span><span>Truy c\u1eadp <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer"><strong>https://aistudio.google.com/app/apikey</strong></a> b\u1eb1ng n\u00fat m\u1edf tab m\u1edbi \u1edf tr\u00ean.</span></li>' +
-            '<li><span class="step-num">2</span><span>\u0110\u0103ng nh\u1eadp b\u1eb1ng t\u00e0i kho\u1ea3n Google c\u1ee7a b\u1ea1n (t\u00e0i kho\u1ea3n th\u01b0\u1eddng, Google AI Pro ho\u1eb7c Ultra).</span></li>' +
-            '<li><span class="step-num">3</span><span>Nh\u1ea5n n\u00fat <strong>Create API Key (T\u1ea1o kh\u00f3a API)</strong> v\u00e0 ch\u1ecdn ho\u1eb7c t\u1ea1o m\u1ed9t d\u1ef1 \u00e1n Google Cloud.</span></li>' +
-            '<li><span class="step-num">4</span><span>Sao ch\u00e9p chu\u1ed7i kh\u00f3a b\u1eaft \u0111\u1ea7u b\u1eb1ng <code>AIza...</code>, d\u00e1n v\u00e0o \u00f4 ph\u00eda tr\u00ean r\u1ed3i b\u1ea5m <strong>L\u01b0u Key</strong> v\u00e0 <strong>Ki\u1ec3m tra k\u1ebft n\u1ed1i</strong>.</span></li>' +
+            '<li><span class="step-num">1</span><span><strong>Google Gemini (Mi\u1ec5n ph\u00ed):</strong> L\u1ea5y m\u00e3 <code>AIza...</code> t\u1ea1i <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer"><strong>aistudio.google.com/app/apikey</strong></a>. C\u00f3 th\u1ec3 t\u1ea1o nhi\u1ec1u Key t\u1eeb nhi\u1ec1u d\u1ef1 \u00e1n/t\u00e0i kho\u1ea3n \u0111\u1ec3 d\u00e1n v\u00e0o <strong>H\u1ed9p ch\u1ee9a nhi\u1ec1u API Key d\u1ef1 ph\u00f2ng</strong>.</span></li>' +
+            '<li><span class="step-num">2</span><span><strong>Groq Cloud (Mi\u1ec5n ph\u00ed &amp; H\u1ea1n m\u1ee9c l\u1edbn):</strong> L\u1ea5y m\u00e3 <code>gsk_...</code> t\u1ea1i <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer"><strong>console.groq.com/keys</strong></a> (h\u1ed7 tr\u1ee3 c\u1ea3 \u0111\u1ecdc \u1ea3nh \u0111\u1ec1 thi v\u1edbi Llama 4 Scout 17B l\u1eabn gi\u1ea3i \u0111\u1ec1 t\u1ed1c \u0111\u1ed9 cao).</span></li>' +
+            '<li><span class="step-num">3</span><span><strong>OpenRouter / OpenAI / DeepSeek:</strong> D\u00e1n m\u00e3 <code>sk-or-...</code> (OpenRouter), <code>sk-...</code> (OpenAI) ho\u1eb7c <code>deepseek:sk-...</code> (DeepSeek). H\u1ec7 th\u1ed1ng s\u1ebd t\u1ef1 \u0111\u1ed9ng xoay v\u00f2ng qua t\u1ea5t c\u1ea3 c\u00e1c Key khi 1 h\u00e3ng h\u1ebft l\u01b0\u1ee3t.</span></li>' +
           '</ol>' +
-          '<p class="muted" style="font-size:.8rem;margin:12px 0 0">🔒 <strong>B\u1ea3o m\u1eadt:</strong> API Key ch\u1ec9 l\u01b0u c\u1ee5c b\u1ed9 ho\u1eb7c \u0111\u01b0\u1ee3c Qu\u1ea3n tr\u1ecb vi\u00ean g\u00e1n theo Email \u0111\u0103ng nh\u1eadp v\u00e0 ch\u1ec9 g\u1eedi tr\u1ef1c ti\u1ebfp t\u1edbi m\u00e1y ch\u1ee7 ch\u00ednh th\u1ee9c c\u1ee7a Google Gemini API.</p>' +
+          '<p class="muted" style="font-size:.8rem;margin:12px 0 0">🔒 <strong>B\u1ea3o m\u1eadt:</strong> API Key ch\u1ec9 l\u01b0u c\u1ee5c b\u1ed9 ho\u1eb7c \u0111\u01b0\u1ee3c Qu\u1ea3n tr\u1ecb vi\u00ean g\u00e1n theo Email \u0111\u0103ng nh\u1eadp v\u00e0 ch\u1ec9 g\u1eedi tr\u1ef1c ti\u1ebfp t\u1edbi m\u00e1y ch\u1ee7 ch\u00ednh th\u1ee9c c\u1ee7a t\u1eebng h\u00e3ng AI.</p>' +
         '</section>' +
       '</div>';
 
@@ -188,21 +365,55 @@
     if (eye) eye.textContent = "👁️";
   }
 
-  async function testGeminiConnection() {
-    const inp = U().$("uetApiKeyInput");
-    const typed = (inp ? inp.value : "").trim();
-    if (typed) setApiKey(typed);
-    const raw = typed || getApiKey();
-    if (!raw) { U().showToast("Vui l\u00f2ng nh\u1eadp Gemini API Key tr\u01b0\u1edbc.", "warning"); return; }
-    maskKeyEl();
-    const btn = U().$("uetApiTestBtn");
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>\u0110ang ki\u1ec3m tra...'; }
-    try {
-      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?key=" + encodeURIComponent(raw));
+  async function testSingleProviderKey(provider, apiKey) {
+    if (provider === "gemini") {
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?key=" + encodeURIComponent(apiKey));
       if (!res.ok) {
         const err = await res.json().catch(function () { return {}; });
         throw new Error((err && err.error && err.error.message) || ("HTTP " + res.status));
       }
+      return true;
+    }
+    const url = provider === "groq"
+      ? "https://api.groq.com/openai/v1/models"
+      : (provider === "openrouter"
+          ? "https://openrouter.ai/api/v1/models"
+          : (provider === "deepseek" ? "https://api.deepseek.com/models" : "https://api.openai.com/v1/models"));
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "Authorization": "Bearer " + apiKey }
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(function () { return {}; });
+      throw new Error((err && err.error && err.error.message) || ("HTTP " + res.status));
+    }
+    return true;
+  }
+
+  async function testGeminiConnection() {
+    const inp = U().$("uetApiKeyInput");
+    const poolInp = U().$("uetApiPoolInput");
+    const typed = (inp ? inp.value : "").trim();
+    const typedPool = (poolInp ? poolInp.value : "").trim();
+    if (typed) setApiKey(typed);
+    if (poolInp) setPersonalApiPool(typedPool);
+    const items = parseKeyPoolItems(typed, getApiModel());
+    if (items.length === 0) { U().showToast("Vui l\u00f2ng nh\u1eadp Gemini API Key tr\u01b0\u1edbc.", "warning"); return; }
+    maskKeyEl();
+    const btn = U().$("uetApiTestBtn");
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>\u0110ang ki\u1ec3m tra...'; }
+    try {
+      let okCount = 0;
+      let lastErr = null;
+      for (let i = 0; i < items.length; i++) {
+        try {
+          await testSingleProviderKey(items[i].provider, items[i].apiKey);
+          okCount++;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      if (okCount === 0 && lastErr) throw lastErr;
       cState.apiStatus = "ok";
       cState.apiStatusMsg = "✅ K\u1ebft n\u1ed1i th\u00e0nh c\u00f4ng";
       U().showToast("K\u1ebft n\u1ed1i Gemini API th\u00e0nh c\u00f4ng!", "success");
@@ -230,9 +441,19 @@
       t.textContent = show ? "🙈" : "👁️";
     } else if (t.id === "uetApiSaveBtn") {
       const inp = U().$("uetApiKeyInput");
+      const poolInp = U().$("uetApiPoolInput");
       const val = (inp ? inp.value : "").trim();
-      if (!val) { U().showToast("Vui l\u00f2ng d\u00e1n chu\u1ed7i Gemini API Key.", "warning"); return; }
+      const poolVal = (poolInp ? poolInp.value : "").trim();
+      if (!val && !poolVal) { U().showToast("Vui l\u00f2ng d\u00e1n chu\u1ed7i Gemini API Key.", "warning"); return; }
       setApiKey(val);
+      setPersonalApiPool(poolVal);
+      if (val) {
+        const detProv = detectProviderFromKey(val, detectProviderFromModel(getApiModel()));
+        const curProv = detectProviderFromModel(getApiModel());
+        if (detProv !== curProv && PROVIDER_INFO[detProv] && PROVIDER_INFO[detProv].models.length > 0) {
+          setApiModel(PROVIDER_INFO[detProv].models[0].id);
+        }
+      }
       maskKeyEl();
       cState.apiStatus = "saved";
       cState.apiStatusMsg = "\u0110\u00e3 l\u01b0u Key";
@@ -243,6 +464,7 @@
     } else if (t.id === "uetApiDelBtn") {
       U().showConfirm("X\u00f3a API Key", "B\u1ea1n c\u00f3 ch\u1eafc mu\u1ed1n x\u00f3a Gemini API Key c\u00e1 nh\u00e2n \u0111\u00e3 l\u01b0u?", function () {
         setApiKey("");
+        setPersonalApiPool("");
         cState.apiStatus = "none";
         cState.apiStatusMsg = "Ch\u01b0a c\u1ea5u h\u00ecnh";
         U().showToast("\u0110\u00e3 x\u00f3a API Key c\u00e1 nh\u00e2n.", "info");
@@ -266,6 +488,11 @@
         const val = (e.target.value || "").trim();
         if (val) {
           setApiKey(val);
+          const detProv = detectProviderFromKey(val, detectProviderFromModel(getApiModel()));
+          const curProv = detectProviderFromModel(getApiModel());
+          if (detProv !== curProv && PROVIDER_INFO[detProv] && PROVIDER_INFO[detProv].models.length > 0) {
+            setApiModel(PROVIDER_INFO[detProv].models[0].id);
+          }
           maskKeyEl();
           cState.apiStatus = "saved";
           cState.apiStatusMsg = "\u0110\u00e3 l\u01b0u Key";
@@ -582,48 +809,140 @@
     });
   }
 
-  const FALLBACK_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-3-flash-preview",
-    "gemini-2.5-pro"
-  ];
-
-  function getCandidateApiKeys(primaryKey) {
-    const rawList = [];
-    if (primaryKey) {
-      String(primaryKey).split(/[\r\n,;]+/).forEach(function (k) {
-        const t = k.trim();
-        if (t) rawList.push(t);
+  function inspectPayloadCapabilities(payload) {
+    let hasImage = false;
+    let hasPdf = false;
+    const contents = (payload && payload.contents) || [];
+    contents.forEach(function (c) {
+      ((c && c.parts) || []).forEach(function (pt) {
+        if (pt && pt.inlineData && pt.inlineData.mimeType) {
+          const mt = String(pt.inlineData.mimeType).toLowerCase();
+          if (mt.indexOf("image/") === 0) hasImage = true;
+          else if (mt.indexOf("pdf") !== -1) hasPdf = true;
+        }
       });
-    }
-    const personal = getPersonalApiKey();
-    if (personal) {
-      String(personal).split(/[\r\n,;]+/).forEach(function (k) {
-        const t = k.trim();
-        if (t && rawList.indexOf(t) === -1) rawList.push(t);
-      });
-    }
-    const assigned = getAssignedApi();
-    if (assigned && assigned.apiKey) {
-      String(assigned.apiKey).split(/[\r\n,;]+/).forEach(function (k) {
-        const t = k.trim();
-        if (t && rawList.indexOf(t) === -1) rawList.push(t);
-      });
-    }
-    return rawList.length > 0 ? rawList : [String(primaryKey || "").trim()].filter(Boolean);
+    });
+    return { hasImage: hasImage, hasPdf: hasPdf };
   }
 
-  function getCandidateModels(preferredModel) {
-    const pref = cState.activeFallbackModel || preferredModel || "gemini-2.5-flash";
-    const list = [pref];
-    if (preferredModel && list.indexOf(preferredModel) === -1) list.push(preferredModel);
-    FALLBACK_MODELS.forEach(function (m) {
-      if (list.indexOf(m) === -1) list.push(m);
+  function stripProviderPrefix(modelId) {
+    return String(modelId || "").replace(/^(?:gemini|groq|openai|openrouter|deepseek):/i, "");
+  }
+
+  function buildExecutionPlan(primaryKey, preferredModel, payload) {
+    const caps = inspectPayloadCapabilities(payload);
+    const pool = parseKeyPoolItems(primaryKey, preferredModel);
+    const prefModel = cState.activeFallbackModel || preferredModel || "gemini-2.5-flash";
+    const prefProv = detectProviderFromModel(prefModel);
+    const candidates = [];
+    const seen = {};
+
+    const addCandidate = function (provider, apiKey, modelObj) {
+      if (!provider || !apiKey || !modelObj) return;
+      if (caps.hasPdf && !modelObj.pdf) return;
+      if (caps.hasImage && !modelObj.vision) return;
+      const rawM = modelObj.rawModel || stripProviderPrefix(modelObj.id);
+      const sig = provider + "|" + apiKey + "|" + rawM;
+      if (seen[sig]) return;
+      seen[sig] = true;
+      candidates.push({
+        provider: provider,
+        apiKey: apiKey,
+        modelId: modelObj.id,
+        rawModel: rawM,
+        label: modelObj.label || rawM
+      });
+    };
+
+    // 1. Prioritize keys matching the preferred model's provider first
+    pool.forEach(function (item) {
+      if (item.provider !== prefProv) return;
+      const pInfo = PROVIDER_INFO[item.provider];
+      if (!pInfo) return;
+      const exact = pInfo.models.find(function (m) { return m.id === prefModel || m.rawModel === stripProviderPrefix(prefModel); });
+      if (exact) addCandidate(item.provider, item.apiKey, exact);
+      pInfo.models.forEach(function (m) { addCandidate(item.provider, item.apiKey, m); });
     });
-    return list;
+
+    // 2. Then add all other keys & compatible models in the Multi-Key Pool as automatic fallback
+    pool.forEach(function (item) {
+      const pInfo = PROVIDER_INFO[item.provider];
+      if (!pInfo) return;
+      pInfo.models.forEach(function (m) { addCandidate(item.provider, item.apiKey, m); });
+    });
+
+    return candidates;
+  }
+
+  function convertGeminiPayloadToOpenAI(rawModel, payload) {
+    const sysText = (payload && payload.systemInstruction && payload.systemInstruction.parts && payload.systemInstruction.parts[0] && payload.systemInstruction.parts[0].text) || "";
+    const schema = payload && payload.generationConfig && payload.generationConfig.responseSchema;
+    let schemaHint = "\nIMPORTANT: Return ONLY valid JSON matching the requested schema (no markdown code blocks, no extra prose).";
+    if (schema && schema.properties) {
+      if (schema.properties.questions) {
+        schemaHint += '\nRequired JSON format: {"questions":[{"question":"...","type":"Multiple Choice","options":["A","B","C","D"],"correct":[1],"explanation":"...","confidence":"high"}]} (Note: correct is 1-based index array e.g. [1] for A).';
+      } else if (schema.properties.solutions) {
+        schemaHint += '\nRequired JSON format: {"solutions":[{"index":0,"correct":[1],"explanation":"...","confidence":"high"}]} (Note: correct is 1-based index array).';
+      } else if (schema.properties.checks) {
+        schemaHint += '\nRequired JSON format: {"checks":[{"index":0,"independentCorrect":[1],"confidence":"high","note":"..."}]} (Note: independentCorrect is 1-based index array).';
+      }
+    }
+
+    const messages = [];
+    if (sysText || schemaHint) {
+      messages.push({ role: "system", content: (sysText + schemaHint).trim() });
+    }
+
+    const userContent = [];
+    const contents = (payload && payload.contents) || [];
+    contents.forEach(function (c) {
+      ((c && c.parts) || []).forEach(function (pt) {
+        if (pt && typeof pt.text === "string" && pt.text.trim()) {
+          userContent.push({ type: "text", text: pt.text });
+        } else if (pt && pt.inlineData && pt.inlineData.mimeType && pt.inlineData.data) {
+          userContent.push({
+            type: "image_url",
+            image_url: { url: "data:" + pt.inlineData.mimeType + ";base64," + pt.inlineData.data }
+          });
+        }
+      });
+    });
+
+    if (userContent.length === 1 && userContent[0].type === "text") {
+      messages.push({ role: "user", content: userContent[0].text });
+    } else {
+      messages.push({ role: "user", content: userContent });
+    }
+
+    const temp = (payload && payload.generationConfig && typeof payload.generationConfig.temperature === "number")
+      ? payload.generationConfig.temperature
+      : 0.1;
+
+    const body = {
+      model: rawModel,
+      messages: messages,
+      temperature: temp
+    };
+    if (rawModel.indexOf("reasoner") === -1) {
+      body.response_format = { type: "json_object" };
+    }
+    return body;
+  }
+
+  function parseJsonResponseText(rawTxt) {
+    let s = String(rawTxt || "").trim();
+    if (!s) throw new Error("Gemini kh\u00f4ng tr\u1ea3 v\u1ec1 JSON.");
+    s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    try {
+      return JSON.parse(s);
+    } catch (e) {
+      const firstBrace = s.indexOf("{");
+      const lastBrace = s.lastIndexOf("}");
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        return JSON.parse(s.slice(firstBrace, lastBrace + 1));
+      }
+      throw e;
+    }
   }
 
   function isQuotaOrRateLimitError(status, msg) {
@@ -644,75 +963,82 @@
   }
 
   async function callGemini(apiKey, model, payload, signal) {
-    const keys = getCandidateApiKeys(apiKey);
-    const models = getCandidateModels(model);
+    const plan = buildExecutionPlan(apiKey, model, payload);
+    if (plan.length === 0) {
+      throw new Error("Kh\u00f4ng t\u00ecm th\u1ea5y Model AI t\u01b0\u01a1ng th\u00edch v\u1edbi \u0111\u1ecbnh d\u1ea1ng t\u1ec7p n\u00e0y. N\u1ebfu \u0111\u1ecdc \u1ea3nh/PDF scan, h\u00e3y th\u00eam Key c\u1ee7a Gemini, Groq, OpenAI ho\u1eb7c OpenRouter.");
+    }
     const TIMEOUT_MS = 90000;
     let lastErrorMsg = "";
 
-    for (let ki = 0; ki < keys.length; ki++) {
-      const curKey = keys[ki];
-      for (let mi = 0; mi < models.length; mi++) {
-        const curModel = models[mi];
-        const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(curModel) + ":generateContent?key=" + encodeURIComponent(curKey);
-        let delay = 1200;
+    for (let i = 0; i < plan.length; i++) {
+      const cand = plan[i];
+      const isGemini = cand.provider === "gemini";
+      const url = isGemini
+        ? ("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(cand.rawModel) + ":generateContent?key=" + encodeURIComponent(cand.apiKey))
+        : PROVIDER_INFO[cand.provider].endpoint;
+      const headers = { "Content-Type": "application/json" };
+      if (!isGemini) {
+        headers["Authorization"] = "Bearer " + cand.apiKey;
+      }
+      const reqBodyObj = isGemini ? payload : convertGeminiPayloadToOpenAI(cand.rawModel, payload);
 
-        for (let attempt = 0; attempt < 2; attempt++) {
-          if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
-          const reqCtrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-          let timedOut = false;
-          const timer = reqCtrl ? setTimeout(function () { timedOut = true; reqCtrl.abort(); }, TIMEOUT_MS) : null;
-          const onParentAbort = function () { if (reqCtrl) reqCtrl.abort(); };
-          if (signal && typeof signal.addEventListener === "function") signal.addEventListener("abort", onParentAbort, { once: true });
-          let res;
-          try {
-            res = await fetch(url, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-              signal: reqCtrl ? reqCtrl.signal : signal
-            });
-          } catch (fetchErr) {
-            if (timer) clearTimeout(timer);
-            if (signal && typeof signal.removeEventListener === "function") signal.removeEventListener("abort", onParentAbort);
-            if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
-            if (timedOut) {
-              if (attempt < 1) continue;
-              lastErrorMsg = "Y\u00eau c\u1ea7u t\u1edbi Gemini AI qu\u00e1 th\u1eddi gian ch\u1edd (Timeout 90s). Vui l\u00f2ng th\u1eed l\u1ea1i.";
-              break;
-            }
-            throw fetchErr;
-          }
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+        const reqCtrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+        let timedOut = false;
+        const timer = reqCtrl ? setTimeout(function () { timedOut = true; reqCtrl.abort(); }, TIMEOUT_MS) : null;
+        const onParentAbort = function () { if (reqCtrl) reqCtrl.abort(); };
+        if (signal && typeof signal.addEventListener === "function") signal.addEventListener("abort", onParentAbort, { once: true });
+        let res;
+        try {
+          res = await fetch(url, {
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify(reqBodyObj),
+            signal: reqCtrl ? reqCtrl.signal : signal
+          });
+        } catch (fetchErr) {
           if (timer) clearTimeout(timer);
           if (signal && typeof signal.removeEventListener === "function") signal.removeEventListener("abort", onParentAbort);
-
-          if (res.ok) {
-            const data = await res.json();
-            const txt = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
-            if (!txt) throw new Error("Gemini kh\u00f4ng tr\u1ea3 v\u1ec1 JSON.");
-            const parsed = JSON.parse(txt);
-            if (curModel !== model && cState.activeFallbackModel !== curModel) {
-              cState.activeFallbackModel = curModel;
-              U().showToast("Model " + model + " \u0111\u00e3 h\u1ebft l\u01b0\u1ee3t Free Tier — h\u1ec7 th\u1ed1ng t\u1ef1 \u0111\u1ed9ng chuy\u1ec3n sang " + curModel + " \u0111\u1ec3 ti\u1ebfp t\u1ee5c x\u1eed l\u00fd!", "info");
-            }
-            return parsed;
-          }
-
-          const errBody = await res.json().catch(function () { return {}; });
-          const errMsg = (errBody && errBody.error && errBody.error.message) || ("HTTP " + res.status);
-          lastErrorMsg = errMsg;
-
-          // If this model hit Free Tier quota (429) or is unavailable (404/503), immediately try the next model in the fallback chain!
-          if (isQuotaOrRateLimitError(res.status, errMsg) || res.status === 404 || res.status === 503) {
+          if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+          if (timedOut) {
+            if (attempt < 1) continue;
+            lastErrorMsg = "Y\u00eau c\u1ea7u t\u1edbi Gemini AI qu\u00e1 th\u1eddi gian ch\u1edd (Timeout 90s). Vui l\u00f2ng th\u1eed l\u1ea1i.";
             break;
           }
-
-          if (res.status >= 500 && attempt < 1) {
-            await new Promise(function (r) { setTimeout(r, delay); });
-            delay *= 2;
-            continue;
-          }
-          throw new Error(formatFriendlyGeminiError(errMsg));
+          lastErrorMsg = fetchErr.message || "Network error";
+          break;
         }
+        if (timer) clearTimeout(timer);
+        if (signal && typeof signal.removeEventListener === "function") signal.removeEventListener("abort", onParentAbort);
+
+        if (res.ok) {
+          const data = await res.json();
+          const txt = isGemini
+            ? (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text)
+            : (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content);
+          const parsed = parseJsonResponseText(txt);
+          if (cand.modelId !== model && cState.activeFallbackModel !== cand.modelId) {
+            cState.activeFallbackModel = cand.modelId;
+            U().showToast("Model " + model + " \u0111\u00e3 h\u1ebft l\u01b0\u1ee3t Free Tier — h\u1ec7 th\u1ed1ng t\u1ef1 \u0111\u1ed9ng chuy\u1ec3n sang " + cand.rawModel + " \u0111\u1ec3 ti\u1ebfp t\u1ee5c x\u1eed l\u00fd!", "info");
+          }
+          return parsed;
+        }
+
+        const errBody = await res.json().catch(function () { return {}; });
+        const errMsg = (errBody && errBody.error && errBody.error.message) || ("HTTP " + res.status);
+        lastErrorMsg = errMsg;
+
+        // If quota exceeded (429), auth issue on one key (401/403), or model unavailable (400/404/503), fail over to next candidate in pool!
+        if (isQuotaOrRateLimitError(res.status, errMsg) || res.status === 400 || res.status === 401 || res.status === 403 || res.status === 404 || res.status === 503) {
+          break;
+        }
+
+        if (res.status >= 500 && attempt < 1) {
+          await new Promise(function (r) { setTimeout(r, 1200); });
+          continue;
+        }
+        break;
       }
     }
     throw new Error(formatFriendlyGeminiError(lastErrorMsg || "V\u01b0\u1ee3t qu\u00e1 s\u1ed1 l\u1ea7n th\u1eed l\u1ea1i API."));
