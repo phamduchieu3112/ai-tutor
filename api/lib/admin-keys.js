@@ -111,7 +111,7 @@ function toPublicKeyRecord(rec) {
 
 async function pingSingleKey(provider, rawKey) {
   const pInfo = CONFIG.PROVIDER_MAP[provider];
-  if (!pInfo) return { status: "invalid", message: "Unsupported provider" };
+  if (!pInfo) return { status: "invalid", httpStatus: 400, message: "Unsupported provider" };
   const url = pInfo.testEndpoint;
   const headers = provider === "gemini"
     ? { "x-goog-api-key": rawKey }
@@ -122,19 +122,79 @@ async function pingSingleKey(provider, rawKey) {
     const resp = await fetch(url, { method: "GET", headers: headers, signal: ctrl ? ctrl.signal : undefined });
     if (timer) clearTimeout(timer);
     if (resp.ok) {
-      return { status: "healthy", message: "OK" };
+      return { status: "healthy", httpStatus: resp.status, message: "OK (HTTP " + resp.status + ")" };
+    }
+    let detail = "";
+    if (typeof resp.json === "function") {
+      const errBody = await resp.json().catch(function () { return null; });
+      const rawDetail = (errBody && errBody.error && (errBody.error.message || errBody.error)) || (errBody && errBody.message) || "";
+      if (rawDetail) detail = sanitizeErrorMessage(rawDetail, [rawKey]).slice(0, 140);
     }
     if (resp.status === 429) {
-      return { status: "cooldown", message: "HTTP 429 Rate Limit", cooldownUntil: Date.now() + 60000 };
+      return {
+        status: "cooldown",
+        httpStatus: 429,
+        message: "HTTP 429 Quota / Rate Limit" + (detail ? (": " + detail) : ""),
+        cooldownUntil: Date.now() + 60000
+      };
     }
-    if (resp.status === 401 || resp.status === 403) {
-      return { status: "invalid", message: "HTTP " + resp.status + " Invalid Key" };
+    if (resp.status === 401 || resp.status === 403 || (resp.status >= 400 && resp.status < 500)) {
+      return {
+        status: "invalid",
+        httpStatus: resp.status,
+        message: "HTTP " + resp.status + (detail ? (": " + detail) : " Invalid / Unauthorized Key")
+      };
     }
-    return { status: "healthy", message: "HTTP " + resp.status };
+    return {
+      status: "cooldown",
+      httpStatus: resp.status,
+      message: "HTTP " + resp.status + (detail ? (": " + detail) : " Provider Temporary Error"),
+      cooldownUntil: Date.now() + 30000
+    };
   } catch (err) {
     if (timer) clearTimeout(timer);
-    return { status: "cooldown", message: sanitizeErrorMessage(err && err.message, [rawKey]) };
+    return {
+      status: "cooldown",
+      httpStatus: 0,
+      message: sanitizeErrorMessage(err && err.message, [rawKey])
+    };
   }
+}
+
+async function runLiveHealthCheckBatch(records, rawKeyById, includeDisabled) {
+  const summary = { healthy: 0, cooldown: 0, invalid: 0 };
+  const nowIso = new Date().toISOString();
+  const CONCURRENCY = 5;
+
+  for (let start = 0; start < records.length; start += CONCURRENCY) {
+    const chunk = records.slice(start, start + CONCURRENCY);
+    await Promise.all(chunk.map(async function (rec) {
+      if (!rec || (!includeDisabled && rec.enabled === false)) return;
+      let rawKey = rawKeyById ? rawKeyById[rec.id] : "";
+      if (!rawKey) {
+        try {
+          rawKey = decryptSecret(rec);
+        } catch (e) {
+          rec.status = "invalid";
+          rec.lastError = "Decrypt failed";
+          rec.lastTestedAt = nowIso;
+          rec.updatedAt = nowIso;
+          summary.invalid++;
+          return;
+        }
+      }
+      const ping = await pingSingleKey(rec.provider, rawKey);
+      rec.status = ping.status;
+      rec.cooldownUntil = ping.cooldownUntil || 0;
+      rec.lastError = ping.status === "healthy" ? "" : ping.message;
+      rec.lastTestedAt = nowIso;
+      rec.updatedAt = nowIso;
+      if (ping.status === "healthy") summary.healthy++;
+      else if (ping.status === "cooldown") summary.cooldown++;
+      else summary.invalid++;
+    }));
+  }
+  return summary;
 }
 
 async function handleAdminMe(req, res) {
@@ -239,17 +299,20 @@ async function handleAdminSystemKeys(req, res, cleanPath) {
 
     if (parsed.validEntries.length === 0) {
       return sendJsonWithCors(res, 400, {
-        error: "Kh\u00f4ng c\u00f3 API Key h\u1ee3p l\u1ec7 m\u1edbi n\u00e0o \u0111\u1ec3 nh\u1eadp (ho\u1eb7c to\u00e0n b\u1ed9 b\u1ecb tr\u00f9ng l\u1eb7p / sai ti\u1ec1n t\u1ed1).",
+        error: "Kh\u00f4ng c\u00f3 API Key m\u1edbi n\u00e0o \u0111\u1ec3 nh\u1eadp (t\u1ea5t c\u1ea3 d\u00f2ng \u0111\u1ec1u tr\u1ed1ng ho\u1eb7c \u0111\u00e3 tr\u00f9ng l\u1eb7p trong h\u1ec7 th\u1ed1ng).",
         duplicates: parsed.duplicates,
-        mismatches: parsed.mismatches
+        mismatches: []
       }, corsCheck);
     }
 
     const nowIso = new Date().toISOString();
+    const rawKeyById = {};
     const added = parsed.validEntries.map(function (entry) {
       const enc = encryptSecret(entry.rawKey);
+      const id = "sysk_" + crypto.randomBytes(6).toString("hex");
+      rawKeyById[id] = entry.rawKey;
       return {
-        id: "sysk_" + crypto.randomBytes(6).toString("hex"),
+        id: id,
         accountLabel: entry.accountLabel,
         provider: entry.provider,
         maskedKey: entry.maskedKey,
@@ -271,71 +334,78 @@ async function handleAdminSystemKeys(req, res, cleanPath) {
       };
     });
 
+    let healthSummary = null;
+    if (body && body.verifyLive !== false) {
+      healthSummary = await runLiveHealthCheckBatch(added, rawKeyById);
+    }
+
     const updated = stored.concat(added);
     await storage.saveStoredKeys(updated);
     const summaryText = Object.keys(parsed.summaryByProvider)
       .filter(function (p) { return parsed.summaryByProvider[p] > 0; })
       .map(function (p) { return p + ":" + parsed.summaryByProvider[p]; })
       .join(", ");
+    const healthNote = healthSummary
+      ? ("; live check: healthy=" + healthSummary.healthy + ", cooldown=" + healthSummary.cooldown + ", invalid=" + healthSummary.invalid)
+      : "";
     await storage.appendAuditLog({
       adminEmail: admin.email,
       action: "import",
-      detail: "Imported " + added.length + " key(s) (" + summaryText + "); skipped " + parsed.skipped.length + ", duplicates " + parsed.duplicates.length
+      detail: "Imported " + added.length + " key(s) (" + summaryText + "); skipped " + parsed.skipped.length + ", duplicates " + parsed.duplicates.length + healthNote
     });
 
     return sendJsonWithCors(res, 200, {
       ok: true,
       importedCount: added.length,
+      healthSummary: healthSummary,
       keys: updated.map(toPublicKeyRecord),
       auditLogs: await storage.listAuditLogs(50)
     }, corsCheck);
   }
 
-  // POST /api/admin/system-keys/test-all (rate-limited minimal server-side ping)
+  // POST /api/admin/system-keys/:id/test (single-key live API health check)
+  const testOneMatch = sub.match(/^([^/]+)\/test$/);
+  if (testOneMatch && method === "POST") {
+    const id = decodeURIComponent(testOneMatch[1]);
+    const stored = await storage.listStoredKeys();
+    const rec = stored.find(function (k) { return k && k.id === id; });
+    if (!rec) {
+      return sendJsonWithCors(res, 404, { error: "Kh\u00f4ng t\u00ecm th\u1ea5y Key trong h\u1ec7 th\u1ed1ng." }, corsCheck);
+    }
+    const summary = await runLiveHealthCheckBatch([rec], null, true);
+    await storage.saveStoredKeys(stored);
+    await storage.appendAuditLog({
+      adminEmail: admin.email,
+      action: "test_one",
+      detail: rec.provider + " " + rec.maskedKey + " -> " + rec.status + (rec.lastError ? (" (" + rec.lastError.slice(0, 80) + ")") : " (OK)")
+    });
+    return sendJsonWithCors(res, 200, {
+      ok: true,
+      summary: summary,
+      key: toPublicKeyRecord(rec),
+      keys: stored.map(toPublicKeyRecord),
+      auditLogs: await storage.listAuditLogs(50)
+    }, corsCheck);
+  }
+
+  // POST /api/admin/system-keys/test-all (rate-limited live API health check for all enabled DB keys)
   if (sub === "test-all" && method === "POST") {
     const cd = await storage.checkAdminActionCooldown("test_all:" + admin.email, 20);
     if (!cd.allowed) {
       return sendJsonWithCors(res, 429, { error: "Vui l\u00f2ng \u0111\u1ee3i " + cd.retryAfterSec + "s tr\u01b0\u1edbc khi Test All Keys l\u1ea1i." }, corsCheck);
     }
     const stored = await storage.listStoredKeys();
-    const nowIso = new Date().toISOString();
-    let healthy = 0, cooldown = 0, invalid = 0;
-
-    for (let i = 0; i < stored.length; i++) {
-      const rec = stored[i];
-      if (!rec || rec.enabled === false) continue;
-      let rawKey = "";
-      try {
-        rawKey = decryptSecret(rec);
-      } catch (e) {
-        rec.status = "invalid";
-        rec.lastError = "Decrypt failed";
-        rec.lastTestedAt = nowIso;
-        rec.updatedAt = nowIso;
-        invalid++;
-        continue;
-      }
-      const ping = await pingSingleKey(rec.provider, rawKey);
-      rec.status = ping.status;
-      rec.cooldownUntil = ping.cooldownUntil || 0;
-      rec.lastError = ping.status === "healthy" ? "" : ping.message;
-      rec.lastTestedAt = nowIso;
-      rec.updatedAt = nowIso;
-      if (ping.status === "healthy") healthy++;
-      else if (ping.status === "cooldown") cooldown++;
-      else invalid++;
-    }
-
+    const summary = await runLiveHealthCheckBatch(stored);
     await storage.saveStoredKeys(stored);
     await storage.appendAuditLog({
       adminEmail: admin.email,
       action: "test_all",
-      detail: "Tested DB keys: healthy=" + healthy + ", cooldown=" + cooldown + ", invalid=" + invalid
+      detail: "Tested DB keys: healthy=" + summary.healthy + ", cooldown=" + summary.cooldown + ", invalid=" + summary.invalid
     });
 
     return sendJsonWithCors(res, 200, {
       ok: true,
-      summary: { healthy: healthy, cooldown: cooldown, invalid: invalid },
+      summary: summary,
       keys: stored.map(toPublicKeyRecord),
       auditLogs: await storage.listAuditLogs(50)
     }, corsCheck);

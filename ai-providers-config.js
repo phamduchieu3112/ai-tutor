@@ -73,7 +73,7 @@
       keyUrl: "https://openrouter.ai/keys",
       keyUrlLabel: "openrouter.ai/keys",
       endpoint: "https://openrouter.ai/api/v1/chat/completions",
-      testEndpoint: "https://openrouter.ai/api/v1/models",
+      testEndpoint: "https://openrouter.ai/api/v1/key",
       format: "openai",
       freeTierSummary: "Mi\u1ec5n ph\u00ed 20 RPM / 50 RPD (t\u0103ng l\u00ean 1.000 RPD khi n\u1ea1p t\u1ed1i thi\u1ec3u $10 m\u1ed9t l\u1ea7n). D\u00f9ng openrouter/free \u0111\u1ec3 t\u1ef1 \u0111\u1ed9ng \u0111\u1ecbnh tuy\u1ebfn model :free \u0111ang ho\u1ea1t \u0111\u1ed9ng.",
       guideSteps: [
@@ -132,8 +132,8 @@
     {
       id: "gemini",
       name: "Google AI Studio (Gemini)",
-      prefix: "AIza",
-      prefixHint: "AIza...",
+      prefix: "",
+      prefixHint: "AIza... / AQ....",
       recommended: false,
       badgeText: "Mi\u1ec5n ph\u00ed \u2022 Ti\u1ebfng Vi\u1ec7t & PDF/T\u00e0i li\u1ec7u d\u00e0i t\u1ed1t",
       keyUrl: "https://aistudio.google.com/apikey",
@@ -351,31 +351,9 @@
   function validateKeyFormat(provider, rawKey) {
     const k = String(rawKey || "").trim();
     if (!k) return { valid: false, reason: "Tr\u1ed1ng" };
-    if (/\s/.test(k) || k.length < 16) {
-      return { valid: false, reason: "Kh\u00f3a kh\u00f4ng h\u1ee3p l\u1ec7 (qu\u00e1 ng\u1eafn ho\u1eb7c ch\u1ee9a kho\u1ea3ng tr\u1eafng)" };
-    }
-    const p = String(provider || "").toLowerCase();
-    // Always check sk-or- BEFORE sk- to distinguish OpenRouter from OpenAI/DeepSeek
-    if (p === "openrouter") {
-      if (k.indexOf("sk-or-") === 0) return { valid: true, reason: "H\u1ee3p l\u1ec7" };
-      return { valid: false, reason: "Kh\u00f3a OpenRouter chu\u1ea9n ph\u1ea3i b\u1eaft \u0111\u1ea7u b\u1eb1ng sk-or-" };
-    }
-    if (p === "groq") {
-      if (k.indexOf("gsk_") === 0) return { valid: true, reason: "H\u1ee3p l\u1ec7" };
-      return { valid: false, reason: "Kh\u00f3a Groq Cloud chu\u1ea9n ph\u1ea3i b\u1eaft \u0111\u1ea7u b\u1eb1ng gsk_" };
-    }
-    if (p === "gemini") {
-      if (k.indexOf("AIza") === 0) return { valid: true, reason: "H\u1ee3p l\u1ec7" };
-      return { valid: false, reason: "Kh\u00f3a Google Gemini chu\u1ea9n ph\u1ea3i b\u1eaft \u0111\u1ea7u b\u1eb1ng AIza" };
-    }
-    if (p === "openai" || p === "deepseek") {
-      if (k.indexOf("sk-or-") === 0) {
-        return { valid: false, reason: "Ti\u1ec1n t\u1ed1 sk-or- thu\u1ed9c OpenRouter, kh\u00f4ng ph\u1ea3i " + (p === "openai" ? "OpenAI" : "DeepSeek") };
-      }
-      if (k.indexOf("sk-") === 0) return { valid: true, reason: "H\u1ee3p l\u1ec7" };
-      return { valid: false, reason: "Kh\u00f3a " + (p === "openai" ? "OpenAI" : "DeepSeek") + " chu\u1ea9n ph\u1ea3i b\u1eaft \u0111\u1ea7u b\u1eb1ng sk-" };
-    }
-    return { valid: false, reason: "Nh\u00e0 cung c\u1ea5p kh\u00f4ng h\u1ed7 tr\u1ee3" };
+    // No prefix or string-pattern enforcement: accept any non-empty trimmed key;
+    // actual validity is verified solely via live API health check against the provider.
+    return { valid: true, reason: "S\u1eb5n s\u00e0ng (ki\u1ec3m tra tr\u1ef1c ti\u1ebfp qua API)" };
   }
 
   return {

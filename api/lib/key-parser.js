@@ -1,8 +1,12 @@
 /* ============================================================
    AI Tutor - Smart Multi-Account Key Importer Parser
    Two-step parser (Preview -> Confirm Import).
-   NEVER logs pasted raw text. Cross-checks line label with prefix
-   (checking sk-or- BEFORE sk-) and detects duplicates via HMAC.
+   NO string pattern or prefix validation on API keys:
+     - Assigns provider strictly from the user-entered label.
+     - Accepts any non-empty trimmed key string (e.g. AQ.Ab8..., AIza..., custom keys).
+     - Cleanly skips blank/empty provider lines without errors.
+     - Detects duplicates via HMAC-SHA256.
+     - NEVER logs pasted raw text.
    ============================================================ */
 const { maskApiKey, hmacKeyHash, isEncryptionConfigured } = require("./crypto");
 
@@ -16,17 +20,6 @@ function detectProviderFromLabel(labelRaw) {
   return "";
 }
 
-function detectProviderByPrefix(rawKey) {
-  const k = String(rawKey || "").trim();
-  // IMPORTANT: Check sk-or- BEFORE sk-!
-  if (k.indexOf("AIza") === 0) return "gemini";
-  if (k.indexOf("gsk_") === 0) return "groq";
-  if (k.indexOf("sk-or-") === 0) return "openrouter";
-  if (k.indexOf("sk-proj-") === 0) return "openai";
-  if (k.indexOf("sk-") === 0) return "sk_ambiguous"; // OpenAI or DeepSeek per label
-  return "unknown";
-}
-
 function sanitizeAccountLabel(str) {
   return String(str || "")
     .replace(/<[^>]*>/g, "")
@@ -38,6 +31,7 @@ function sanitizeAccountLabel(str) {
 
 function extractShortAccountLabel(headerLine) {
   let clean = sanitizeAccountLabel(headerLine)
+    .replace(/^\s*(?:account|t\u00e0i\s*kho\u1ea3n)\s*[:\u2014\u2013-]\s*/i, "")
     .replace(/^\s*\d{1,3}\s*[.)]\s*/, "")
     .trim();
   const emailMatch = clean.match(/[^\s@<>;:,()]+@[^\s@<>;:,()]+\.[^\s@<>;:,()]+/);
@@ -73,35 +67,42 @@ function parseAccountGroupedText(rawText, existingHashesSet) {
   const validEntries = [];
   const skipped = [];
   const duplicates = [];
-  const mismatches = [];
   const summaryByProvider = { gemini: 0, groq: 0, openrouter: 0, openai: 0, deepseek: 0 };
   const summaryByAccount = {};
 
-  const accountHeaderRe = /^\s*\d{1,3}\s*[.)]\s+(.+)$/;
-  const keyLineRe = /^\s*(?:[-*\u2022\u2014\u2013]+\s*)?(.+?)\s*[:\u2014\u2013-]\s*(.*)$/;
+  const explicitAccountRe = /^\s*(?:[-*\u2022]+\s*)?(?:account|t\u00e0i\s*kho\u1ea3n)\s*[:\u2014\u2013-]\s*(.+)$/i;
+  const numberedAccountRe = /^\s*\d{1,3}\s*[.)]\s+(.+)$/;
+  const dashLineRe = /^\s*(?:[-*\u2022\u2014\u2013]+\s*)?(.+?)\s*[\u2014\u2013-]\s*(.*)$/;
 
   lines.forEach(function (rawLine, idx) {
     currentLineNum = idx + 1;
     const trimmed = String(rawLine || "").trim();
-    if (!trimmed) return; // Safely ignore empty lines
+    if (!trimmed) return; // Safely ignore blank lines
 
-    // Check if numbered account header like: "1. Pham Duc Hieu — email@gmail.com"
-    const mAcc = trimmed.match(accountHeaderRe);
-    if (mAcc) {
+    // 1. Explicit "Account: <USER_EMAIL>" header (primary supported format)
+    const mExplicitAcc = trimmed.match(explicitAccountRe);
+    if (mExplicitAcc) {
+      currentAccount = extractShortAccountLabel(mExplicitAcc[1]);
+      return;
+    }
+
+    // 2. Numbered account header like "1. Name — email@gmail.com" (backward-compatible)
+    const mNumAcc = trimmed.match(numberedAccountRe);
+    if (mNumAcc) {
       const possibleProv = detectProviderFromLabel(trimmed);
       if (!possibleProv || trimmed.indexOf("@") !== -1 || /[\u2014\u2013]/.test(trimmed)) {
-        currentAccount = extractShortAccountLabel(mAcc[1]);
+        currentAccount = extractShortAccountLabel(mNumAcc[1]);
         return;
       }
     }
 
-    // Also allow plain header containing @ without leading bullet "- " and without provider name
+    // 3. Plain header line containing an email without provider label
     if (!/^[-*\u2022]/.test(trimmed) && trimmed.indexOf("@") !== -1 && !detectProviderFromLabel(trimmed)) {
       currentAccount = extractShortAccountLabel(trimmed);
       return;
     }
 
-    // Check provider key line
+    // 4. Parse "Provider Label: <API_KEY>" strictly at the FIRST colon so exact key value is preserved
     const colonIdx = trimmed.indexOf(":");
     let labelPart = "";
     let valPart = "";
@@ -109,12 +110,17 @@ function parseAccountGroupedText(rawText, existingHashesSet) {
       labelPart = trimmed.slice(0, colonIdx).replace(/^[-*\u2022\s]+/, "").trim();
       valPart = trimmed.slice(colonIdx + 1).trim();
     } else {
-      const mDash = trimmed.match(keyLineRe);
+      const mDash = trimmed.match(dashLineRe);
       if (mDash) {
         labelPart = mDash[1].trim();
         valPart = mDash[2].trim();
       } else {
-        skipped.push({ line: currentLineNum, accountLabel: currentAccount, reason: "Không nhận diện được định dạng nhãn:giá trị" });
+        skipped.push({
+          line: currentLineNum,
+          accountLabel: currentAccount,
+          label: trimmed.slice(0, 40),
+          reason: "Kh\u00f4ng ph\u1ea3i d\u00f2ng nh\u00e3n nh\u00e0 cung c\u1ea5p (b\u1ecf qua)"
+        });
         return;
       }
     }
@@ -125,50 +131,30 @@ function parseAccountGroupedText(rawText, existingHashesSet) {
         currentAccount = extractShortAccountLabel(trimmed);
         return;
       }
-      skipped.push({ line: currentLineNum, accountLabel: currentAccount, reason: "Không xác định được hãng AI từ nhãn \"" + labelPart.slice(0, 40) + "\"" });
-      return;
-    }
-
-    // Normalize placeholder/empty values safely
-    const keyVal = valPart.replace(/^<|>$/g, "").trim();
-    if (!keyVal || /^(?:empty|none|null|n\/a|tr\u1ed1ng|ch\u01b0a c\u00f3|ch\u01b0a t\u1ea1o|chua tao|chua co|-+|\u2014+|\u2013+)$/i.test(keyVal)) {
-      skipped.push({ line: currentLineNum, accountLabel: currentAccount, provider: provider, label: labelPart, reason: "Gi\u00e1 tr\u1ecb tr\u1ed1ng (b\u1ecf qua)" });
-      return;
-    }
-
-    if (/\s/.test(keyVal) || keyVal.length < 16) {
-      skipped.push({ line: currentLineNum, accountLabel: currentAccount, provider: provider, label: labelPart, maskedKey: maskApiKey(keyVal), reason: "Chu\u1ed7i Key qu\u00e1 ng\u1eafn ho\u1eb7c ch\u1ee9a kho\u1ea3ng tr\u1eafng" });
-      return;
-    }
-
-    // Cross-check label provider against actual key prefix (checking sk-or- BEFORE sk-)
-    const detectedByPrefix = detectProviderByPrefix(keyVal);
-    let mismatchMsg = "";
-    if (provider === "gemini" && detectedByPrefix !== "gemini") {
-      mismatchMsg = "Nhãn là Gemini nhưng tiền tố Key là \"" + keyVal.slice(0, 6) + "...\" (chuẩn AIza...)";
-    } else if (provider === "groq" && detectedByPrefix !== "groq") {
-      mismatchMsg = "Nhãn là Groq nhưng tiền tố Key là \"" + keyVal.slice(0, 6) + "...\" (chuẩn gsk_...)";
-    } else if (provider === "openrouter" && detectedByPrefix !== "openrouter") {
-      mismatchMsg = "Nhãn là OpenRouter nhưng tiền tố Key là \"" + keyVal.slice(0, 7) + "...\" (chuẩn sk-or-...)";
-    } else if (provider === "openai" && detectedByPrefix !== "openai" && detectedByPrefix !== "sk_ambiguous") {
-      mismatchMsg = "Nhãn là OpenAI nhưng tiền tố Key là \"" + keyVal.slice(0, 7) + "...\" (chuẩn sk-..., không phải " + detectedByPrefix + ")";
-    } else if (provider === "deepseek" && detectedByPrefix !== "sk_ambiguous") {
-      mismatchMsg = "Nhãn là DeepSeek nhưng tiền tố Key là \"" + keyVal.slice(0, 7) + "...\" (chuẩn sk-...)";
-    }
-
-    if (mismatchMsg) {
-      mismatches.push({
+      skipped.push({
         line: currentLineNum,
         accountLabel: currentAccount,
-        provider: provider,
-        label: labelPart,
-        detectedPrefixProvider: detectedByPrefix,
-        maskedKey: maskApiKey(keyVal),
-        reason: mismatchMsg
+        label: labelPart.slice(0, 40),
+        reason: "Kh\u00f4ng x\u00e1c \u0111\u1ecbnh \u0111\u01b0\u1ee3c h\u00e3ng AI t\u1eeb nh\u00e3n \"" + labelPart.slice(0, 40) + "\""
       });
       return;
     }
 
+    // Trim leading/trailing whitespace only; ignore blank/omitted slots cleanly without error
+    const keyVal = valPart.trim();
+    if (!keyVal || /^(?:empty|none|null|n\/a|tr\u1ed1ng|ch\u01b0a c\u00f3|ch\u01b0a t\u1ea1o|chua tao|chua co|-+|\u2014+|\u2013+)$/i.test(keyVal)) {
+      skipped.push({
+        line: currentLineNum,
+        accountLabel: currentAccount,
+        provider: provider,
+        label: labelPart,
+        reason: "D\u00f2ng tr\u1ed1ng (b\u1ecf qua)"
+      });
+      return;
+    }
+
+    // NO format or prefix validation: accept ANY non-empty API key string strictly under the label's provider.
+    // Live validity is determined exclusively via live API health check against the provider's endpoint.
     const keyHash = computeSafeHash(provider, keyVal);
     if (knownHashes.has(keyHash) || batchHashes.has(keyHash)) {
       duplicates.push({
@@ -211,7 +197,7 @@ function parseAccountGroupedText(rawText, existingHashesSet) {
     }),
     skipped: skipped,
     duplicates: duplicates,
-    mismatches: mismatches,
+    mismatches: [],
     summaryByProvider: summaryByProvider,
     summaryByAccount: summaryByAccountList,
     summaryByAccountMap: summaryByAccount,
@@ -222,7 +208,6 @@ function parseAccountGroupedText(rawText, existingHashesSet) {
 module.exports = {
   parseAccountGroupedText: parseAccountGroupedText,
   detectProviderFromLabel: detectProviderFromLabel,
-  detectProviderByPrefix: detectProviderByPrefix,
   extractShortAccountLabel: extractShortAccountLabel,
   computeSafeHash: computeSafeHash
 };

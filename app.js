@@ -2835,17 +2835,11 @@ function adminSysKeysHTML() {
     const prevRows = (p.previewItems || []).map(function (it) {
       return '<li><strong>' + esc(it.accountLabel) + '</strong> — <code>' + esc(it.provider) + '</code>: <code>' + esc(it.maskedKey) + '</code></li>';
     }).join("");
-    const mismatchHtml = (p.mismatches && p.mismatches.length)
-      ? '<div style="margin-top:8px;color:var(--rose);font-size:.8rem"><strong>⚠️ Sai \u0111\u1ecbnh d\u1ea1ng / L\u1ec7ch ti\u1ec1n t\u1ed1 (' + p.mismatches.length + '):</strong><ul>' +
-          p.mismatches.map(function (m) {
-            return '<li>' + esc(m.accountLabel || "") + ' [' + esc(m.label || "") + '] (' + esc(m.maskedKey || "") + '): ' + esc(m.reason || "") + '</li>';
-          }).join("") + '</ul></div>'
-      : "";
     const dupHtml = (p.duplicates && p.duplicates.length)
       ? '<div class="muted" style="margin-top:6px;font-size:.78rem">🔁 Tr\u00f9ng l\u1eb7p b\u1ecf qua (' + p.duplicates.length + '): ' + p.duplicates.map(function (d) { return esc(d.provider + " " + d.maskedKey); }).join(", ") + '</div>'
       : "";
     const skipHtml = (p.skipped && p.skipped.length)
-      ? '<div class="muted" style="margin-top:4px;font-size:.78rem">⏭️ M\u1ee5c tr\u1ed1ng / Ch\u01b0a t\u1ea1o b\u1ecf qua (' + p.skipped.length + '): ' + p.skipped.map(function (x) { return esc(x.label || x.accountLabel || ""); }).join(", ") + '</div>'
+      ? '<div class="muted" style="margin-top:4px;font-size:.78rem">⏭️ D\u00f2ng tr\u1ed1ng b\u1ecf qua (' + p.skipped.length + '): ' + p.skipped.map(function (x) { return esc(x.label || x.accountLabel || ""); }).join(", ") + '</div>'
       : "";
 
     previewHtml = '<div class="syskey-preview-box">' +
@@ -2855,9 +2849,10 @@ function adminSysKeysHTML() {
       '</div>' +
       (accSum ? '<div class="muted" style="font-size:.78rem;margin:6px 0">T\u00e0i kho\u1ea3n: ' + accSum + '</div>' : '') +
       (prevRows ? '<ul style="margin:6px 0 8px 18px;font-size:.8rem;max-height:180px;overflow:auto">' + prevRows + '</ul>' : '') +
-      mismatchHtml + dupHtml + skipHtml +
+      dupHtml + skipHtml +
+      '<div class="muted" style="font-size:.76rem;margin-top:6px">ℹ️ Kh\u00f4ng ki\u1ec3m tra ti\u1ec1n t\u1ed1 / \u0111\u1ecbnh d\u1ea1ng chu\u1ed7i (h\u1ed7 tr\u1ee3 m\u1ecdi Key nh\u01b0 <code>AQ.Ab8...</code>, <code>AIza...</code>, <code>gsk_...</code>...). Khi b\u1ea5m X\u00e1c nh\u1eadn, m\u00e1y ch\u1ee7 s\u1ebd m\u00e3 h\u00f3a v\u00e0 ki\u1ec3m tra k\u1ebft n\u1ed1i tr\u1ef1c ti\u1ebfp (Live Health Check) t\u1edbi t\u1eebng h\u00e3ng AI.</div>' +
       '<div class="deck-actions" style="margin-top:10px">' +
-        '<button type="button" class="btn btn-emerald" data-act="syskey-confirm-import"' + ((s.busy || !p.totalValid) ? " disabled" : "") + '>✅ X\u00e1c nh\u1eadn M\u00e3 h\u00f3a AES-256-GCM &amp; L\u01b0u (' + p.totalValid + ' Key)</button>' +
+        '<button type="button" class="btn btn-emerald" data-act="syskey-confirm-import"' + ((s.busy || !p.totalValid) ? " disabled" : "") + '>✅ X\u00e1c nh\u1eadn M\u00e3 h\u00f3a, L\u01b0u &amp; Ki\u1ec3m tra Live (' + p.totalValid + ' Key)</button>' +
         '<button type="button" class="btn btn-outline" data-act="syskey-cancel-preview"' + (s.busy ? " disabled" : "") + '>H\u1ee7y</button>' +
       '</div>' +
     '</div>';
@@ -2871,6 +2866,7 @@ function adminSysKeysHTML() {
     const actCell = isEnv
       ? '<span class="muted" style="font-size:.76rem">Qu\u1ea3n l\u00fd qua ENV</span>'
       : ('<div class="deck-actions">' +
+          '<button type="button" class="btn btn-outline btn-sm" data-act="syskey-test-one" data-id="' + esc(k.id) + '"' + (s.busy ? " disabled" : "") + '>🧪 Test</button>' +
           '<button type="button" class="btn btn-outline btn-sm" data-act="syskey-toggle" data-id="' + esc(k.id) + '" data-enabled="' + (k.enabled !== false ? "1" : "0") + '"' + (s.busy ? " disabled" : "") + '>' + (k.enabled !== false ? "T\u1ea1m t\u1eaft" : "B\u1eadt l\u1ea1i") + '</button>' +
           ((k.status === "cooldown" || k.status === "invalid")
             ? '<button type="button" class="btn btn-outline btn-sm" data-act="syskey-reset" data-id="' + esc(k.id) + '"' + (s.busy ? " disabled" : "") + '>Reset</button>'
@@ -2913,8 +2909,8 @@ function adminSysKeysHTML() {
 
     '<div style="margin-bottom:20px">' +
       '<h4>1. Nh\u1eadp h\u00e0ng lo\u1ea1t theo nh\u00f3m t\u00e0i kho\u1ea3n (2-Step Smart Importer)</h4>' +
-      '<p class="muted" style="font-size:.8rem;margin:0 0 8px">D\u00e1n \u0111o\u1ea1n danh s\u00e1ch d\u1ea1ng <code>1. T\u00ean — email</code> + c\u00e1c d\u00f2ng g\u1ea1ch \u0111\u1ea7u d\u00f2ng (<code>Groq:</code>, <code>OpenRouter:</code>, <code>Gemini:</code>, <code>OpenAI:</code>, <code>DeepSeek:</code>). H\u1ec7 th\u1ed1ng t\u1ef1 lo\u1ea1i b\u1ecf m\u00e3 SV, b\u1ecf d\u00f2ng tr\u1ed1ng/"Ch\u01b0a t\u1ea1o", ki\u1ec3m tra ti\u1ec1n t\u1ed1 v\u00e0 ch\u1ed1ng tr\u00f9ng b\u1eb1ng HMAC-SHA256. V\u0103n b\u1ea3n d\u00e1n kh\u00f4ng bao gi\u1edd \u0111\u01b0\u1ee3c l\u01b0u hay ghi log.</p>' +
-      '<textarea id="sysKeysRawInput" class="multi-key-textarea" rows="7" spellcheck="false" autocomplete="off" placeholder="1. T\u00e0i kho\u1ea3n 1 \u2014 example1@gmail.com&#10;- Groq: gsk_...&#10;- OpenRouter: sk-or-v1-...&#10;- Gemini: AIzaSy...">' + esc(s.rawDraft) + '</textarea>' +
+      '<p class="muted" style="font-size:.8rem;margin:0 0 8px">D\u00e1n danh s\u00e1ch theo c\u1ea5u tr\u00fac <code>Account: email</code> + nh\u00e3n t\u1eebng h\u00e3ng (<code>Google AI Studio (Gemini):</code>, <code>Groq Cloud:</code>, <code>OpenRouter:</code>, <code>OpenAI:</code>, <code>DeepSeek:</code>). Kh\u00f4ng gi\u1edbi h\u1ea1n ti\u1ec1n t\u1ed1 Key (h\u1ed7 tr\u1ee3 c\u1ea3 <code>AQ.Ab8...</code>), t\u1ef1 b\u1ecf qua d\u00f2ng tr\u1ed1ng, ch\u1ed1ng tr\u00f9ng b\u1eb1ng HMAC-SHA256 v\u00e0 x\u00e1c minh tr\u1ea1ng th\u00e1i s\u1ed1ng/ch\u1ebft qua Live API Health Check.</p>' +
+      '<textarea id="sysKeysRawInput" class="multi-key-textarea" rows="7" spellcheck="false" autocomplete="off" placeholder="Account: user1@gmail.com&#10;Google AI Studio (Gemini): AQ.Ab8...&#10;Groq Cloud: gsk_...&#10;OpenRouter: sk-or-...&#10;OpenAI:&#10;DeepSeek:">' + esc(s.rawDraft) + '</textarea>' +
       '<div class="deck-actions" style="margin-top:8px">' +
         '<button type="button" class="btn btn-primary" data-act="syskey-preview"' + (s.busy ? " disabled" : "") + '>🔍 Ph\u00e2n t\u00edch &amp; Xem tr\u01b0\u1edbc (Preview)</button>' +
         '<button type="button" class="btn btn-outline" data-act="syskey-clear-input"' + (s.busy ? " disabled" : "") + '>X\u00f3a \u00f4 d\u00e1n</button>' +
@@ -3203,7 +3199,25 @@ async function onAdminClick(e) {
         sysKeysState.preview = null;
         sysKeysState.keys = Array.isArray(resp.data.keys) ? resp.data.keys : sysKeysState.keys;
         sysKeysState.auditLogs = Array.isArray(resp.data.auditLogs) ? resp.data.auditLogs : sysKeysState.auditLogs;
-        showToast("\u0110\u00e3 m\u00e3 h\u00f3a AES-256-GCM & l\u01b0u " + (resp.data.importedCount || 0) + " API Key v\u00e0o System Pool!", "success");
+        const hs = resp.data.healthSummary;
+        const hsTxt = hs ? (" (Live Check: " + (hs.healthy || 0) + " Healthy \u2022 " + (hs.cooldown || 0) + " Cooldown \u2022 " + (hs.invalid || 0) + " Invalid)") : "";
+        showToast("\u0110\u00e3 m\u00e3 h\u00f3a AES-256-GCM & l\u01b0u " + (resp.data.importedCount || 0) + " API Key!" + hsTxt, (hs && hs.invalid > 0 && !hs.healthy) ? "warning" : "success");
+      }
+      renderAdmin();
+    } else if (act === "syskey-test-one") {
+      const id = b.getAttribute("data-id");
+      if (!id) return;
+      sysKeysState.busy = true;
+      renderAdmin();
+      const resp = await adminSystemKeysFetch("/" + encodeURIComponent(id) + "/test", "POST", {});
+      sysKeysState.busy = false;
+      if (resp._err) {
+        showToast("L\u1ed7i ki\u1ec3m tra Key: " + resp._err, "error");
+      } else if (resp.data) {
+        sysKeysState.keys = Array.isArray(resp.data.keys) ? resp.data.keys : sysKeysState.keys;
+        sysKeysState.auditLogs = Array.isArray(resp.data.auditLogs) ? resp.data.auditLogs : sysKeysState.auditLogs;
+        const k = resp.data.key || {};
+        showToast("Live Health Check " + (k.maskedKey || "") + ": " + (k.status || "done").toUpperCase() + (k.lastError ? (" (" + k.lastError + ")") : " (OK)"), k.status === "healthy" ? "success" : "warning");
       }
       renderAdmin();
     } else if (act === "syskey-refresh") {

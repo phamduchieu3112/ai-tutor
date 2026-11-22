@@ -87,16 +87,16 @@ node scripts/local-server.js
 2. Bạn có thể quản lý System Key Pool ở **2 nơi** (cả hai đều được máy chủ xác thực qua Google ID Token + `/api/admin/me`):
    - **Admin Panel → tab `🔑 API Key Hệ thống`** (`/admin/system-keys`): Đầy đủ công cụ Importer 2 bước, `Test All Keys`, `Remove All Invalid Keys`, bật/tắt từng key, xóa toàn bộ và xem Audit Log.
    - **Trang `Cài đặt API` → Mục B `Kho API Key Hệ thống`** (`/api-settings`): Tự động chỉ hiển thị cho Admin đã được server xác thực; người dùng thường không thấy mục này.
-3. Dán danh sách theo định dạng nhóm tài khoản:
+3. Dán danh sách theo cấu trúc nhóm tài khoản (không ràng buộc tiền tố, hỗ trợ cả khóa Google AI Studio mới `AQ.Ab8...`, bỏ qua dòng trống tự động):
    ```text
-   1. Tài khoản 1 — email1@gmail.com
-     - Google AI Studio (Gemini): AIza...
-     - Groq Cloud (gsk_...): gsk_...
-     - OpenRouter (sk-or-...): sk-or-...
-     - OpenAI (sk-...):
-     - DeepSeek (sk-...):
+   Account: email1@gmail.com
+   Google AI Studio (Gemini): AQ.Ab8...
+   Groq Cloud: gsk_...
+   OpenRouter: sk-or-...
+   OpenAI:
+   DeepSeek:
    ```
-4. Nhấn **Phân tích & Xem trước (Preview)** / **Lưu vào Kho Hệ thống (Dùng chung)** → kiểm tra danh sách key đã ẩn, mục trùng lặp hoặc lệch tiền tố → nhấn **Xác nhận**. Key được mã hóa AES-256-GCM và kích hoạt ngay lập tức cho toàn bộ người dùng.
+4. Nhấn **Phân tích & Xem trước (Preview)** / **Lưu vào Kho Hệ thống (Dùng chung)** → kiểm tra danh sách key đã ẩn → nhấn **Xác nhận**. Key được mã hóa AES-256-GCM, kiểm tra trực tiếp trạng thái sống/chết qua Live API Health Check và kích hoạt ngay cho toàn bộ người dùng.
 
 ---
 

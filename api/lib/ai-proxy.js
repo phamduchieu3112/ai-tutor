@@ -661,7 +661,13 @@ async function handleAiProxy(req, res) {
         continue;
       }
 
-      if (upRes.status === 401 || upRes.status === 403) {
+      const lowerErr = String(lastSanitizedErr || "").toLowerCase();
+      const isBadKey400 = upRes.status === 400 && (
+        lowerErr.indexOf("api key not valid") !== -1 ||
+        lowerErr.indexOf("api_key_invalid") !== -1 ||
+        lowerErr.indexOf("invalid api key") !== -1
+      );
+      if (upRes.status === 401 || upRes.status === 403 || isBadKey400) {
         bumpMutation(entry, {
           status: "invalid",
           cooldownUntil: 0,

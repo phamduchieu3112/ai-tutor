@@ -158,6 +158,7 @@ function sanitizeErrorMessage(message, secretsToScrub) {
     .replace(/([?&]key=)[^&\s"']+/gi, "$1[REDACTED]")
     .replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, "$1[REDACTED]")
     .replace(/\bAIza[0-9A-Za-z_-]{16,}/g, "[REDACTED_GEMINI_KEY]")
+    .replace(/\bAQ\.[0-9A-Za-z._-]{16,}/g, "[REDACTED_GEMINI_KEY]")
     .replace(/\bgsk_[0-9A-Za-z_-]{16,}/g, "[REDACTED_GROQ_KEY]")
     .replace(/\bsk-or-[0-9A-Za-z_-]{16,}/g, "[REDACTED_OPENROUTER_KEY]")
     .replace(/\bsk-(?:proj-)?[0-9A-Za-z_-]{16,}/g, "[REDACTED_API_KEY]");

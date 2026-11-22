@@ -70,9 +70,9 @@
   }
 
   const FALLBACK_PROVIDER_INFO = {
-    gemini: { name: "Google AI Studio (Gemini)", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/", testEndpoint: "https://generativelanguage.googleapis.com/v1beta/models", prefixHint: "AIza...", keyUrl: "https://aistudio.google.com/apikey", models: [{ id: "gemini-3.5-flash-lite", rawModel: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", vision: true, pdf: true, free: true }] },
+    gemini: { name: "Google AI Studio (Gemini)", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/", testEndpoint: "https://generativelanguage.googleapis.com/v1beta/models", prefixHint: "AIza... / AQ....", keyUrl: "https://aistudio.google.com/apikey", models: [{ id: "gemini-3.5-flash-lite", rawModel: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", vision: true, pdf: true, free: true }] },
     groq: { name: "Groq Cloud", endpoint: "https://api.groq.com/openai/v1/chat/completions", testEndpoint: "https://api.groq.com/openai/v1/models", prefixHint: "gsk_...", keyUrl: "https://console.groq.com/keys", models: [{ id: "groq:qwen/qwen3.6-27b", rawModel: "qwen/qwen3.6-27b", label: "Groq Qwen 3.6 27B (Mi\u1ec5n ph\u00ed & Vision)", vision: true, pdf: false, free: true }] },
-    openrouter: { name: "OpenRouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", testEndpoint: "https://openrouter.ai/api/v1/models", prefixHint: "sk-or-...", keyUrl: "https://openrouter.ai/keys", models: [{ id: "openrouter:openrouter/free", rawModel: "openrouter/free", label: "OpenRouter Auto Free Router (:free & Vision)", vision: true, pdf: false, free: true }] },
+    openrouter: { name: "OpenRouter", endpoint: "https://openrouter.ai/api/v1/chat/completions", testEndpoint: "https://openrouter.ai/api/v1/key", prefixHint: "sk-or-...", keyUrl: "https://openrouter.ai/keys", models: [{ id: "openrouter:openrouter/free", rawModel: "openrouter/free", label: "OpenRouter Auto Free Router (:free & Vision)", vision: true, pdf: false, free: true }] },
     openai: { name: "OpenAI", endpoint: "https://api.openai.com/v1/chat/completions", testEndpoint: "https://api.openai.com/v1/models", prefixHint: "sk-...", keyUrl: "https://platform.openai.com/api-keys", models: [{ id: "openai:gpt-4.1-mini", rawModel: "gpt-4.1-mini", label: "OpenAI GPT-4.1 Mini (Vision)", vision: true, pdf: false, free: false }] },
     deepseek: { name: "DeepSeek", endpoint: "https://api.deepseek.com/chat/completions", testEndpoint: "https://api.deepseek.com/models", prefixHint: "sk-...", keyUrl: "https://platform.deepseek.com/api_keys", models: [{ id: "deepseek:deepseek-chat", rawModel: "deepseek-chat", label: "DeepSeek Chat V3", vision: false, pdf: false, free: false }] }
   };
@@ -122,8 +122,8 @@
       return c.validateKeyFormat(provider, rawKey);
     }
     const k = String(rawKey || "").trim();
-    if (!k || /\s/.test(k) || k.length < 16) return { valid: false, reason: "Kh\u00f4ng h\u1ee3p l\u1ec7" };
-    return { valid: true, reason: "H\u1ee3p l\u1ec7" };
+    if (!k) return { valid: false, reason: "Tr\u1ed1ng" };
+    return { valid: true, reason: "S\u1eb5n s\u00e0ng (ki\u1ec3m tra tr\u1ef1c ti\u1ebfp qua API)" };
   }
 
   function maskKeyPreview(k) {
@@ -478,27 +478,22 @@
       const itemsHtml = (p.previewItems || []).map(function (it) {
         return '<li><strong>' + U().esc(it.accountLabel) + '</strong> \u2014 <code>' + U().esc(it.provider) + '</code>: <code>' + U().esc(it.maskedKey) + '</code></li>';
       }).join("");
-      const misHtml = (p.mismatches && p.mismatches.length)
-        ? '<div style="margin-top:6px;color:var(--rose);font-size:.78rem"><strong>⚠️ L\u1ec7ch ti\u1ec1n t\u1ed1 (' + p.mismatches.length + '):</strong><ul>' +
-            p.mismatches.map(function (m) { return '<li>' + U().esc(m.accountLabel || "") + ' (' + U().esc(m.maskedKey || "") + '): ' + U().esc(m.reason || "") + '</li>'; }).join("") +
-          '</ul></div>'
-        : "";
       const dupHtml = (p.duplicates && p.duplicates.length)
         ? '<div class="muted" style="font-size:.76rem;margin-top:4px">🔁 Tr\u00f9ng l\u1eb7p b\u1ecf qua: ' + p.duplicates.length + '</div>'
         : "";
       const skipHtml = (p.skipped && p.skipped.length)
-        ? '<div class="muted" style="font-size:.76rem;margin-top:4px">⏭️ B\u1ecf qua d\u00f2ng tr\u1ed1ng / kh\u00f4ng h\u1ee3p l\u1ec7: ' + p.skipped.length + '</div>'
+        ? '<div class="muted" style="font-size:.76rem;margin-top:4px">⏭️ D\u00f2ng tr\u1ed1ng b\u1ecf qua: ' + p.skipped.length + '</div>'
         : "";
 
       previewHtml =
         '<div class="syskey-preview-box" id="sysSecPreviewBox">' +
           '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
-            '<strong>📋 Xem tr\u01b0\u1edbc (Preview): ' + p.totalValid + ' Key h\u1ee3p l\u1ec7</strong>' +
+            '<strong>📋 Xem tr\u01b0\u1edbc (Preview): ' + p.totalValid + ' Key h\u1ee3p l\u1ec7 s\u1eb5n s\u00e0ng m\u00e3 h\u00f3a &amp; l\u01b0u</strong>' +
             '<span class="muted" style="font-size:.78rem">' + U().esc(provSummary) + '</span>' +
           '</div>' +
           (accSummary ? '<div class="muted" style="font-size:.76rem;margin:4px 0">T\u00e0i kho\u1ea3n: ' + accSummary + '</div>' : '') +
           (itemsHtml ? '<ul style="margin:6px 0 8px 18px;font-size:.78rem;max-height:160px;overflow:auto">' + itemsHtml + '</ul>' : '') +
-          misHtml + dupHtml + skipHtml +
+          dupHtml + skipHtml +
           '<div class="deck-actions" style="margin-top:10px">' +
             '<button type="button" class="btn btn-emerald btn-sm" id="sysSecConfirmImportBtn"' + ((cState.adminSysBusy || !p.totalValid) ? " disabled" : "") + '>X\u00e1c nh\u1eadn</button>' +
             '<button type="button" class="btn btn-outline btn-sm" id="sysSecCancelPreviewBtn"' + (cState.adminSysBusy ? " disabled" : "") + '>H\u1ee7y</button>' +
@@ -514,7 +509,7 @@
         '<td><strong>' + U().esc(k.accountLabel) + '</strong> ' + (isEnv ? '<span class="badge" style="font-size:.66rem">ENV</span>' : '<span class="badge badge-ok" style="font-size:.66rem">DB</span>') + '</td>' +
         '<td><code>' + U().esc(k.provider) + '</code></td>' +
         '<td><code>' + U().esc(k.maskedKey) + '</code></td>' +
-        '<td><span class="syskey-status ' + U().esc(stCls) + '">' + U().esc(stLabel) + '</span></td>' +
+        '<td><span class="syskey-status ' + U().esc(stCls) + '">' + U().esc(stLabel) + '</span>' + (k.lastError ? '<div class="muted" style="font-size:.68rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + U().esc(k.lastError) + '">' + U().esc(k.lastError) + '</div>' : '') + '</td>' +
         '<td>' + (Number(k.usageCount) || 0) + ' OK / ' + (Number(k.errorCount) || 0) + ' Err</td>' +
         '<td>' + (isEnv
           ? '<span class="muted" style="font-size:.74rem">Qu\u1ea3n l\u00fd qua ENV</span>'
@@ -525,9 +520,9 @@
 
     return '<div class="api-section-box api-section-admin" id="apiSectionBAdmin">' +
       '<h3 class="api-section-title">🛡️ Kho API Key H\u1ec7 th\u1ed1ng (L\u01b0u l\u00ean Server \u2014 D\u00f9ng chung cho to\u00e0n b\u1ed9 ng\u01b0\u1eddi d\u00f9ng)</h3>' +
-      '<p class="muted" style="margin:0 0 10px;font-size:.8rem">Ch\u1ec9 hi\u1ec3n th\u1ecb sau khi m\u00e1y ch\u1ee7 x\u00e1c th\u1ef1c quy\u1ec1n Qu\u1ea3n tr\u1ecb vi\u00ean (<code>/api/admin/me</code>). M\u1ecdi Key l\u01b0u t\u1ea1i \u0111\u00e2y \u0111\u01b0\u1ee3c m\u00e3 h\u00f3a AES-256-GCM tr\u00ean server v\u00e0 kh\u00f4ng bao gi\u1edd tr\u1ea3 key th\u00f4 v\u1ec1 tr\u00ecnh duy\u1ec7t.</p>' +
+      '<p class="muted" style="margin:0 0 10px;font-size:.8rem">Ch\u1ec9 hi\u1ec3n th\u1ecb sau khi m\u00e1y ch\u1ee7 x\u00e1c th\u1ef1c quy\u1ec1n Qu\u1ea3n tr\u1ecb vi\u00ean (<code>/api/admin/me</code>). Nh\u1eadn m\u1ecdi \u0111\u1ecbnh d\u1ea1ng Key (k\u1ec3 c\u1ea3 <code>AQ.Ab8...</code>), x\u00e1c minh tr\u1ea1ng th\u00e1i b\u1eb1ng Live API Health Check v\u00e0 m\u00e3 h\u00f3a AES-256-GCM tr\u00ean server.</p>' +
       (cState.adminSysError ? '<div class="pending-banner" style="border-color:var(--rose);margin-bottom:10px"><span>❌ ' + U().esc(cState.adminSysError) + '</span></div>' : '') +
-      '<textarea id="sysSecRawTextarea" class="multi-key-textarea" rows="5" spellcheck="false" autocomplete="off" placeholder="D\u00e1n danh s\u00e1ch theo nh\u00f3m t\u00e0i kho\u1ea3n:\n1. T\u00ean \u2014 email@gmail.com\n  - Google AI Studio (Gemini): AIza...\n  - Groq Cloud (gsk_...): gsk_...\n  - OpenRouter (sk-or-...): sk-or-...">' + U().esc(cState.adminSysRawDraft) + '</textarea>' +
+      '<textarea id="sysSecRawTextarea" class="multi-key-textarea" rows="5" spellcheck="false" autocomplete="off" placeholder="Account: user1@gmail.com\nGoogle AI Studio (Gemini): AQ.Ab8...\nGroq Cloud: gsk_...\nOpenRouter: sk-or-...\nOpenAI:\nDeepSeek:">' + U().esc(cState.adminSysRawDraft) + '</textarea>' +
       '<div class="deck-actions" style="margin:10px 0">' +
         '<button type="button" class="btn btn-primary" id="sysSecPreviewBtn"' + (cState.adminSysBusy ? " disabled" : "") + '>L\u01b0u v\u00e0o Kho H\u1ec7 th\u1ed1ng (D\u00f9ng chung)</button>' +
         '<button type="button" class="btn btn-danger" id="sysSecDeleteAllBtn"' + ((cState.adminSysBusy || dbKeys.length === 0) ? " disabled" : "") + '>X\u00f3a to\u00e0n b\u1ed9 Key H\u1ec7 th\u1ed1ng</button>' +
@@ -773,7 +768,9 @@
         });
         if (!res.ok) {
           const err = await res.json().catch(function () { return {}; });
-          return { status: "bad", message: (err && err.error && err.error.message) || ("HTTP " + res.status) };
+          const msg = (err && err.error && err.error.message) || ("HTTP " + res.status);
+          if (res.status === 429) return { status: "warn", message: "Key \u0111\u00fang nh\u01b0ng \u0111ang gi\u1edbi h\u1ea1n t\u1ed1c \u0111\u1ed9 (429): " + msg };
+          return { status: "bad", message: msg };
         }
         return { status: "ok", message: "K\u1ebft n\u1ed1i h\u1ee3p l\u1ec7 (OK)" };
       }
@@ -819,12 +816,6 @@
     let badCount = 0;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      const fmt = validateProviderKeyFormat(it.provider, it.apiKey);
-      if (!fmt.valid) {
-        badCount++;
-        results.push({ provider: it.provider, masked: maskKeyPreview(it.apiKey), status: "bad", message: fmt.reason });
-        continue;
-      }
       const r = await testSingleProviderKey(it.provider, it.apiKey);
       if (r.status === "ok") okCount++;
       else if (r.status === "warn") warnCount++;
@@ -1021,7 +1012,9 @@
         cState.adminSysRawDraft = "";
         cState.adminSysPreview = null;
         cState.adminSysKeys = Array.isArray(resp.data.keys) ? resp.data.keys : cState.adminSysKeys;
-        U().showToast("\u0110\u00e3 m\u00e3 h\u00f3a & l\u01b0u " + (resp.data.importedCount || 0) + " Key v\u00e0o Kho H\u1ec7 th\u1ed1ng!", "success");
+        const hs = resp.data.healthSummary;
+        const hsTxt = hs ? (" (Live Check: " + (hs.healthy || 0) + " Healthy \u2022 " + (hs.cooldown || 0) + " Cooldown \u2022 " + (hs.invalid || 0) + " Invalid)") : "";
+        U().showToast("\u0110\u00e3 m\u00e3 h\u00f3a & l\u01b0u " + (resp.data.importedCount || 0) + " Key v\u00e0o Kho H\u1ec7 th\u1ed1ng!" + hsTxt, (hs && hs.invalid > 0 && !hs.healthy) ? "warning" : "success");
       }
       renderApiPage();
     } else if (t.id === "sysSecDeleteAllBtn") {
