@@ -484,13 +484,20 @@
     const nonEmptyMcq = mcqOptions.filter(Boolean);
     const correctIndices = qType === "MCQ" ? parseMcqAnswerIndices(answerRaw, nonEmptyMcq.length) : [];
     const tfAnswers = qType === "TF_GROUP" ? parseTfAnswerLine(answerRaw) : {};
+    let stemText = stemLines.join("\n").trim();
+    let inheritedStem = false;
+    if (!stemText && metaCtx.activeInstruction && (nonEmptyMcq.length >= 2 || tfStatements.length > 0 || answerRaw)) {
+      stemText = String(metaCtx.activeInstruction).replace(/\*\*/g, "").trim();
+      inheritedStem = true;
+    }
 
     return {
       id: "dq_" + qNumber + "_" + (metaCtx.seq || 0),
       number: qNumber,
       qType: qType, // MCQ | TF_GROUP | SHORT_ANSWER | ORDERING | ESSAY
       type: qType === "MCQ" ? (correctIndices.length > 1 ? "Checkbox" : "Multiple Choice") : qType,
-      text: stemLines.join("\n").trim(),
+      text: stemText,
+      inheritedStem: inheritedStem,
       options: mcqOptions,
       correct: correctIndices,
       tfStatements: tfStatements,
@@ -959,11 +966,14 @@
       seenNumPerExam[examKey] = true;
 
       const normText = String(q.text || "").trim().toLowerCase().replace(/\s+/g, " ");
-      if (!normText) {
+      const normInstr = String(q.instruction || "").replace(/\*\*/g, "").trim().toLowerCase().replace(/\s+/g, " ");
+      const optsForCheck = (q.options || []).filter(Boolean);
+      const hasGroupFallback = !!normInstr && (optsForCheck.length >= 2 || (Array.isArray(q.tfStatements) && q.tfStatements.length > 0) || !!String(q.answerText || "").trim());
+      if (!normText && !hasGroupFallback) {
         issues.push({ severity: "error", code: "EMPTY_STEM", questionIndex: idx, message: qLabel + ": Thi\u1ebfu n\u1ed9i dung \u0111\u1ec1 b\u00e0i." });
-      } else if (normText.length > 24 && seenTexts[normText] !== undefined) {
+      } else if (normText && !q.inheritedStem && normText !== normInstr && normText.length > 24 && seenTexts[normText] !== undefined) {
         issues.push({ severity: "warning", code: "DUP_QUESTION", questionIndex: idx, message: qLabel + ": N\u1ed9i dung tr\u00f9ng l\u1eb7p v\u1edbi C\u00e2u " + (seenTexts[normText] + 1) + "." });
-      } else if (normText) {
+      } else if (normText && !q.inheritedStem && normText !== normInstr) {
         seenTexts[normText] = idx;
       }
 

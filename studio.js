@@ -112,6 +112,30 @@
     return saved;
   }
 
+  function normalizeStudioQuestion(q, i) {
+    const rawQType = String((q && (q.qType || q.type)) || "").toUpperCase();
+    const isNonMcq = rawQType === "TF_GROUP" || rawQType === "SHORT_ANSWER" || rawQType === "ORDERING" || rawQType === "ESSAY";
+    const opts = Array.isArray(q && q.options) ? q.options.filter(Boolean).slice() : [];
+    const corr = Array.isArray(q && q.correct) ? q.correct.slice() : [];
+    return Object.assign({}, q, {
+      id: (q && q.id) || ("sq_" + Date.now() + "_" + i),
+      qType: isNonMcq ? rawQType : "MCQ",
+      text: (q && q.text) || "",
+      type: isNonMcq ? rawQType : (corr.length > 1 || (q && (q.type === "Checkbox" || q.type === "multiple")) ? "multiple" : "single"),
+      options: opts,
+      correct: corr,
+      tfStatements: Array.isArray(q && q.tfStatements) ? q.tfStatements.slice() : [],
+      tfAnswers: (q && q.tfAnswers && typeof q.tfAnswers === "object") ? Object.assign({}, q.tfAnswers) : {},
+      answerText: (q && q.answerText) || "",
+      instruction: (q && q.instruction) || "",
+      contextId: (q && q.contextId) || "",
+      context: (q && q.context) || "",
+      time: Number.isFinite(Number(q && q.time)) ? Number(q.time) : 30,
+      image: (q && q.image) || "",
+      explanation: (q && q.explanation) || ""
+    });
+  }
+
   function cloneDeckToQuiz(deck) {
     if (!deck) return null;
     const rawQs = Array.isArray(deck.questions) ? deck.questions : [];
@@ -122,18 +146,7 @@
       tag: deck.tag || "T\u1ed5ng h\u1ee3p",
       isPublic: typeof deck.isPublic === "boolean" ? deck.isPublic : true,
       shareCode: deck.shareCode || "",
-      questions: rawQs.map(function (q, i) {
-        return Object.assign({}, q, {
-          id: q.id || ("sq_" + i),
-          text: q.text || "",
-          type: q.type === "multiple" || q.type === "Checkbox" ? "multiple" : "single",
-          options: Array.isArray(q.options) ? q.options.slice() : [],
-          correct: Array.isArray(q.correct) ? q.correct.slice() : [],
-          time: Number.isFinite(Number(q.time)) ? Number(q.time) : 30,
-          image: q.image || "",
-          explanation: q.explanation || ""
-        });
-      })
+      questions: rawQs.map(normalizeStudioQuestion)
     });
   }
 
@@ -165,18 +178,7 @@
       tag: tag || "T\u1ed5ng h\u1ee3p",
       isPublic: true,
       shareCode: "",
-      questions: (Array.isArray(items) ? items : []).map(function (q, i) {
-        return {
-          id: "sq_" + Date.now() + "_" + i,
-          text: q.text,
-          type: q.correct.length > 1 || q.type === "Checkbox" || q.type === "multiple" ? "multiple" : "single",
-          options: q.options.filter(Boolean),
-          correct: q.correct.slice(),
-          time: Number.isFinite(Number(q.time)) ? Number(q.time) : 30,
-          image: q.image || "",
-          explanation: q.explanation || ""
-        };
-      })
+      questions: (Array.isArray(items) ? items : []).map(normalizeStudioQuestion)
     };
     sState.editorPage = 1;
     if (sState.quiz.questions.length > 0) persistQuizToStudioList(sState.quiz);
@@ -400,13 +402,28 @@
 
       h += '<div class="list">' + pageSlice.map(function (q, offset) {
         const idx = startIdx + offset;
-        const opts = q.options.map(function (o, k) {
-          const ok = q.correct.indexOf(k) !== -1;
-          return '<div class="studio-opt-pill"><span class="opt-dot' + (ok ? " ok" : "") + '"></span><span class="rich-text">' + U().renderRich(o) + '</span></div>';
-        }).join("");
+        const qt = q.qType || "MCQ";
+        const typeBadge = qt === "TF_GROUP" ? "\u0110\u00fang / Sai" : (qt === "SHORT_ANSWER" ? "Tr\u1ea3 l\u1eddi ng\u1eafn" : (qt === "ORDERING" ? "S\u1eafp x\u1ebfp" : (qt === "ESSAY" ? "T\u1ef1 lu\u1eadn" : (q.type === "multiple" ? "Nhi\u1ec1u \u0111\u00e1p \u00e1n" : "1 \u0111\u00e1p \u00e1n"))));
+        let bodyPreview = "";
+        if (qt === "TF_GROUP") {
+          bodyPreview = '<div class="studio-opts-grid">' + (q.tfStatements || []).map(function (st) {
+            const ans = q.tfAnswers && q.tfAnswers[st.key];
+            const ansLbl = (ans === true || ans === "T") ? " [\u0110]" : ((ans === false || ans === "F") ? " [S]" : "");
+            return '<div class="studio-opt-pill"><strong>' + U().esc(st.key) + ')</strong> <span class="rich-text">' + U().renderRich(st.text) + '</span>' + (ansLbl ? '<strong style="color:var(--emerald)">' + ansLbl + '</strong>' : '') + '</div>';
+          }).join("") + '</div>';
+        } else if (qt === "SHORT_ANSWER" || qt === "ORDERING" || qt === "ESSAY") {
+          bodyPreview = q.answerText ? '<div class="studio-opt-pill"><span class="opt-dot ok"></span><span class="rich-text"><strong>\u0110\u00e1p \u00e1n:</strong> ' + U().renderRich(q.answerText) + '</span></div>' : '';
+        } else {
+          bodyPreview = '<div class="studio-opts-grid">' + (q.options || []).map(function (o, k) {
+            const ok = (q.correct || []).indexOf(k) !== -1;
+            return '<div class="studio-opt-pill"><span class="opt-dot' + (ok ? " ok" : "") + '"></span><span class="rich-text">' + U().renderRich(o) + '</span></div>';
+          }).join("") + '</div>';
+        }
         return '<article class="studio-q-card">' +
           '<div class="studio-q-head">' +
-            '<div style="display:flex;align-items:center;gap:8px"><span class="badge">C\u00e2u ' + (idx + 1) + '</span><span class="muted" style="font-size:.78rem">' + (q.type === "multiple" ? "Nhi\u1ec1u \u0111\u00e1p \u00e1n" : "1 \u0111\u00e1p \u00e1n") + '</span></div>' +
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="badge">C\u00e2u ' + (idx + 1) + '</span><span class="muted" style="font-size:.78rem">' + typeBadge + '</span>' +
+              (q.contextId ? '<span class="badge badge-ok">📌 ' + U().esc(q.contextId) + '</span>' : '') +
+            '</div>' +
             '<div class="deck-actions">' +
               timeSelectHTML(q.time, 'data-sact="q-time" data-idx="' + idx + '" aria-label="Th\u1eddi gian c\u00e2u ' + (idx + 1) + '"') +
               '<button type="button" class="btn btn-outline btn-sm" data-sact="edit-q" data-idx="' + idx + '">✏️ Ch\u1ec9nh s\u1eeda</button>' +
@@ -414,9 +431,11 @@
               '<button type="button" class="btn btn-outline btn-sm" data-sact="del-q" data-idx="' + idx + '">🗑 X\u00f3a</button>' +
             '</div>' +
           '</div>' +
+          (q.instruction ? '<div class="muted" style="font-size:.78rem;margin-bottom:4px">📋 ' + U().renderRich(q.instruction) + '</div>' : '') +
+          (q.context ? '<details style="margin-bottom:6px;font-size:.82rem"><summary style="cursor:pointer;color:var(--brand);font-weight:700">📄 Xem ng\u1eef li\u1ec7u chung (' + U().esc(q.contextId || "Context") + ')</summary><div class="rich-text" style="margin-top:6px;padding:8px 10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border)">' + U().renderRich(q.context) + '</div></details>' : '') +
           '<div class="rich-text" style="font-weight:700;font-size:1.02rem">' + U().renderRich(q.text) + '</div>' +
           (q.image ? '<img src="' + U().esc(q.image) + '" alt="" style="max-height:160px;border-radius:10px;align-self:flex-start" onerror="this.style.display=\'none\'">' : "") +
-          '<div class="studio-opts-grid">' + opts + '</div>' +
+          bodyPreview +
           (q.explanation ? '<div class="explain-box rich-text" style="margin-top:4px;font-size:.84rem"><strong>Gi\u1ea3i th\u00edch:</strong> ' + U().renderRich(q.explanation) + '</div>' : "") +
         '</article>';
       }).join("") + '</div>';
@@ -782,16 +801,33 @@
     }
 
     let list = sourceQs.map(function (q) {
-      let opts = q.options.slice();
-      let corr = q.correct.slice().sort(function (a, b) { return a - b; });
-      if (lb.shuffleO && advOk) {
-        const paired = q.options.map(function (opt, idx) { return { opt: opt, ok: q.correct.indexOf(idx) !== -1 }; });
+      const qt = q.qType || "MCQ";
+      let opts = (q.options || []).slice();
+      let corr = (q.correct || []).slice().sort(function (a, b) { return a - b; });
+      if (qt === "MCQ" && lb.shuffleO && advOk && opts.length > 0) {
+        const paired = opts.map(function (opt, idx) { return { opt: opt, ok: corr.indexOf(idx) !== -1 }; });
         const sh = U().shuffleArray(paired);
         opts = sh.map(function (p) { return p.opt; });
         corr = sh.map(function (p, idx) { return p.ok ? idx : -1; }).filter(function (x) { return x !== -1; });
       }
       const sec = lb.timeMode === "unlimited" ? 0 : (lb.timeMode === "uniform" ? lb.uniformSec : (Number(q.time) || 0));
-      return { id: q.id, text: q.text, type: q.type, options: opts, correct: corr, time: sec, image: q.image || "", explanation: q.explanation || "" };
+      return {
+        id: q.id,
+        qType: qt,
+        text: q.text,
+        type: q.type,
+        options: opts,
+        correct: corr,
+        tfStatements: Array.isArray(q.tfStatements) ? q.tfStatements.slice() : [],
+        tfAnswers: (q.tfAnswers && typeof q.tfAnswers === "object") ? Object.assign({}, q.tfAnswers) : {},
+        answerText: q.answerText || "",
+        instruction: q.instruction || "",
+        contextId: q.contextId || "",
+        context: q.context || "",
+        time: sec,
+        image: q.image || "",
+        explanation: q.explanation || ""
+      };
     });
     if (lb.shuffleQ && advOk) list = U().shuffleArray(list);
 
@@ -850,9 +886,36 @@
     const q = pl.questions[pl.idx];
     const elapsed = Date.now() - pl.qStartMs;
     pl.totalTimeMs += elapsed;
+    const qt = q.qType || "MCQ";
     const sel = isTimeout ? [] : pl.selected.slice().sort(function (a, b) { return a - b; });
-    const corr = q.correct.slice().sort(function (a, b) { return a - b; });
-    const ok = !isTimeout && sel.length === corr.length && sel.every(function (v, i) { return v === corr[i]; });
+    const corr = (q.correct || []).slice().sort(function (a, b) { return a - b; });
+    let ok = false;
+    if (!isTimeout) {
+      if (qt === "TF_GROUP") {
+        const tfAns = pl.tfPick || {};
+        if (window.AIDigitizer && typeof window.AIDigitizer.scoreTfGroup2025 === "function") {
+          const sc = window.AIDigitizer.scoreTfGroup2025(tfAns, q.tfAnswers || {});
+          ok = sc.score >= 1.0;
+        } else {
+          const ks = Object.keys(q.tfAnswers || {});
+          ok = ks.length > 0 && ks.every(function (k) { return tfAns[k] === q.tfAnswers[k]; });
+        }
+      } else if (qt === "SHORT_ANSWER" || qt === "ORDERING") {
+        const txt = (U().$("qzShortInput") ? U().$("qzShortInput").value : (pl.shortText || "")).trim();
+        pl.shortText = txt;
+        if (window.AIDigitizer && typeof window.AIDigitizer.compareShortAnswer === "function") {
+          ok = window.AIDigitizer.compareShortAnswer(txt, q.answerText || "");
+        } else {
+          ok = txt.toLowerCase() === String(q.answerText || "").trim().toLowerCase();
+        }
+      } else if (qt === "ESSAY") {
+        const txt = (U().$("qzShortInput") ? U().$("qzShortInput").value : (pl.shortText || "")).trim();
+        pl.shortText = txt;
+        ok = txt.length > 0;
+      } else {
+        ok = sel.length === corr.length && sel.every(function (v, i) { return v === corr[i]; });
+      }
+    }
 
     pl.locked = true;
     pl.lastOk = ok;
@@ -899,6 +962,8 @@
     if (pl.idx + 1 < pl.questions.length) {
       pl.idx++;
       pl.selected = [];
+      pl.tfPick = {};
+      pl.shortText = "";
       pl.locked = false;
       pl.lastOk = null;
       startQuestionClock();
@@ -973,26 +1038,60 @@
       '</div>' +
 
       '<div class="qz-question-box">' +
-        '<div class="muted" style="font-size:.82rem;margin-bottom:6px">' + (q.type === "multiple" ? "Ch\u1ecdn nhi\u1ec1u \u0111\u00e1p \u00e1n r\u1ed3i b\u1ea5m X\u00e1c nh\u1eadn (Enter)" : "Ch\u1ecdn m\u1ed9t \u0111\u00e1p \u00e1n (ph\u00edm t\u1eaft 1–" + q.options.length + ")") + '</div>' +
+        (q.instruction ? '<div class="digitizer-instr-banner" style="margin-bottom:8px;text-align:left"><span class="digitizer-instr-tag">📋 Y\u00eau c\u1ea7u nh\u00f3m c\u00e2u</span><div class="rich-text">' + U().renderRich(q.instruction) + '</div></div>' : '') +
+        (q.context ? '<div style="margin-bottom:10px;padding:10px 14px;border-radius:10px;background:var(--bg2);border:1px solid var(--brand);text-align:left;max-height:240px;overflow-y:auto"><div style="font-size:.76rem;font-weight:800;color:var(--brand);margin-bottom:4px">📌 Ng\u1eef li\u1ec7u chung (' + U().esc(q.contextId || "Context") + ')</div><div class="rich-text" style="font-size:.9rem;line-height:1.6">' + U().renderRich(q.context) + '</div></div>' : '') +
+        '<div class="muted" style="font-size:.82rem;margin-bottom:6px">' +
+          ((q.qType || "MCQ") === "TF_GROUP" ? "Ch\u1ecdn \u0110\u00fang / Sai cho t\u1eebng m\u1ec7nh \u0111\u1ec1 r\u1ed3i b\u1ea5m X\u00e1c nh\u1eadn"
+            : ((q.qType || "MCQ") === "SHORT_ANSWER" || (q.qType || "MCQ") === "ORDERING" ? "Nh\u1eadp c\u00e2u tr\u1ea3 l\u1eddi r\u1ed3i b\u1ea5m X\u00e1c nh\u1eadn"
+              : ((q.qType || "MCQ") === "ESSAY" ? "Vi\u1ebft b\u00e0i tr\u1ea3 l\u1eddi t\u1ef1 lu\u1eadn r\u1ed3i b\u1ea5m N\u1ed9p b\u00e0i"
+                : (q.type === "multiple" ? "Ch\u1ecdn nhi\u1ec1u \u0111\u00e1p \u00e1n r\u1ed3i b\u1ea5m X\u00e1c nh\u1eadn (Enter)" : "Ch\u1ecdn m\u1ed9t \u0111\u00e1p \u00e1n (ph\u00edm t\u1eaft 1–" + q.options.length + ")")))) +
+        '</div>' +
         '<div class="q-text rich-text">' + U().renderRich(q.text) + '</div>' +
         (q.image ? '<img src="' + U().esc(q.image) + '" alt="" style="max-height:260px;max-width:100%;border-radius:12px" onerror="this.style.display=\'none\'">' : "") +
       '</div>' +
-
-      '<div class="qz-tiles">' + q.options.map(function (opt, k) {
-        const isSel = pl.selected.indexOf(k) !== -1;
-        const isCor = q.correct.indexOf(k) !== -1;
-        let cls = "c" + (k % 5);
-        if (showFull) {
-          if (isCor) cls += " is-correct";
-          else if (isSel) cls += " is-wrong";
-          else cls += " dim";
-        } else if (showRW) {
-          if (isSel) cls += pl.lastOk ? " is-correct" : " is-wrong";
-          else cls += " dim";
-        } else if (isSel) cls += " selected";
-        return '<button type="button" class="qz-tile ' + cls + '" data-sact="pick-opt" data-opt="' + k + '"' + (pl.locked ? " disabled" : "") + '>' +
-          '<span class="qz-key">' + (k + 1) + '</span><span class="rich-text" style="flex:1">' + U().renderRich(opt) + '</span></button>';
-      }).join("") + '</div>';
+      (function () {
+        const qt = q.qType || "MCQ";
+        if (qt === "TF_GROUP") {
+          const tfPick = pl.tfPick || {};
+          return '<div class="panel" style="padding:12px"><table class="tf-grid"><thead><tr><th>M\u1ec7nh \u0111\u1ec1</th><th style="width:76px;text-align:center">\u0110\u00fang</th><th style="width:76px;text-align:center">Sai</th></tr></thead><tbody>' +
+            (q.tfStatements || []).map(function (st) {
+              const uVal = tfPick[st.key];
+              const kVal = q.tfAnswers ? q.tfAnswers[st.key] : undefined;
+              const tCls = uVal === true ? (pl.locked ? (kVal === true ? "btn-emerald" : "btn-danger") : "btn-primary") : (showFull && kVal === true ? "btn-emerald" : "btn-outline");
+              const fCls = uVal === false ? (pl.locked ? (kVal === false ? "btn-emerald" : "btn-danger") : "btn-primary") : (showFull && kVal === false ? "btn-emerald" : "btn-outline");
+              return '<tr><td class="rich-text"><strong>' + U().esc(st.key) + ')</strong> ' + U().renderRich(st.text) + '</td>' +
+                '<td style="text-align:center"><button type="button" class="btn btn-sm ' + tCls + '" data-sact="play-tf" data-tfkey="' + U().esc(st.key) + '" data-tfval="true"' + (pl.locked ? " disabled" : "") + '>\u0110\u00fang</button></td>' +
+                '<td style="text-align:center"><button type="button" class="btn btn-sm ' + fCls + '" data-sact="play-tf" data-tfkey="' + U().esc(st.key) + '" data-tfval="false"' + (pl.locked ? " disabled" : "") + '>Sai</button></td></tr>';
+            }).join("") + '</tbody></table>' +
+            (!pl.locked ? '<div style="text-align:center;margin-top:12px"><button type="button" class="btn btn-emerald" data-sact="submit-multi">X\u00e1c nh\u1eadn \u0111\u00e1p \u00e1n</button></div>' : '') +
+          '</div>';
+        }
+        if (qt === "SHORT_ANSWER" || qt === "ORDERING" || qt === "ESSAY") {
+          const isEssay = qt === "ESSAY";
+          return '<div class="panel" style="padding:14px">' +
+            (isEssay
+              ? '<textarea id="qzShortInput" rows="4" class="inline-edit-input" style="width:100%" placeholder="Nh\u1eadp b\u00e0i l\u00e0m t\u1ef1 lu\u1eadn..."' + (pl.locked ? " disabled" : "") + '>' + U().esc(pl.shortText || "") + '</textarea>'
+              : '<input type="text" id="qzShortInput" class="inline-edit-input" style="width:100%" value="' + U().esc(pl.shortText || "") + '" placeholder="Nh\u1eadp \u0111\u00e1p \u00e1n..."' + (pl.locked ? " disabled" : "") + '>') +
+            (!pl.locked ? '<div style="text-align:center;margin-top:10px"><button type="button" class="btn btn-emerald" data-sact="submit-multi">X\u00e1c nh\u1eadn \u0111\u00e1p \u00e1n</button></div>' : '') +
+            (showFull && q.answerText ? '<div class="explain-box rich-text" style="margin-top:10px"><strong>\u0110\u00e1p \u00e1n chu\u1ea9n:</strong> ' + U().renderRich(q.answerText) + '</div>' : '') +
+          '</div>';
+        }
+        return '<div class="qz-tiles">' + q.options.map(function (opt, k) {
+          const isSel = pl.selected.indexOf(k) !== -1;
+          const isCor = q.correct.indexOf(k) !== -1;
+          let cls = "c" + (k % 5);
+          if (showFull) {
+            if (isCor) cls += " is-correct";
+            else if (isSel) cls += " is-wrong";
+            else cls += " dim";
+          } else if (showRW) {
+            if (isSel) cls += pl.lastOk ? " is-correct" : " is-wrong";
+            else cls += " dim";
+          } else if (isSel) cls += " selected";
+          return '<button type="button" class="qz-tile ' + cls + '" data-sact="pick-opt" data-opt="' + k + '"' + (pl.locked ? " disabled" : "") + '>' +
+            '<span class="qz-key">' + (k + 1) + '</span><span class="rich-text" style="flex:1">' + U().renderRich(opt) + '</span></button>';
+        }).join("") + '</div>';
+      })();
 
     if (!pl.locked && q.type === "multiple") {
       h += '<div style="text-align:center"><button type="button" class="btn btn-emerald" data-sact="submit-multi"' + (pl.selected.length === 0 ? " disabled" : "") + '>X\u00e1c nh\u1eadn \u0111\u00e1p \u00e1n (Enter)</button></div>';
@@ -1237,6 +1336,12 @@
         pl.selected = [opt];
         submitPlayAnswer(false);
       }
+    }
+    else if (act === "play-tf") {
+      const pl = sState.play; if (!pl || pl.locked) return;
+      if (!pl.tfPick) pl.tfPick = {};
+      pl.tfPick[b.getAttribute("data-tfkey")] = b.getAttribute("data-tfval") === "true";
+      render();
     }
     else if (act === "submit-multi") submitPlayAnswer(false);
     else if (act === "next-q") advancePlayQuestion();

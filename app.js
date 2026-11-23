@@ -747,24 +747,53 @@ function logout() {
 function normalizeQuestion(q, i) {
   try {
     if (!q || typeof q !== "object") return null;
-    const text = String(q.text === undefined || q.text === null ? "" : q.text).trim();
-    if (!text || !Array.isArray(q.options)) return null;
+    const rawInstr = typeof q.instruction === "string" ? q.instruction.trim() : "";
+    const text = String(q.text === undefined || q.text === null ? "" : q.text).trim() || rawInstr.replace(/\*\*/g, "").trim();
+    if (!text) return null;
+    const rawQType = String(q.qType || q.type || "").toUpperCase();
+    const isNonMcq = rawQType === "TF_GROUP" || rawQType === "SHORT_ANSWER" || rawQType === "ORDERING" || rawQType === "ESSAY";
+    const t = parseInt(q.time, 10);
+    const baseMeta = {
+      id: q.id !== undefined && q.id !== null && String(q.id) ? String(q.id) : "q_" + Date.now() + "_" + i,
+      text: text,
+      time: t >= 0 && !isNaN(t) ? (t === 0 ? 0 : t) : 30,
+      image: typeof q.image === "string" ? q.image.trim() : "",
+      explanation: typeof q.explanation === "string" ? q.explanation.trim() : "",
+      instruction: rawInstr,
+      contextId: typeof q.contextId === "string" ? q.contextId.trim() : "",
+      context: typeof q.context === "string" ? q.context.trim() : "",
+      level: typeof q.level === "string" ? q.level.trim() : "",
+      tag: typeof q.tag === "string" ? q.tag.trim() : ""
+    };
+
+    if (isNonMcq) {
+      const tfStatements = Array.isArray(q.tfStatements) ? q.tfStatements.slice() : [];
+      const tfAnswers = (q.tfAnswers && typeof q.tfAnswers === "object") ? Object.assign({}, q.tfAnswers) : {};
+      const answerText = typeof q.answerText === "string" ? q.answerText.trim() : "";
+      if (rawQType === "TF_GROUP" && tfStatements.length === 0) return null;
+      return Object.assign(baseMeta, {
+        qType: rawQType,
+        type: rawQType,
+        options: Array.isArray(q.options) ? q.options.map(function (o) { return String(o == null ? "" : o).trim(); }).filter(Boolean) : [],
+        correct: Array.isArray(q.correct) ? q.correct.slice() : [],
+        tfStatements: tfStatements,
+        tfAnswers: tfAnswers,
+        answerText: answerText
+      });
+    }
+
+    if (!Array.isArray(q.options)) return null;
     const options = q.options.map(function (o) { return String(o === null || o === undefined ? "" : o).trim(); }).filter(Boolean);
     if (options.length < 2 || options.length > 5) return null;
     let correct = Array.isArray(q.correct) ? q.correct.map(Number) : [];
     correct = Array.from(new Set(correct)).sort(function (a, b) { return a - b; });
     if (correct.length === 0 || correct.some(function (c) { return !Number.isInteger(c) || c < 0 || c >= options.length; })) return null;
-    const t = parseInt(q.time, 10);
-    return {
-      id: q.id !== undefined && q.id !== null && String(q.id) ? String(q.id) : "q_" + Date.now() + "_" + i,
-      text: text,
+    return Object.assign(baseMeta, {
+      qType: "MCQ",
       type: q.type === "multiple" || String(q.type || "").toLowerCase() === "checkbox" || correct.length > 1 ? "multiple" : "single",
       options: options,
-      correct: correct,
-      time: t >= 0 && !isNaN(t) ? (t === 0 ? 0 : t) : 30,
-      image: typeof q.image === "string" ? q.image.trim() : "",
-      explanation: typeof q.explanation === "string" ? q.explanation.trim() : ""
-    };
+      correct: correct
+    });
   } catch (e) { return null; }
 }
 function normalizeDeck(d, idx) {

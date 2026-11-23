@@ -2908,25 +2908,27 @@
     const validItems = [];
     cState.questions.forEach(function (q) {
       const qt = q.qType || "MCQ";
-      if (!q.text || !q.text.trim()) { errors++; return; }
+      const effText = String(q.text || "").trim() || String(q.instruction || "").replace(/\*\*/g, "").trim();
+      if (!effText) { errors++; return; }
+      const withText = q.text && q.text.trim() ? q : Object.assign({}, q, { text: effText });
       if (qt === "TF_GROUP") {
         const tfItems = Array.isArray(q.tfStatements) ? q.tfStatements : (Array.isArray(q.tfItems) ? q.tfItems : []);
         if (tfItems.length === 0) { errors++; return; }
         const hasAns = q.tfAnswers && Object.keys(q.tfAnswers).length > 0;
         if (!hasAns) { missingAns++; return; }
         valid++;
-        validItems.push(Object.assign({}, q));
+        validItems.push(Object.assign({}, withText));
         return;
       }
       if (qt === "SHORT_ANSWER" || qt === "ORDERING") {
         if (!(q.answerText || "").trim()) { missingAns++; return; }
         valid++;
-        validItems.push(Object.assign({}, q));
+        validItems.push(Object.assign({}, withText));
         return;
       }
       if (qt === "ESSAY") {
         valid++;
-        validItems.push(Object.assign({}, q));
+        validItems.push(Object.assign({}, withText));
         return;
       }
       const nonEmptyOpts = (q.options || []).map(function (o) { return String(o || "").trim(); }).filter(Boolean);
@@ -2934,7 +2936,7 @@
       if (nonEmptyOpts.length < 2) { errors++; return; }
       if (cleanCorr.length === 0) { missingAns++; return; }
       valid++;
-      validItems.push(Object.assign({}, q, { options: nonEmptyOpts, correct: cleanCorr }));
+      validItems.push(Object.assign({}, withText, { options: nonEmptyOpts, correct: cleanCorr }));
     });
     return { total: cState.questions.length, valid: valid, missingAns: missingAns, errors: errors, validItems: validItems };
   }
@@ -2958,6 +2960,32 @@
     U().showToast("\u0110\u00e3 t\u1ea3i xu\u1ed1ng " + fname + "!", "success");
   }
 
+  function buildImportableQuestion(q, i) {
+    const qt = q.qType || "MCQ";
+    const ctxObj = (q.contextId && cState.contexts && cState.contexts[q.contextId]) ? cState.contexts[q.contextId] : null;
+    const ctxText = ctxObj ? String(ctxObj.content || "").trim() : String(q.context || "").trim();
+    const effText = formatCell(q.text) || formatCell(String(q.instruction || "").replace(/\*\*/g, ""));
+    return {
+      id: "q_" + Date.now() + "_" + i,
+      qType: qt,
+      text: effText,
+      type: qt === "MCQ" ? (q.correct.length > 1 || q.type === "Checkbox" ? "multiple" : "single") : qt,
+      options: (q.options || []).map(formatCell).filter(Boolean),
+      correct: Array.isArray(q.correct) ? q.correct.slice() : [],
+      tfStatements: Array.isArray(q.tfStatements) ? q.tfStatements.slice() : [],
+      tfAnswers: (q.tfAnswers && typeof q.tfAnswers === "object") ? Object.assign({}, q.tfAnswers) : {},
+      answerText: formatCell(q.answerText || ""),
+      instruction: formatCell(q.instruction || ""),
+      contextId: q.contextId || "",
+      context: ctxText,
+      level: q.level || "",
+      tag: q.tag || "",
+      time: parseInt(q.time, 10) > 0 ? parseInt(q.time, 10) : cState.defaultTime,
+      image: q.image || "",
+      explanation: formatCell(q.explanation)
+    };
+  }
+
   async function doSaveToLibraryAndDrive() {
     if (cState.docMeta.mode === "STUDY_NOTE") {
       doExportMarkdown();
@@ -2971,18 +2999,7 @@
       const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || cState.docMeta.title || ("B\u1ed9 \u0111\u1ec1 AI Converter " + dateStamp());
       const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || cState.docMeta.subject || "T\u1ed5ng h\u1ee3p";
       const mergeId = U().$("convMergeTarget") ? U().$("convMergeTarget").value : "";
-      const normalized = v.validItems.filter(function (q) { return (q.qType || "MCQ") === "MCQ"; }).map(function (q, i) {
-        return {
-          id: "q_" + Date.now() + "_" + i,
-          text: formatCell(q.text),
-          type: q.correct.length > 1 || q.type === "Checkbox" ? "multiple" : "single",
-          options: q.options.map(formatCell),
-          correct: q.correct,
-          time: parseInt(q.time, 10) > 0 ? parseInt(q.time, 10) : cState.defaultTime,
-          image: q.image || "",
-          explanation: formatCell(q.explanation)
-        };
-      });
+      const normalized = v.validItems.map(buildImportableQuestion);
       if (normalized.length > 0) {
         U().addOrMergeDeck({ mode: mergeId ? "merge" : "new", title: title, tag: tag, targetDeckId: mergeId, questions: normalized });
       }
@@ -3069,18 +3086,7 @@
     const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || "T\u1ed5ng h\u1ee3p";
     const mergeId = U().$("convMergeTarget") ? U().$("convMergeTarget").value : "";
     warnIfUnverified(function () {
-      const normalized = v.validItems.map(function (q, i) {
-        return {
-          id: "q_" + Date.now() + "_" + i,
-          text: formatCell(q.text),
-          type: q.correct.length > 1 || q.type === "Checkbox" ? "multiple" : "single",
-          options: q.options.map(formatCell),
-          correct: q.correct,
-          time: parseInt(q.time, 10) > 0 ? parseInt(q.time, 10) : cState.defaultTime,
-          image: q.image || "",
-          explanation: formatCell(q.explanation)
-        };
-      });
+      const normalized = v.validItems.map(buildImportableQuestion);
       U().addOrMergeDeck({
         mode: mergeId ? "merge" : "new",
         title: title,
@@ -4067,8 +4073,9 @@
       const v = validateAll();
       if (v.valid === 0) { U().showToast("Ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi h\u1ee3p l\u1ec7 \u0111\u1ec3 m\u1edf trong Creator Studio.", "warning"); return; }
       if (window.UETStudio && typeof window.UETStudio.openFromQuestions === "function") {
-        const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || ("Quiz " + dateStamp());
-        window.UETStudio.openFromQuestions(title, "AI Converter", v.validItems);
+        const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || cState.docMeta.title || ("Quiz " + dateStamp());
+        const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || cState.docMeta.subject || "AI Converter";
+        window.UETStudio.openFromQuestions(title, tag, v.validItems.map(buildImportableQuestion));
       }
     }
     else if (act === "toggle-ans") {
