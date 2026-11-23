@@ -1,9 +1,4 @@
-/* ============================================================
-   AI Tutor – Vocab Studio Scoped Stylesheet (vocab.css)
-   STRICT ISOLATION: All selectors are scoped under
-   .vocab-studio-container or prefixed with .vs-*
-   Mapped directly to AI Tutor CSS Variables (Light & Dark Mode)
-   ============================================================ */
+/* Vocab Studio scoped styles */
 
 .vocab-studio-container {
   --vs-bg: var(--bg, #F1F6F7);
@@ -22,7 +17,7 @@
   --vs-red: var(--rose, #E11D48);
   --vs-bad: var(--rose, #E11D48);
   --vs-bad-bg: var(--rose-soft, #FFE4EA);
-  --vs-shadow: var(--shadow, 0 1px 2px rgba(16, 24, 40, .06), 0 6px 18px rgba(16, 24, 40, .06));
+  --vs-shadow: none;
   color: var(--vs-text);
   font-size: 14px;
   line-height: 1.6;
@@ -1420,8 +1415,8 @@
 .vocab-studio-container .vs-grade-correct { border-left: 4px solid #16a34a; background: rgba(22,163,74,.1); }
 .vocab-studio-container .vs-grade-partial { border-left: 4px solid #d97706; background: rgba(217,119,6,.12); }
 .vocab-studio-container .vs-grade-incorrect { border-left: 4px solid #dc2626; background: rgba(220,38,38,.1); }
-.vocab-studio-container .vs-btn-accept { padding: 7px 12px; border-radius: 8px; border: 1px solid #d97706; background: #fef3c7; color: #92400e; font-weight: 700; cursor: pointer; font-size: 13px; }
-.vocab-studio-container .vs-btn-accept:hover { background: #fde68a; }
+.vocab-studio-container .vs-btn-accept { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--vs-line); background: var(--vs-card); color: var(--vs-text); font-weight: 600; cursor: pointer; font-size: 13px; }
+.vocab-studio-container .vs-btn-accept:hover { background: var(--vs-subtle); border-color: var(--vs-primary); }
 
 /* Stage 2 Shimmer Skeletons (Zero Layout Shift) */
 @keyframes vsShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
