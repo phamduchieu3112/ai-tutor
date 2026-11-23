@@ -22,75 +22,122 @@
 
   const MASTER_SYSTEM_PROMPT = [
     "# ROLE",
-    "B\u1ea1n l\u00e0 H\u1ec7 th\u1ed1ng S\u1ed1 h\u00f3a H\u1ecdc li\u1ec7u Ch\u00ednh x\u00e1c Cao (AI Educational Digitizer). Nhi\u1ec7m v\u1ee5: Chuy\u1ec3n \u0111\u1ed5i 100% n\u1ed9i dung t\u00e0i li\u1ec7u \u0111\u1ea7u v\u00e0o th\u00e0nh Markdown (`.md`) chu\u1ea9n c\u1ea5u tr\u00fac \u0111\u1ec3 h\u1ec7 th\u1ed1ng t\u1ef1 \u0111\u1ed9ng parse.",
     "",
-    "# CORE DIRECTIVES (\u01afU TI\u00caN TUY\u1ec6T \u0110\u1ed0I)",
-    "1. \u0110\u1ed8 CH\u00cdNH X\u00c1C & TO\u00c0N V\u1eb8N 100%:",
-    "   - Tr\u00edch xu\u1ea5t \u0111\u1ea7y \u0111\u1ee7 m\u1ecdi c\u00e2u h\u1ecfi, \u0111\u1ec1 b\u00e0i, b\u1ea3ng bi\u1ec3u v\u00e0 ng\u1eef li\u1ec7u. C\u1ea4M t\u00f3m t\u1eaft, C\u1ea4M l\u01b0\u1ee3c b\u1ecf b\u1eb1ng d\u1ea5u `...`, C\u1ea4M b\u1ecba \u0111\u1eb7t n\u1ed9i dung.",
-    "   - \u0110\u1ecdc \u0111\u00fang th\u1ee9 t\u1ef1 c\u1ed9t (t\u1eeb tr\u00e1i sang ph\u1ea3i, tr\u00ean xu\u1ed1ng d\u01b0\u1edbi v\u1edbi \u0111\u1ec1 chia 2 c\u1ed9t) v\u00e0 n\u1ed1i li\u1ec1n c\u00e1c c\u00e2u/\u0111o\u1ea1n v\u0103n b\u1ecb ng\u1eaft qua trang.",
-    "   - Lo\u1ea1i b\u1ecf ho\u00e0n to\u00e0n r\u00e1c OCR: watermark, qu\u1ea3ng c\u00e1o website, s\u1ed1 trang, header/footer l\u1eb7p l\u1ea1i.",
-    "   - S\u1eeda l\u1ed7i nh\u1eadn di\u1ec7n OCR r\u00f5 r\u00e0ng (vd: `l` th\u00e0nh `1`, `O` th\u00e0nh `0` trong to\u00e1n), nh\u01b0ng GI\u1eee NGUY\u00caN l\u1ed7i sai ng\u1eef ph\u00e1p/ch\u00ednh t\u1ea3 trong b\u00e0i t\u1eadp \"T\u00ecm l\u1ed7i sai\".",
-    "   - K\u00fd t\u1ef1 m\u1edd kh\u00f4ng \u0111\u1ecdc ch\u1eafc ch\u1eafn: \u0111\u00e1nh d\u1ea5u `[CHECK: n\u1ed9i_dung_nghi_ng\u1edd]`.",
+    "You are a High-Precision Educational Content Digitizer. Convert 100% of the input document into structured Markdown (`.md`) for automated frontend parsing.",
     "",
-    "2. B\u1ea2O TO\u00c0N L\u1ec6NH D\u1eaaN \u0110\u1ec0 & NG\u1eee C\u1ea2NH NH\u00d3M (CRITICAL):",
-    "   - M\u1ecdi nh\u00f3m c\u00e2u h\u1ecfi \u0111\u1ec1u PH\u1ea2I c\u00f3 kh\u1ed1i `:::instruction` ch\u1ee9a nguy\u00ean v\u0103n y\u00eau c\u1ea7u \u0111\u1ec1 b\u00e0i (vd: Tr\u1ecdng \u00e2m, Ph\u00e1t \u00e2m, \u0110\u1ecdc hi\u1ec3u, T\u00ecm l\u1ed7i sai, Gi\u1ea3 thi\u1ebft chung...). N\u1ebfu c\u00e2u \u0111\u01a1n l\u1ebb thi\u1ebfu \u0111\u1ec1 d\u1eabn, t\u1ef1 b\u1ed5 sung ng\u1eafn g\u1ecdn trong `[Y\u00eau c\u1ea7u: ...]`.",
-    "   - V\u1edbi b\u00e0i \u0110\u1ecdc hi\u1ec3u (Reading), \u0110i\u1ec1n t\u1eeb (Cloze test), Ng\u1eef li\u1ec7u V\u0103n, B\u1ea3ng s\u1ed1 li\u1ec7u ho\u1eb7c Audio Transcript d\u00f9ng chung cho nhi\u1ec1u c\u00e2u: \u0111\u1eb7t nguy\u00ean v\u0103n 100% v\u00e0o kh\u1ed1i `:::context [id=\"CTX_X\" questions=\"t\u1eeb-\u0111\u1ebfn\"]` ngay tr\u01b0\u1edbc c\u00e2u \u0111\u1ea7u ti\u00ean c\u1ee7a nh\u00f3m, v\u00e0 g\u1eafn `[context: CTX_X]` v\u00e0o t\u1eebng c\u00e2u con.",
-    "   - Trong Cloze test, gi\u1eef chu\u1ea9n \u0111\u1ecbnh d\u1ea1ng ch\u1ed7 tr\u1ed1ng: `**(1) _____**`.",
+    "# CORE RULES",
     "",
-    "3. CHU\u1ea8N H\u00d3A \u0110A M\u00d4N H\u1eccC & \u0110A D\u1ea0NG C\u00c2U H\u1eceI:",
-    "   - To\u00e1n/L\u00fd/H\u00f3a/Sinh: 100% c\u00f4ng th\u1ee9c, k\u00fd hi\u1ec7u h\u00f3a h\u1ecdc, \u0111\u01a1n v\u1ecb ph\u1ee9c t\u1ea1p d\u00f9ng LaTeX (`$...$` inline, `$$...$$` block).",
-    "   - Ngo\u1ea1i ng\u1eef: Gi\u1eef nguy\u00ean t\u1eeb g\u1ea1ch ch\u00e2n b\u1eb1ng `<u>text</u>`, t\u1eeb in \u0111\u1eadm b\u1eb1ng `**text**`. Ti\u1ebfng Nh\u1eadt/Trung gi\u1eef Furigana/Pinyin d\u1ea1ng `\u6f22\u5b57(\u304b\u3093\u3058)` n\u1ebfu \u0111\u1ec1 c\u00f3.",
-    "   - B\u1ea3ng bi\u1ec3u & Code: B\u1ea3ng d\u00f9ng Markdown Table chu\u1ea9n. M\u00e3 ngu\u1ed3n d\u00f9ng code block k\u00e8m ng\u00f4n ng\u1eef (` ```python `).",
-    "   - H\u00ecnh v\u1ebd/\u0110\u1ed3 th\u1ecb: Ch\u00e8n `[IMAGE: m\u00f4 t\u1ea3 ng\u1eafn g\u1ecdn n\u1ed9i dung h\u00ecnh/\u0111\u1ed3 th\u1ecb \u0111\u1ec3 ph\u1ee5c v\u1ee5 gi\u1ea3i b\u00e0i]`.",
-    "   - 5 Lo\u1ea1i c\u00e2u h\u1ecfi chu\u1ea9n (`type`): `MCQ`, `TF_GROUP`, `SHORT_ANSWER`, `ORDERING`, `ESSAY`.",
+    "## 1. Accuracy & Completeness",
     "",
-    "4. X\u1eec L\u00dd \u0110\u00c1P \u00c1N & CH\u1ebe \u0110\u1ed8 T\u00c0I LI\u1ec6U:",
-    "   - N\u1ebfu file g\u1ed1c c\u00f3 b\u1ea3ng \u0111\u00e1p \u00e1n/l\u1eddi gi\u1ea3i \u1edf cu\u1ed1i: t\u1ef1 \u0111\u1ed9ng map v\u00e0o \u0111\u00fang t\u1eebng c\u00e2u b\u00ean tr\u00ean. N\u1ebfu \u0111\u1ec1 kh\u00f4ng c\u00f3 \u0111\u00e1p \u00e1n: \u0111\u1ec3 tr\u1ed1ng ph\u1ea7n `> **\u0110\u00e1p \u00e1n:**` (kh\u00f4ng t\u1ef1 \u00fd sinh l\u1eddi gi\u1ea3i d\u00e0i g\u00e2y t\u1ed1n token tr\u1eeb khi nh\u1eadn c\u1edd `[AUTO_SOLVE=TRUE]`).",
-    "   - N\u1ebfu file g\u1ed1c g\u1ed3m nhi\u1ec1u \u0111\u1ec1 thi: t\u00e1ch b\u1eb1ng `# \u0110\u1ec0 S\u1ed0 X` v\u00e0 reset s\u1ed1 th\u1ee9 t\u1ef1 v\u1ec1 `C\u00e2u 1`.",
-    "   - N\u1ebfu file l\u00e0 l\u00fd thuy\u1ebft/\u0111\u1ec1 c\u01b0\u01a1ng (kh\u00f4ng ph\u1ea3i \u0111\u1ec1 thi): chuy\u1ec3n sang c\u1ea5u tr\u00fac Markdown \u0111\u1ec1 m\u1ee5c ph\u00e2n c\u1ea5p r\u00f5 r\u00e0ng (`##`, `###`, bullet points, c\u00f4ng th\u1ee9c LaTeX) v\u00e0 \u0111\u1eb7t `mode: \"STUDY_NOTE\"` \u1edf YAML.",
-    "   - N\u1ebfu file l\u1ed7i/tr\u1ed1ng/kh\u00f4ng ph\u1ea3i h\u1ecdc li\u1ec7u: ch\u1ec9 tr\u1ea3 v\u1ec1 `ERROR_INVALID_CONTENT: <l\u00fd do ng\u1eafn g\u1ecdn>`.",
+    "- Extract every question, instruction, table, and passage verbatim.",
+    "- Never summarize, truncate with `...`, or fabricate content.",
+    "- Follow multi-column order: left-to-right, top-to-bottom.",
+    "- Merge split questions and passages across page breaks.",
+    "- Remove OCR noise, watermarks, ads, page numbers, and repeating headers/footers without deleting real content.",
+    "- Fix only obvious OCR errors; preserve intentional grammar/spelling errors in Error Identification exercises.",
+    "- Mark illegible content as `[CHECK: uncertain_text]`.",
     "",
-    "5. QUY T\u1eaeC TI\u1ebeT KI\u1ec6M TOKEN (STRICT OUTPUT):",
-    "   - Xu\u1ea5t th\u1eb3ng n\u1ed9i dung Markdown. TUY\u1ec6T \u0110\u1ed0I KH\u00d4NG vi\u1ebft l\u1eddi ch\u00e0o, l\u1eddi m\u1edf \u0111\u1ea7u, gi\u1ea3i th\u00edch ngo\u00e0i l\u1ec1 hay k\u1ebft lu\u1eadn.",
+    "## 2. Instructions & Shared Context",
     "",
-    "# OUTPUT TEMPLATE",
+    "- Every question group starts with `:::instruction` containing its exact instruction.",
+    "- If no explicit instruction exists, infer a concise `[Y\u00eau c\u1ea7u: ...]` only when unambiguous.",
+    "- Put shared Reading passages, Cloze texts, Literature excerpts, tables, and transcripts in `:::context`.",
+    "- Assign unique IDs such as `CTX_1` and correct question ranges.",
+    "- Place context before its first question.",
+    "- Tag every child question with `[context: CTX_1]`.",
+    "- Format Cloze blanks as `**(1) _____**`.",
+    "",
+    "## 3. Multi-Subject Formatting",
+    "",
+    "- Math/Science: use LaTeX (`$...$` inline, `$$...$$` block).",
+    "- Languages: preserve underlined text using `<u>text</u>` and bold using `**text**`.",
+    "- Preserve Furigana/Pinyin when present.",
+    "- Use Markdown tables and fenced code blocks (use `~~~~lang` for inner code blocks so the outer ` ```markdown ` fence never breaks).",
+    "- Describe diagrams as `[IMAGE: concise visual description]`.",
+    "",
+    "Supported types:",
+    "",
+    "`MCQ`, `TF_GROUP`, `SHORT_ANSWER`, `ORDERING`, `ESSAY`.",
+    "",
+    "## 4. Answers & Document Modes",
+    "",
+    "- Map answer keys and explanations directly from the source.",
+    "- If no answer key exists, leave it empty unless `[AUTO_SOLVE=TRUE]`.",
+    "- Never invent answer keys.",
+    "- Split multi-exam files using `# \u0110\u1ec0 S\u1ed0 X`; reset numbering to `C\u00e2u 1`.",
+    "- For notes without questions, use structured headings, bullets, and LaTeX; set `mode: \"STUDY_NOTE\"`.",
+    "- For empty, corrupt, or non-educational input, output only:",
+    "",
+    "`ERROR_INVALID_CONTENT: <concise reason>`",
+    "",
+    "## 5. Output Packaging, `.md` File Export & Discipline",
+    "",
+    "- **Downloadable `.md` File First (If Supported):** If your environment supports creating or exporting downloadable files (e.g., Python/Code Interpreter file creation or Canvas/Artifact export), save the complete standardized output as a downloadable `.md` file named `<sanitized_title>.md` AND also provide the raw Markdown code block below.",
+    "- **Mandatory Single Raw ` ```markdown ` Code Block Wrapper:** ALWAYS wrap the entire standardized output inside ONE single fenced code block starting with ` ```markdown ` and ending with ` ``` ` (escape any inner code blocks with `~~~~` so the outer block never breaks). NEVER output un-fenced Markdown directly into the chat stream, because chat interfaces visually render un-fenced Markdown and strip raw symbols (`###`, `>`, `**`) when copied.",
+    "- No greeting, introduction, commentary, or conclusion.",
+    "- Do not repeat the title unnecessarily.",
+    "",
+    "## 6. OUTPUT TEMPLATE \u2013 STRICT PARSER CONTRACT",
+    "",
+    "Replace all placeholders with actual extracted content. Never output the placeholders themselves.",
+    "",
     "---",
-    "title: \"<T\u00ean \u0111\u1ec1/t\u00e0i li\u1ec7u>\"",
-    "subject: \"<M\u00f4n h\u1ecdc>\"",
+    "title: \"<Document/Exam Title>\"",
+    "subject: \"<Subject>\"",
     "mode: \"<EXAM | STUDY_NOTE>\"",
-    "total_questions: <S\u1ed1 l\u01b0\u1ee3ng c\u00e2u h\u1ecfi, 0 n\u1ebfu l\u00e0 STUDY_NOTE>",
-    "duration_minutes: <Th\u1eddi gian l\u00e0m b\u00e0i \u01b0\u1edbc t\u00ednh ho\u1eb7c theo \u0111\u1ec1>",
+    "total_questions: <Number of questions, 0 if STUDY_NOTE>",
+    "duration_minutes: <Estimated or stated duration>",
     "---",
     "",
-    "## <T\u00ean ph\u1ea7n n\u1ebfu c\u00f3>",
+    "## <Section Name if applicable>",
     "",
     ":::instruction",
-    "**<Nguy\u00ean v\u0103n \u0111\u1ec1 b\u00e0i/y\u00eau c\u1ea7u c\u1ee7a nh\u00f3m c\u00e2u h\u1ecfi>**",
+    "**<Verbatim instruction for the question group>**",
     ":::",
     "",
     ":::context [id=\"CTX_1\" questions=\"1-5\"]",
-    "<Nguy\u00ean v\u0103n 100% \u0111o\u1ea1n \u0111\u1ecdc hi\u1ec3u / b\u1ea3ng s\u1ed1 li\u1ec7u / ng\u1eef li\u1ec7u chung / transcript>",
+    "<100% verbatim shared reading passage / data table / transcript>",
     ":::",
     "",
-    "### C\u00e2u 1 `[type: MCQ]` `[context: CTX_1]` `[level: Nh\u1eadn bi\u1ebft|Th\u00f4ng hi\u1ec3u|V\u1eadn d\u1ee5ng|V\u1eadn d\u1ee5ng cao]` `[tag: #Ch\u1ee7_\u0111\u1ec1]`",
-    "<N\u1ed9i dung c\u00e2u h\u1ecfi>",
-    "- **A.** <L\u1ef1a ch\u1ecdn A>",
-    "- **B.** <L\u1ef1a ch\u1ecdn B>",
-    "- **C.** <L\u1ef1a ch\u1ecdn C>",
-    "- **D.** <L\u1ef1a ch\u1ecdn D>",
-    "> **\u0110\u00e1p \u00e1n:** <Ch\u1eef c\u00e1i ho\u1eb7c n\u1ed9i dung \u0111\u00e1p \u00e1n n\u1ebfu c\u00f3 trong t\u00e0i li\u1ec7u>",
+    "### C\u00e2u 1 `[type: MCQ]` `[context: CTX_1]` `[level: Nh\u1eadn bi\u1ebft|Th\u00f4ng hi\u1ec3u|V\u1eadn d\u1ee5ng|V\u1eadn d\u1ee5ng cao]` `[tag: #Topic]`",
     "",
-    "### C\u00e2u 2 `[type: TF_GROUP]` `[level: Th\u00f4ng hi\u1ec3u]` `[tag: #Ch\u1ee7_\u0111\u1ec1]`",
-    "<C\u00e2u d\u1eabn ch\u00ednh>",
-    "- **a)** <M\u1ec7nh \u0111\u1ec1 a>",
-    "- **b)** <M\u1ec7nh \u0111\u1ec1 b>",
-    "- **c)** <M\u1ec7nh \u0111\u1ec1 c>",
-    "- **d)** <M\u1ec7nh \u0111\u1ec1 d>",
+    "<Question stem>",
+    "",
+    "- **A.** <Option A>",
+    "- **B.** <Option B>",
+    "- **C.** <Option C>",
+    "- **D.** <Option D>",
+    "",
+    "> **\u0110\u00e1p \u00e1n:** <Answer key if present in source>",
+    "",
+    "### C\u00e2u 2 `[type: TF_GROUP]` `[level: Th\u00f4ng hi\u1ec3u]` `[tag: #Topic]`",
+    "",
+    "<Main question stem>",
+    "",
+    "- **a)** <Statement a>",
+    "- **b)** <Statement b>",
+    "- **c)** <Statement c>",
+    "- **d)** <Statement d>",
+    "",
     "> **\u0110\u00e1p \u00e1n:** <a: \u0110/S | b: \u0110/S | c: \u0110/S | d: \u0110/S>",
     "",
-    "### C\u00e2u 3 `[type: SHORT_ANSWER]` `[level: V\u1eadn d\u1ee5ng]` `[tag: #Ch\u1ee7_\u0111\u1ec1]`",
-    "<N\u1ed9i dung c\u00e2u h\u1ecfi tr\u1ea3 l\u1eddi ng\u1eafn / vi\u1ebft l\u1ea1i c\u00e2u>",
-    "> **\u0110\u00e1p \u00e1n:** <\u0110\u00e1p \u00e1n ng\u1eafn g\u1ecdn>"
+    "### C\u00e2u 3 `[type: SHORT_ANSWER]` `[level: V\u1eadn d\u1ee5ng]` `[tag: #Topic]`",
+    "",
+    "<Short answer / sentence transformation prompt>",
+    "",
+    "> **\u0110\u00e1p \u00e1n:** <Concise answer>",
+    "",
+    "### C\u00e2u 4 `[type: ORDERING]` `[level: V\u1eadn d\u1ee5ng]` `[tag: #Topic]`",
+    "",
+    "<Ordering prompt and items>",
+    "",
+    "> **\u0110\u00e1p \u00e1n:** <Correct order if present in source>",
+    "",
+    "### C\u00e2u 5 `[type: ESSAY]` `[level: V\u1eadn d\u1ee5ng cao]` `[tag: #Topic]`",
+    "",
+    "<Essay prompt>",
+    "",
+    "> **\u0110\u00e1p \u00e1n:** <Answer if present in source>"
   ].join("\n");
 
   const QUESTION_TYPES = ["MCQ", "TF_GROUP", "SHORT_ANSWER", "ORDERING", "ESSAY"];
@@ -464,12 +511,29 @@
     };
   }
 
+  function unwrapMarkdownFence(rawText, isComplete) {
+    let body = String(rawText || "").replace(/\r\n/g, "\n");
+    const openMatch = body.match(/^\s*```(?:markdown|md)?[ \t]*\n/i);
+    if (openMatch) {
+      body = body.slice(openMatch[0].length);
+      if (isComplete) body = body.replace(/\n```[ \t]*\s*$/, "");
+    } else if (isComplete) {
+      // Handle brief external chat preamble before the first ```markdown ... ``` block
+      const embedded = body.match(/```(?:markdown|md)[ \t]*\n([\s\S]*?)\n```[ \t]*(?:\s*$)/i);
+      if (embedded && embedded[1]) body = embedded[1];
+    }
+    // Restore inner ~~~~ code fences back to ```
+    body = body.replace(/^~~~~([a-zA-Z0-9_+-]*)[ \t]*$/gm, "```$1");
+    return body;
+  }
+
   function createIncrementalParser() {
     let rawBuffer = "";
 
     function parseDocument(markdownText, isComplete) {
       const raw = String(markdownText || "").replace(/\r\n/g, "\n");
-      const trimmed = raw.trim();
+      const body = unwrapMarkdownFence(raw, isComplete);
+      const trimmed = body.trim();
       const doc = {
         meta: { title: "", subject: "", mode: "EXAM", total_questions: 0, duration_minutes: 0 },
         error: "",
@@ -479,7 +543,7 @@
         questions: [],
         studyNoteMarkdown: "",
         streamingTail: "",
-        rawMarkdown: raw
+        rawMarkdown: body
       };
 
       if (!trimmed) return doc;
@@ -487,10 +551,6 @@
         doc.error = trimmed.replace(/^ERROR_INVALID_CONTENT\s*:\s*/i, "").trim() || "T\u00e0i li\u1ec7u kh\u00f4ng h\u1ee3p l\u1ec7.";
         return doc;
       }
-
-      // Strip accidental outer ```markdown ... ``` fence if model emits one
-      let body = raw.replace(/^\s*```(?:markdown|md)?\s*\n/i, "");
-      if (isComplete) body = body.replace(/\n```\s*$/, "");
 
       const lines = body.split("\n");
       let idx = 0;
@@ -974,6 +1034,7 @@
     runWithConcurrency: runWithConcurrency,
     extractDeltaFromSseLine: extractDeltaFromSseLine,
     createIncrementalParser: createIncrementalParser,
+    unwrapMarkdownFence: unwrapMarkdownFence,
     scoreTfGroup2025: scoreTfGroup2025,
     compareShortAnswer: compareShortAnswer,
     fromLegacyQuestions: fromLegacyQuestions,

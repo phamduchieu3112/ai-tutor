@@ -38,7 +38,7 @@
     "- Math/Science: use LaTeX (`$...$` inline, `$$...$$` block).",
     "- Languages: preserve underlined text using `<u>text</u>` and bold using `**text**`.",
     "- Preserve Furigana/Pinyin when present.",
-    "- Use Markdown tables and fenced code blocks.",
+    "- Use Markdown tables and fenced code blocks (use `~~~~lang` for inner code blocks so the outer ` ```markdown ` fence never breaks).",
     "- Describe diagrams as `[IMAGE: concise visual description]`.",
     "",
     "Supported types:",
@@ -56,9 +56,10 @@
     "",
     "`ERROR_INVALID_CONTENT: <concise reason>`",
     "",
-    "## 5. Output Discipline",
+    "## 5. Output Packaging, `.md` File Export & Discipline",
     "",
-    "- Output pure Markdown only.",
+    "- **Downloadable `.md` File First (If Supported):** If your environment supports creating or exporting downloadable files (e.g., Python/Code Interpreter file creation or Canvas/Artifact export), save the complete standardized output as a downloadable `.md` file named `<sanitized_title>.md` AND also provide the raw Markdown code block below.",
+    "- **Mandatory Single Raw ` ```markdown ` Code Block Wrapper:** ALWAYS wrap the entire standardized output inside ONE single fenced code block starting with ` ```markdown ` and ending with ` ``` ` (escape any inner code blocks with `~~~~` so the outer block never breaks). NEVER output un-fenced Markdown directly into the chat stream, because chat interfaces visually render un-fenced Markdown and strip raw symbols (`###`, `>`, `**`) when copied.",
     "- No greeting, introduction, commentary, or conclusion.",
     "- Do not repeat the title unnecessarily.",
     "",
@@ -2515,15 +2516,16 @@
         try {
           if (item.kind === "text") {
             const rawMd = await readFileAsText(item.file);
-            // If user already uploaded a Digitizer-formatted Markdown file, parse directly (0 token!)
-            if (/^---\s*\n[\s\S]*?mode\s*:/i.test(rawMd.trim()) && (/^###\s*C\u00e2u\s*\d+/m.test(rawMd) || /mode\s*:\s*["']?STUDY_NOTE/i.test(rawMd))) {
+            const unwrappedMd = (D() && typeof D().unwrapMarkdownFence === "function") ? D().unwrapMarkdownFence(rawMd, true) : rawMd;
+            // If user already uploaded a Digitizer-formatted Markdown file (fenced or unfenced), parse directly (0 token!)
+            if (/^---\s*\n[\s\S]*?mode\s*:/i.test(unwrappedMd.trim()) && (/^###\s*C\u00e2u\s*\d+/m.test(unwrappedMd) || /mode\s*:\s*["']?STUDY_NOTE/i.test(unwrappedMd))) {
               tasks.push({
                 index: tasks.length,
                 label: item.name + " (Markdown chu\u1ea9n)",
                 isPreDigitized: true,
                 status: "done",
                 error: "",
-                markdown: rawMd
+                markdown: unwrappedMd
               });
             } else {
               allTextPages.push(rawMd);
@@ -2573,14 +2575,15 @@
       }
 
       if (!stopped && pasted) {
-        if (/^---\s*\n[\s\S]*?mode\s*:/i.test(pasted) && (/^###\s*C\u00e2u\s*\d+/m.test(pasted) || /mode\s*:\s*["']?STUDY_NOTE/i.test(pasted))) {
+        const unwrappedPasted = (D() && typeof D().unwrapMarkdownFence === "function") ? D().unwrapMarkdownFence(pasted, true) : pasted;
+        if (/^---\s*\n[\s\S]*?mode\s*:/i.test(unwrappedPasted.trim()) && (/^###\s*C\u00e2u\s*\d+/m.test(unwrappedPasted) || /mode\s*:\s*["']?STUDY_NOTE/i.test(unwrappedPasted))) {
           tasks.push({
             index: tasks.length,
             label: "Markdown chu\u1ea9n \u0111\u00e3 d\u00e1n",
             isPreDigitized: true,
             status: "done",
             error: "",
-            markdown: pasted
+            markdown: unwrappedPasted
           });
         } else {
           allTextPages.push(pasted);
@@ -3712,7 +3715,10 @@
 
   /* ======================== LOCAL MARKDOWN IMPORT & MANUAL FALLBACK MODAL (V3.3 Section 2.7) ======================== */
   function importLocalMarkdown(rawMd, sourceLabel) {
-    const clean = String(rawMd || "").trim();
+    const unwrapped = (D() && typeof D().unwrapMarkdownFence === "function")
+      ? D().unwrapMarkdownFence(rawMd, true)
+      : String(rawMd || "").replace(/\r\n/g, "\n").replace(/^\s*```(?:markdown|md)?[ \t]*\n/i, "").replace(/\n```[ \t]*\s*$/, "").replace(/^~~~~([a-zA-Z0-9_+-]*)[ \t]*$/gm, "```$1");
+    const clean = unwrapped.trim();
     if (!clean) {
       U().showToast("Ch\u01b0a c\u00f3 n\u1ed9i dung Markdown \u0111\u1ec3 nh\u1eadp.", "warning");
       return false;
@@ -3772,7 +3778,7 @@
         title: "🌐 Chuy\u1ec3n \u0111\u1ed5i qua AI ngo\u00e0i / Master Prompt (Fallback 0 Token)",
         s1: "B\u01b0\u1edbc 1: Sao ch\u00e9p ch\u00ednh x\u00e1c CONVERTER_MASTER_PROMPT b\u00ean d\u01b0\u1edbi.",
         s2: "B\u01b0\u1edbc 2: D\u00e1n prompt n\u00e0y c\u00f9ng file \u0111\u1ec1 thi g\u1ed1c v\u00e0o ChatGPT, Gemini ho\u1eb7c Claude.",
-        s3: "B\u01b0\u1edbc 3: D\u00e1n k\u1ebft qu\u1ea3 Markdown ho\u1eb7c k\u00e9o th\u1ea3 / t\u1ea3i file .md v\u00e0o \u0111\u00e2y \u0111\u1ec3 nh\u1eadp c\u1ee5c b\u1ed9 (kh\u00f4ng g\u1ecdi API).",
+        s3: "B\u01b0\u1edbc 3: T\u1ea3i tr\u1ef1c ti\u1ebfp file .md do AI t\u1ea1o ho\u1eb7c b\u1ea5m bi\u1ec3u t\u01b0\u1ee3ng Copy \u1edf g\u00f3c kh\u1ed1i code ```markdown r\u1ed3i d\u00e1n / t\u1ea3i l\u00ean b\u00ean d\u01b0\u1edbi (nh\u1eadp c\u1ee5c b\u1ed9 0 API call).",
         copyBtn: "📋 Sao ch\u00e9p Master Prompt",
         copied: "✅ \u0110\u00e3 sao ch\u00e9p!",
         dropLabel: "📂 K\u00e9o th\u1ea3 ho\u1eb7c ch\u1ecdn file .md t\u1ea1i \u0111\u00e2y",
@@ -3784,7 +3790,7 @@
         title: "🌐 Convert via External AI / Master Prompt (Local Fallback)",
         s1: "Step 1: Copy the exact CONVERTER_MASTER_PROMPT below.",
         s2: "Step 2: Paste this prompt with your original file into ChatGPT, Gemini, or Claude.",
-        s3: "Step 3: Paste the generated Markdown or upload/drop a .md file below to import locally (0 LLM API calls).",
+        s3: "Step 3: Download the generated .md file directly from the AI chat, or click the Copy icon on the ```markdown code block and paste/upload it below (0 LLM API calls).",
         copyBtn: "📋 Copy Master Prompt",
         copied: "✅ Copied!",
         dropLabel: "📂 Drag & drop or choose a .md file here",
@@ -3796,7 +3802,7 @@
         title: "🌐 \u5916\u90e8AI / Master Prompt \u3067\u5909\u63db (\u30ed\u30fc\u30ab\u30eb\u30d5\u30a9\u30fc\u30eb\u30d0\u30c3\u30af)",
         s1: "\u30b9\u30c6\u30c3\u30d71: \u4e0b\u8a18\u306e CONVERTER_MASTER_PROMPT \u3092\u30b3\u30d4\u30fc\u3057\u307e\u3059\u3002",
         s2: "\u30b9\u30c6\u30c3\u30d72: ChatGPT / Gemini / Claude \u306b\u5143\u30d5\u30a1\u30a4\u30eb\u3068\u4e00\u7dd2\u306b\u8cbc\u308a\u4ed8\u3051\u3066\u5909\u63db\u3057\u307e\u3059\u3002",
-        s3: "\u30b9\u30c6\u30c3\u30d73: \u751f\u6210\u3055\u308c\u305f Markdown \u3092\u8cbc\u308a\u4ed8\u3051\u308b\u304b .md \u30d5\u30a1\u30a4\u30eb\u3092\u8aad\u307f\u8fbc\u307f\u307e\u3059 (API\u547c\u51fa\u30570\u56de)\u3002",
+        s3: "\u30b9\u30c6\u30c3\u30d73: AI\u304c\u751f\u6210\u3057\u305f .md \u30d5\u30a1\u30a4\u30eb\u3092\u76f4\u63a5\u30c0\u30a6\u30f3\u30ed\u30fc\u30c9\u3059\u308b\u304b\u3001```markdown \u30b3\u30fc\u30c9\u30d6\u30ed\u30c3\u30af\u306e\u30b3\u30d4\u30fc\u30a2\u30a4\u30b3\u30f3\u3092\u62bc\u3057\u3066\u4e0b\u8a18\u306b\u8cbc\u308a\u4ed8\u3051\u30fb\u30a2\u30c3\u30d7\u30ed\u30fc\u30c9\u3057\u307e\u3059 (API\u547c\u51fa\u30570\u56de)\u3002",
         copyBtn: "📋 Master Prompt \u3092\u30b3\u30d4\u30fc",
         copied: "✅ \u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f!",
         dropLabel: "📂 .md \u30d5\u30a1\u30a4\u30eb\u3092\u30c9\u30e9\u30c3\u30b0&\u30c9\u30ed\u30c3\u30d7\u307e\u305f\u306f\u9078\u629e",
