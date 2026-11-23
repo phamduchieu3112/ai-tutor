@@ -2227,10 +2227,20 @@ function exportXLSX(deck) {
 function getPayCfg() {
   const c = loadObj(KEYS.payCfg);
   const d = DEFAULT_PAYMENT_CONFIG;
+  const rawAcc = String(c.accountNo || "").trim();
+  const rawBank = String(c.bankId || "").trim().toUpperCase();
+  if (!rawAcc || rawAcc === "31122007" || rawBank === "970414" || rawBank === "MBV") {
+    return {
+      bankName: d.bankName,
+      bankId: d.bankId,
+      accountNo: d.accountNo,
+      accountName: d.accountName
+    };
+  }
   return {
     bankName: String(c.bankName || d.bankName).trim(),
     bankId: String(c.bankId || d.bankId).trim(),
-    accountNo: String(c.accountNo || d.accountNo).trim(),
+    accountNo: rawAcc,
     accountName: String(c.accountName || d.accountName).trim()
   };
 }
@@ -2413,7 +2423,7 @@ function startCheckoutOrderPolling(orderCode) {
       return;
     }
     try {
-      const resp = await fetch(API_BASE + "/api/orders/status?code=" + encodeURIComponent(orderCode), { credentials: "same-origin" });
+      const resp = await fetch("/api/orders/status?code=" + encodeURIComponent(orderCode), { credentials: "same-origin" });
       if (!resp.ok) return;
       const data = await resp.json();
       const orderObj = data && (data.order || data);
@@ -2455,7 +2465,7 @@ async function createCheckoutServerOrder() {
   c.creatingOrder = true;
   renderCheckout();
   try {
-    const resp = await fetch(API_BASE + "/api/orders", {
+    const resp = await fetch("/api/orders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",

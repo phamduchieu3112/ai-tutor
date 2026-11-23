@@ -165,6 +165,9 @@ async function loadDb() {
     const raw = await storage.loadAppDb();
     if (raw && typeof raw === "object") {
       const merged = Object.assign(def, raw);
+      if (merged.paymentConfig && (String(merged.paymentConfig.accountNo || "").trim() === "31122007" || String(merged.paymentConfig.bankId || "").trim() === "970414")) {
+        merged.paymentConfig = { bankName: "MB Bank", bankId: SEPAY_BANK_ID, bankBin: SEPAY_BANK_BIN, accountNo: SEPAY_ACCOUNT_NO, accountName: SEPAY_ACCOUNT_NAME };
+      }
       backfillRegisteredUsers(merged);
       global.__AI_TUTOR_DB__ = merged;
       return merged;
@@ -2340,10 +2343,10 @@ module.exports = async function apiHandler(req, res) {
       if (p === "/api/admin/payment-config" && method === "PUT") {
         const body = await readBody(req);
         db.paymentConfig = {
-          bankName: String((body && body.bankName) || "MBV Bank").trim(),
-          bankId: String((body && body.bankId) || "970414").trim().toUpperCase(),
-          accountNo: String((body && body.accountNo) || "31122007").trim(),
-          accountName: String((body && body.accountName) || "PHAM DUC HIEU").trim().toUpperCase()
+          bankName: String((body && body.bankName) || "MB Bank").trim(),
+          bankId: String((body && body.bankId) || SEPAY_BANK_ID).trim().toUpperCase(),
+          accountNo: String((body && body.accountNo) || SEPAY_ACCOUNT_NO).trim(),
+          accountName: String((body && body.accountName) || SEPAY_ACCOUNT_NAME).trim().toUpperCase()
         };
         await saveDb(db);
         return sendJson(res, 200, { ok: true, paymentConfig: db.paymentConfig });
