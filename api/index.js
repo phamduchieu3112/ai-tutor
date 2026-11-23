@@ -55,9 +55,11 @@ const PLAN_LABELS = {
 };
 
 const SEPAY_BANK_ID = "MB";
+const SEPAY_BANK_BIN = "970422";
 const SEPAY_ACCOUNT_NO = "316463";
 const SEPAY_ACCOUNT_NAME = "PHAM DUC HIEU";
-const PLAN_PRICES = { unranked: 10000, bronze: 100000, silver: 200000, gold: 300000, diamond: 500000 };
+// Unranked is 0 VND / year (Free Tier); paid tiers strictly use SePay VietQR MB Bank 316463
+const PLAN_PRICES = { bronze: 100000, silver: 200000, gold: 300000, diamond: 500000 };
 
 function genOrderCode() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -1043,14 +1045,14 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
     });
   }
 
-  // 2. Merge payment_requests
-  if (Array.isArray(body.payment_requests)) {
+  // 2. Merge payment_requests (Admin-only sync; regular users create requests strictly via POST /api/payment-requests so stale localStorage pending records NEVER resurrect after rejection)
+  if (isAdminCaller && Array.isArray(body.payment_requests)) {
     const byId = {};
     db.payment_requests.forEach(function (r) { if (r && r.id) byId[r.id] = r; });
     body.payment_requests.forEach(function (r) {
       if (!r || typeof r !== "object" || !r.id || !PAID_PLANS.includes(r.plan)) return;
       const rEmail = String(r.userEmail || "").trim().toLowerCase();
-      if (!rEmail || (!isAdminCaller && rEmail !== callerEmail)) return;
+      if (!rEmail) return;
       const existing = byId[r.id];
       if (!existing) {
         const rec = {
@@ -1074,11 +1076,8 @@ function mergeClientSnapshot(db, body, isAdminCaller, callerEmail) {
         db.payment_requests.push(rec);
         byId[rec.id] = rec;
         upsertRegisteredUser(db, { email: rEmail, name: rec.userName, createdAt: rec.createdAt }, { suppressEmail: true });
-        if (rec.status === "pending" && !r.notifiedEmail) {
-          newPaymentReqs.push(rec);
-        }
         changed = true;
-      } else if (isAdminCaller && existing.status === "pending" && (r.status === "approved" || r.status === "rejected")) {
+      } else if (existing.status === "pending" && (r.status === "approved" || r.status === "rejected")) {
         existing.status = r.status;
         existing.reviewedAt = r.reviewedAt || new Date().toISOString();
         existing.reviewedBy = r.reviewedBy || ADMIN_EMAIL;
@@ -1198,13 +1197,17 @@ function buildBillingResponse(db, isAdminCaller, caller) {
   if (caller && safeAllApis[caller]) ownApis[caller] = safeAllApis[caller];
   const ownReqs = db.payment_requests.filter(function (r) {
     return r && String(r.userEmail || "").toLowerCase() === caller;
+  }).sort(function (a, b) {
+    return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
   });
+  const latestPaymentRequest = ownReqs.length > 0 ? ownReqs[ownReqs.length - 1] : null;
   return {
     subscriptions: ownSubs,
     revokedSubscriptions: db.revokedSubscriptions || {},
     userApis: ownApis,
     revokedUserApis: db.revokedUserApis,
     payment_requests: ownReqs,
+    latestPaymentRequest: latestPaymentRequest,
     paymentConfig: db.paymentConfig,
     vouchers: db.vouchers,
     deletedVouchers: db.deletedVouchers || {}
@@ -1453,11 +1456,29 @@ module.exports = async function apiHandler(req, res) {
     }
 
     if (p === "/api/subscriptions/unranked" && method === "POST") {
-      // #4/#5 Unranked tier is now 10,000 VND/year via VietQR (/api/orders) — free self-upgrade locked down
-      return sendJson(res, 402, {
-        ok: false,
-        error: "G\u00f3i Unranked y\u00eau c\u1ea7u thanh to\u00e1n 10.000\u0111/n\u0103m qua VietQR (/api/orders)."
-      });
+      // Unranked tier is 0 VND / year (Free Tier)
+      const rl = security.checkSlidingWindowRateLimit("unranked_free", security.getClientIp(req), 20, 10 * 60 * 1000);
+      if (!rl.allowed) return sendJson(res, 429, { ok: false, error: "Qu\u00e1 nhi\u1ec1u y\u00eau c\u1ea7u. Vui l\u00f2ng th\u1eed l\u1ea1i sau." });
+      const body = await readBody(req);
+      const caller = getCallerEmail(req) || String((body && body.email) || "").trim().toLowerCase();
+      if (!caller || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(caller)) {
+        return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
+      }
+      const db = await loadDb();
+      const cur = db.subscriptions[caller];
+      if (cur && PAID_PLANS.includes(cur.tier) && Number(cur.expires) > Date.now()) {
+        return sendJson(res, 400, { error: "B\u1ea1n \u0111ang c\u00f3 g\u00f3i cao h\u01a1n Unranked." });
+      }
+      const now = Date.now();
+      db.subscriptions[caller] = { tier: "unranked", since: now, expires: now + 365 * DAY_MS };
+      if (db.revokedSubscriptions) delete db.revokedSubscriptions[caller];
+      const safeName = String((body && body.name) || caller.split("@")[0]).trim().slice(0, 120);
+      const uRes = upsertRegisteredUser(db, { email: caller, name: safeName });
+      await saveDb(db);
+      if (uRes.shouldNotify && uRes.user) {
+        try { await sendNewUserNotification(db, uRes.user); } catch (e) { /* safe */ }
+      }
+      return sendJson(res, 200, { ok: true, subscription: db.subscriptions[caller] });
     }
 
     if (p === "/api/payment-requests" && method === "POST") {
@@ -2408,10 +2429,28 @@ module.exports = async function apiHandler(req, res) {
           db.payment_requests.push(rec);
         }
         if (!rec || rec.status !== "pending") return sendJson(res, 404, { error: "Kh\u00f4ng t\u00ecm th\u1ea5y \u0111\u01a1n ch\u1edd duy\u1ec7t." });
+        const nowIso = new Date().toISOString();
+        const reason = String((body && body.rejectReason) || "Y\u00eau c\u1ea7u b\u1ecb t\u1eeb ch\u1ed1i").trim();
         rec.status = "rejected";
-        rec.reviewedAt = new Date().toISOString();
+        rec.reviewedAt = nowIso;
         rec.reviewedBy = ADMIN_EMAIL;
-        rec.rejectReason = String((body && body.rejectReason) || "Y\u00eau c\u1ea7u b\u1ecb t\u1eeb ch\u1ed1i").trim();
+        rec.rejectReason = reason;
+        // Also mark any linked pending SePay order as REJECTED (and NEVER grant/extend tier)
+        if (db.sepayOrders && typeof db.sepayOrders === "object") {
+          const recEmail = String(rec.userEmail || "").trim().toLowerCase();
+          const recMemo = String(rec.memo || "").toUpperCase();
+          Object.keys(db.sepayOrders).forEach(function (code) {
+            const ord = db.sepayOrders[code];
+            if (!ord || ord.status === "PAID") return;
+            const memoMatch = recMemo && recMemo.indexOf(String(code).toUpperCase()) !== -1;
+            const userPlanMatch = recEmail && String(ord.userEmail || "").toLowerCase() === recEmail && String(ord.planId || "").toLowerCase() === String(rec.plan || "").toLowerCase() && (ord.status === "PENDING" || ord.status === "UNDERPAID");
+            if (memoMatch || userPlanMatch) {
+              ord.status = "REJECTED";
+              ord.rejectReason = reason;
+              ord.updatedAt = nowIso;
+            }
+          });
+        }
         await saveDb(db);
         return sendJson(res, 200, { ok: true, request: rec });
       }

@@ -78,8 +78,8 @@ const DAY_MS = 86400000;
 /* 5-Tier Rank System (Arena of Valor inspired) */
 const TIER_ORDER = ["none", "unranked", "bronze", "silver", "gold", "diamond"];
 const TIERS = {
-  none: { name: "Ch\u01b0a x\u1ebfp h\u1ea1ng", full: "Ch\u01b0a \u0111\u0103ng k\u00fd", sub: "\u0110\u0103ng k\u00fd Unranked 10.000\u0111/n\u0103m \u0111\u1ec3 b\u1eaft \u0111\u1ea7u", price: 0, maxDecks: 3, maxQ: 50, maxImages: 5, memo: "UNRANKED", icon: "🛡️", cls: "rank-unranked" },
-  unranked: { name: "Unranked", full: "Unranked (Ch\u01b0a x\u1ebfp h\u1ea1ng)", sub: "Thanh to\u00e1n VietQR • K\u00edch ho\u1ea1t t\u1ef1 \u0111\u1ed9ng 24/7", price: 10000, maxDecks: 3, maxQ: 50, maxImages: 5, memo: "UNRANKED", icon: "🛡️", cls: "rank-unranked" },
+  none: { name: "Ch\u01b0a x\u1ebfp h\u1ea1ng", full: "Ch\u01b0a \u0111\u0103ng k\u00fd", sub: "K\u00edch ho\u1ea1t mi\u1ec5n ph\u00ed Unranked (0\u0111/n\u0103m) \u0111\u1ec3 b\u1eaft \u0111\u1ea7u", price: 0, maxDecks: 3, maxQ: 50, maxImages: 5, memo: "UNRANKED", icon: "🛡️", cls: "rank-unranked" },
+  unranked: { name: "Unranked", full: "Unranked (Ch\u01b0a x\u1ebfp h\u1ea1ng)", sub: "Mi\u1ec5n ph\u00ed 0\u0111/n\u0103m • K\u00edch ho\u1ea1t ngay", price: 0, maxDecks: 3, maxQ: 50, maxImages: 5, memo: "UNRANKED", icon: "🛡️", cls: "rank-unranked" },
   bronze: { name: "Bronze", full: "Bronze (\u0110\u1ed3ng)", sub: "Thanh to\u00e1n VietQR • K\u00edch ho\u1ea1t t\u1ef1 \u0111\u1ed9ng", price: 100000, maxDecks: 15, maxQ: 200, maxImages: 20, memo: "BRONZE", icon: "🥉", cls: "rank-bronze" },
   silver: { name: "Silver", full: "Silver (B\u1ea1c)", sub: "Thanh to\u00e1n VietQR • K\u00edch ho\u1ea1t t\u1ef1 \u0111\u1ed9ng", price: 200000, maxDecks: 50, maxQ: 500, maxImages: 50, memo: "SILVER", icon: "🥈", cls: "rank-silver" },
   gold: { name: "Gold", full: "Gold (V\u00e0ng)", sub: "Ph\u1ed5 bi\u1ebfn nh\u1ea5t • K\u00edch ho\u1ea1t t\u1ef1 \u0111\u1ed9ng", price: 300000, maxDecks: Infinity, maxQ: Infinity, maxImages: 100, memo: "GOLD", icon: "🥇", cls: "rank-gold" },
@@ -391,21 +391,13 @@ function mergeRemoteBillingSnap(snap) {
   }
 
   if (Array.isArray(snap.payment_requests)) {
-    const localReqs = loadArr(KEYS.payReqs);
-    const map = {};
-    localReqs.forEach(function (r) { if (r && r.id) map[r.id] = r; });
-    snap.payment_requests.forEach(function (r) {
-      if (!r || !r.id) return;
-      const cur = map[r.id];
-      if (!cur || (cur.status === "pending" && r.status !== "pending") || JSON.stringify(cur) !== JSON.stringify(r)) {
-        map[r.id] = r;
-        changed = true;
-      }
-    });
-    const mergedReqs = Object.keys(map).map(function (id) { return map[id]; }).sort(function (a, b) {
+    // Authoritative server sync: replace local cache with live server payment_requests so rejected/stale pending records never persist
+    const prevReqsJson = JSON.stringify(loadArr(KEYS.payReqs));
+    const serverReqs = snap.payment_requests.filter(function (r) { return r && r.id; }).sort(function (a, b) {
       return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
     });
-    saveJSON(KEYS.payReqs, mergedReqs);
+    if (prevReqsJson !== JSON.stringify(serverReqs)) changed = true;
+    saveJSON(KEYS.payReqs, serverReqs);
   }
 
   if (snap.paymentConfig && typeof snap.paymentConfig === "object" && snap.paymentConfig.accountNo) {
@@ -561,7 +553,7 @@ async function syncWithBackend() {
       currentUser: curUserRec,
       registeredUsers: isAdmin() ? localUsers : undefined,
       subscriptions: loadObj(KEYS.subs),
-      payment_requests: loadArr(KEYS.payReqs),
+      payment_requests: isAdmin() ? loadArr(KEYS.payReqs) : undefined,
       vouchers: loadArr(KEYS.vouchers),
       paymentConfig: isAdmin() ? loadObj(KEYS.payCfg) : undefined
     };
@@ -1130,7 +1122,7 @@ function navigateTo(rawPath, options) {
   if (!opts.skipRender) renderTab();
   if (state.user && (route.tab === "pricing" || route.tab === "admin" || route.tab === "dashboard")) {
     syncWithBackend().then(function (changed) {
-      if (changed) { updateChrome(); renderTab(); }
+      if (changed || route.tab === "pricing") { updateChrome(); renderTab(); }
     });
   }
   window.scrollTo(0, 0);
@@ -2286,34 +2278,67 @@ function renderPricing() {
   setText("pricingNote", adm
     ? "👑 Admin (Diamond): B\u1ea1n c\u00f3 m\u1eb7c \u0111\u1ecbnh to\u00e0n quy\u1ec1n Diamond VIP kh\u00f4ng gi\u1edbi h\u1ea1n. B\u1ea1n c\u00f3 th\u1ec3 b\u1ea5m \"K\u00edch ho\u1ea1t ngay (Admin)\" tr\u00ean b\u1ea5t k\u1ef3 g\u00f3i n\u00e0o \u0111\u1ec3 chuy\u1ec3n \u0111\u1ed5i th\u1eed nghi\u1ec7m tr\u1ef1c ti\u1ebfp."
     : (cur === "none"
-      ? "Ch\u1ecdn g\u00f3i Unranked (10.000\u0111/n\u0103m) ho\u1eb7c 1 trong 4 h\u1ea1ng g\u00f3i cao c\u1ea5p — qu\u00e9t VietQR MB Bank \u0111\u1ec3 h\u1ec7 th\u1ed1ng SePay t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t trong v\u00e0i gi\u00e2y."
+      ? "K\u00edch ho\u1ea1t mi\u1ec5n ph\u00ed g\u00f3i Unranked (0\u0111/n\u0103m) ho\u1eb7c ch\u1ecdn 1 trong 4 h\u1ea1ng g\u00f3i cao c\u1ea5p — qu\u00e9t VietQR MB Bank \u0111\u1ec3 h\u1ec7 th\u1ed1ng SePay t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t trong v\u00e0i gi\u00e2y."
       : "G\u00f3i hi\u1ec7n t\u1ea1i c\u1ee7a b\u1ea1n: " + TIERS[cur].icon + " " + TIERS[cur].full + (sub ? " • H\u1ebft h\u1ea1n: " + fmtDate(sub.expires) : "")));
 
-  // Pending box on Pricing
+  // Pending / Rejected status banner on Pricing (strictly reflects live server state)
   const pBox = $("pricingPendingBox");
   if (pBox) {
+    const ownAllReqs = state.user
+      ? loadArr(KEYS.payReqs).filter(function (r) { return r && String(r.userEmail || "").toLowerCase() === state.user.email.toLowerCase(); })
+      : [];
+    const latestReq = ownAllReqs.length > 0 ? ownAllReqs[ownAllReqs.length - 1] : null;
     if (pendings.length > 0 && !adm) {
+      pBox.style.background = "";
+      pBox.style.borderColor = "";
+      pBox.style.color = "";
       pBox.innerHTML = pendings.map(function (r) {
         return "<div>⏳ <strong>\u0110ang ch\u1edd duy\u1ec7t g\u00f3i " + esc(TIERS[r.plan] ? TIERS[r.plan].name : r.plan) + "</strong> (" + esc(fmtMoney(r.amount)) + ") • G\u1eedi l\u00fac " + esc(fmtDateTime(r.createdAt)) + "</div>";
       }).join("");
       pBox.classList.remove("hidden");
-    } else { pBox.classList.add("hidden"); pBox.innerHTML = ""; }
+    } else if (!adm && latestReq && latestReq.status === "rejected" && state.dismissedRejectReqId !== latestReq.id) {
+      pBox.style.background = "rgba(244,63,94,0.08)";
+      pBox.style.borderColor = "rgba(244,63,94,0.35)";
+      pBox.style.color = "#9f1239";
+      const planLabel = TIERS[latestReq.plan] ? TIERS[latestReq.plan].name : latestReq.plan;
+      const reasonTxt = latestReq.rejectReason || "Y\u00eau c\u1ea7u thanh to\u00e1n kh\u00f4ng h\u1ee3p l\u1ec7";
+      pBox.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">' +
+          '<div>\u274c <strong>Y\u00eau c\u1ea7u thanh to\u00e1n g\u00f3i ' + esc(planLabel) + ' b\u1ecb t\u1eeb ch\u1ed1i:</strong> ' + esc(reasonTxt) + '</div>' +
+          '<button type="button" class="btn btn-outline btn-sm" id="dismissRejectNoticeBtn" aria-label="\u0110\u00f3ng th\u00f4ng b\u00e1o">\u00d7</button>' +
+        '</div>';
+      pBox.classList.remove("hidden");
+      const dBtn = $("dismissRejectNoticeBtn");
+      if (dBtn) {
+        dBtn.onclick = function () {
+          state.dismissedRejectReqId = latestReq.id;
+          pBox.classList.add("hidden");
+          pBox.innerHTML = "";
+        };
+      }
+    } else {
+      pBox.style.background = "";
+      pBox.style.borderColor = "";
+      pBox.style.color = "";
+      pBox.classList.add("hidden");
+      pBox.innerHTML = "";
+    }
   }
 
-  // Unranked Banner (Tier 1 - 10,000 VND/year via VietQR + SePay Auto Approval)
+  // Unranked Banner (Tier 1 - Free 0 VND / year)
   const unBtn = adm
     ? (cur === "unranked" ? '<span class="badge badge-ok">✓ \u0110ang b\u1eadt (Admin)</span>' : '<button type="button" class="btn btn-outline btn-sm" data-admin-switch="unranked">⚡ K\u00edch ho\u1ea1t ngay (Admin)</button>')
     : (cur === "unranked"
-      ? '<button type="button" class="btn btn-outline" data-buy="unranked">✓ G\u00f3i hi\u1ec7n t\u1ea1i (Gia h\u1ea1n 10.000\u0111)</button>'
+      ? '<button type="button" class="btn btn-outline" disabled>✓ G\u00f3i hi\u1ec7n t\u1ea1i (Mi\u1ec5n ph\u00ed)</button>'
       : (curRank > 1
         ? '<button type="button" class="btn btn-outline" disabled>B\u1ea1n \u0111\u00e3 c\u00f3 g\u00f3i cao h\u01a1n</button>'
-        : '<button type="button" class="btn btn-emerald" data-buy="unranked">Thanh to\u00e1n VietQR (10.000\u0111/n\u0103m)</button>'));
+        : '<button type="button" class="btn btn-emerald" data-activate-free="1">K\u00edch ho\u1ea1t mi\u1ec5n ph\u00ed (0\u0111/n\u0103m)</button>'));
   setHTML("unrankedBanner",
     '<div class="unranked-banner' + (cur === "unranked" ? " current" : "") + '">' +
       '<div style="flex:1;min-width:260px">' +
         '<div class="rank-head"><span class="rank-crest crest-unranked">🛡️</span><div>' +
-          '<div class="price-name">Unranked <span class="muted" style="font-weight:500;font-size:.86rem">(Ch\u01b0a x\u1ebfp h\u1ea1ng)</span> • <strong style="color:var(--emerald)">10.000\u0111 / n\u0103m</strong></div>' +
-          '<div class="price-sub">Qu\u00e9t m\u00e3 VietQR MB Bank (316463) – t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t 1 n\u0103m qua SePay trong v\u00e0i gi\u00e2y</div>' +
+          '<div class="price-name">Unranked <span class="muted" style="font-weight:500;font-size:.86rem">(Ch\u01b0a x\u1ebfp h\u1ea1ng)</span> • <strong style="color:var(--emerald)">0\u0111 / n\u0103m (Mi\u1ec5n ph\u00ed)</strong></div>' +
+          '<div class="price-sub">B\u1eaft \u0111\u1ea7u h\u1ecdc t\u1eadp mi\u1ec5n ph\u00ed ngay l\u1eadp t\u1ee9c — kh\u00f4ng c\u1ea7n thanh to\u00e1n</div>' +
         '</div></div>' +
         '<ul class="unranked-feats">' + PRICING_FEATURES.unranked.map(function (f) { return "<li>" + esc(f) + "</li>"; }).join("") + "</ul>" +
       "</div>" +
@@ -2506,7 +2531,7 @@ function checkoutMemo() {
   return "AITUTOR" + prefix;
 }
 function openCheckout(code) {
-  if (!state.user || !TIERS[code] || code === "none") return;
+  if (!state.user || !TIERS[code] || code === "none" || code === "unranked") return;
   if (isAdmin()) { adminSwitchOwnTier(code); return; }
   const dup = getUserPendingReqs(state.user.email).some(function (r) { return r.plan === code; });
   if (dup) {
@@ -2648,8 +2673,9 @@ async function submitPaymentRequest() {
   try {
     const res = await apiCall("/api/payment-requests", "POST", reqObj);
     if (res && res._err) { showToast("Kh\u00f4ng th\u1ec3 g\u1eedi y\u00eau c\u1ea7u: " + res._err, "error"); c.busy = false; renderCheckout(); return; }
-    const list = loadArr(KEYS.payReqs);
-    list.push(reqObj);
+    const savedRec = (res && res.request && res.request.id) ? res.request : reqObj;
+    const list = loadArr(KEYS.payReqs).filter(function (r) { return r && r.id !== savedRec.id; });
+    list.push(savedRec);
     if (!saveJSON(KEYS.payReqs, list)) { c.busy = false; renderCheckout(); return; }
     const planName = TIERS[c.tier].name;
     state.checkout = null;
@@ -7273,10 +7299,8 @@ function init() {
   on("unrankedBanner", "click", function (e) {
     const sw = e.target.closest ? e.target.closest("[data-admin-switch]") : null;
     if (sw) { adminSwitchOwnTier(sw.getAttribute("data-admin-switch")); return; }
-    const buyBtn = e.target.closest ? e.target.closest("[data-buy]") : null;
-    if (buyBtn && !buyBtn.disabled) { openCheckout(buyBtn.getAttribute("data-buy")); return; }
     const b = e.target.closest ? e.target.closest("[data-activate-free]") : null;
-    if (b) openCheckout("unranked");
+    if (b) activateUnranked();
   });
   on("pricingGrid", "click", function (e) {
     const sw = e.target.closest ? e.target.closest("[data-admin-switch]") : null;
