@@ -2423,7 +2423,10 @@ function startCheckoutOrderPolling(orderCode) {
       return;
     }
     try {
-      const resp = await fetch("/api/orders/status?code=" + encodeURIComponent(orderCode), { credentials: "same-origin" });
+      const resp = await fetch("/api/orders/status?code=" + encodeURIComponent(orderCode), {
+        headers: authHeaders(),
+        credentials: "same-origin"
+      });
       if (!resp.ok) return;
       const data = await resp.json();
       const orderObj = data && (data.order || data);
@@ -2467,7 +2470,7 @@ async function createCheckoutServerOrder() {
   try {
     const resp = await fetch("/api/orders", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders(),
       credentials: "same-origin",
       body: JSON.stringify({
         planId: c.tier,

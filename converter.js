@@ -1302,6 +1302,32 @@
     cState.activeImgIdx = U().clamp(cState.activeImgIdx, 0, Math.max(0, cState.images.length - 1));
   }
 
+  const FORBIDDEN_UPLOAD_EXT = /\.(html?|svg|jsx?|mjs|cjs|php\d*|phtml|exe|dll|bat|cmd|sh|ps1|vbs|jar|scr|msi|com)$/i;
+  const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+  function verifyFileMagicBytes(file, kind) {
+    if (!file || typeof file.slice !== "function") return Promise.resolve(true);
+    if (kind === "markdown" || kind === "text") return Promise.resolve(true);
+    return file.slice(0, 12).arrayBuffer().then(function (buf) {
+      const b = new Uint8Array(buf);
+      if (kind === "pdf") return b.length >= 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46; // %PDF
+      if (kind === "image") {
+        const isPng = b.length >= 4 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47;
+        const isJpg = b.length >= 3 && b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF;
+        const isGif = b.length >= 4 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38;
+        const isWebp = b.length >= 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50;
+        return isPng || isJpg || isGif || isWebp;
+      }
+      if (kind === "docx" || kind === "xlsx") {
+        // ZIP-based OOXML (PK\x03\x04) or legacy OLE2 (D0 CF 11 E0)
+        const isZip = b.length >= 4 && b[0] === 0x50 && b[1] === 0x4B && b[2] === 0x03 && b[3] === 0x04;
+        const isOle = b.length >= 4 && b[0] === 0xD0 && b[1] === 0xCF && b[2] === 0x11 && b[3] === 0xE0;
+        return isZip || isOle;
+      }
+      return true;
+    }).catch(function () { return false; });
+  }
+
   function addUnifiedFiles(fileList) {
     const raw = Array.from(fileList || []);
     if (raw.length === 0) return;
@@ -1309,13 +1335,22 @@
     const rejected = [];
     const emptyFiles = [];
     raw.forEach(function (f) {
+      const fname = String((f && f.name) || "file");
+      if (FORBIDDEN_UPLOAD_EXT.test(fname) || String((f && f.type) || "").toLowerCase().indexOf("svg") !== -1 || String((f && f.type) || "").toLowerCase().indexOf("html") !== -1) {
+        rejected.push(fname);
+        return;
+      }
       if (f && typeof f.size === "number" && f.size === 0) {
-        emptyFiles.push((f && f.name) || "file");
+        emptyFiles.push(fname);
+        return;
+      }
+      if (f && typeof f.size === "number" && f.size > MAX_UPLOAD_BYTES) {
+        rejected.push(fname + " (>25MB)");
         return;
       }
       const info = detectFileKind(f);
       if (info) valid.push({ file: f, kind: info.kind, ext: info.ext });
-      else rejected.push((f && f.name) || "file");
+      else rejected.push(fname);
     });
     if (emptyFiles.length > 0 && valid.length === 0) {
       U().showToast("T\u1ec7p \"" + emptyFiles.join(", ") + "\" r\u1ed7ng (0 KB), kh\u00f4ng c\u00f3 n\u1ed9i dung \u0111\u1ec3 x\u1eed l\u00fd.", "warning");

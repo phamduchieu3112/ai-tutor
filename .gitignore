@@ -1,8 +1,12 @@
 node_modules/
 dist/
 .vercel/
-.env*
+.env
+.env.*
 !.env.example
+*.pem
+*.key
+test_*.js
 server-db.json
 data/db.json
 data/system-keys-store.json

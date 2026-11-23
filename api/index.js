@@ -6,12 +6,14 @@ const fs = require("fs");
 const path = require("path");
 const net = require("net");
 const tls = require("tls");
+const crypto = require("crypto");
 const { maskApiKey, encryptSecret, isEncryptionConfigured } = require("../lib/crypto");
 const { handleAiProxy } = require("../lib/ai-proxy");
 const { handleAdminSystemKeys, handleAdminMe } = require("../lib/admin-keys");
 const { verifyAdminRequest } = require("../lib/auth");
 const storage = require("../lib/storage");
 const docCache = require("../lib/doc-cache");
+const security = require("../lib/security");
 
 // Load local .env if present (zero-dependency)
 (function loadDotEnv() {
@@ -938,13 +940,13 @@ function isCallerAdmin(req) {
 
 function readBody(req) {
   if (req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body)) {
-    return Promise.resolve(req.body);
+    return Promise.resolve(security.sanitizeInput(req.body));
   }
   if (typeof req.body === "string") {
-    try { return Promise.resolve(req.body ? JSON.parse(req.body) : {}); } catch (e) { return Promise.resolve({}); }
+    try { return Promise.resolve(security.sanitizeInput(req.body ? JSON.parse(req.body) : {})); } catch (e) { return Promise.resolve({}); }
   }
   if (Buffer.isBuffer(req.body)) {
-    try { return Promise.resolve(JSON.parse(req.body.toString("utf8") || "{}")); } catch (e) { return Promise.resolve({}); }
+    try { return Promise.resolve(security.sanitizeInput(JSON.parse(req.body.toString("utf8") || "{}"))); } catch (e) { return Promise.resolve({}); }
   }
   return new Promise(function (resolve) {
     let data = "";
@@ -953,17 +955,18 @@ function readBody(req) {
       if (data.length > 8 * 1024 * 1024) { try { req.destroy(); } catch (e) { /* */ } resolve({}); }
     });
     req.on("end", function () {
-      try { resolve(data ? JSON.parse(data) : {}); } catch (e) { resolve({}); }
+      try { resolve(security.sanitizeInput(data ? JSON.parse(data) : {})); } catch (e) { resolve({}); }
     });
     req.on("error", function () { resolve({}); });
   });
 }
 
 function sendJson(res, status, obj) {
-  res.writeHead(status, {
+  const secHeaders = security.buildApiSecurityHeaders(res && res.__req);
+  res.writeHead(status, Object.assign({
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store, no-cache, must-revalidate"
-  });
+  }, secHeaders));
   res.end(JSON.stringify(obj));
 }
 
@@ -1223,13 +1226,14 @@ module.exports = async function apiHandler(req, res) {
     return handleAdminSystemKeys(req, res, p);
   }
 
+  res.__req = req;
   if (method === "OPTIONS") {
-    res.writeHead(204, {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type,Authorization,X-User-Email",
-      "Access-Control-Expose-Headers": "X-AI-Fallback-Provider, X-AI-Fallback-Model, X-AI-RateLimit-Remaining, X-AI-RateLimit-Limit"
-    });
+    const origin = req && req.headers && req.headers.origin ? String(req.headers.origin).trim() : "";
+    if (origin && !security.isAllowedOrigin(origin)) {
+      res.writeHead(403, { "Content-Type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ ok: false, error: "CORS origin not allowed" }));
+    }
+    res.writeHead(204, security.buildApiSecurityHeaders(req));
     return res.end();
   }
 
@@ -1240,17 +1244,27 @@ module.exports = async function apiHandler(req, res) {
 
     /* ---------- User Registration & Login Tracking API ---------- */
     if (p === "/api/users/register" && method === "POST") {
+      const rl = security.checkSlidingWindowRateLimit("register", security.getClientIp(req), 25, 10 * 60 * 1000);
+      if (!rl.allowed) {
+        return sendJson(res, 429, { error: "Qu\u00e1 nhi\u1ec1u y\u00eau c\u1ea7u. Vui l\u00f2ng th\u1eed l\u1ea1i sau " + rl.retryAfterSec + " gi\u00e2y." });
+      }
       const body = await readBody(req);
+      // #8 Strict field whitelist: strip/ignore role, plan, tier, proExpiresAt, credits, isAdmin
       const caller = getCallerEmail(req) || String((body && body.email) || "").trim().toLowerCase();
       if (!caller || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(caller)) {
         return sendJson(res, 400, { error: "Email kh\u00f4ng h\u1ee3p l\u1ec7." });
       }
+      const safeName = String((body && body.name) || caller.split("@")[0]).trim().slice(0, 120);
+      const safePicture = typeof (body && body.picture) === "string" && /^https?:\/\//i.test(body.picture.trim())
+        ? body.picture.trim().slice(0, 500)
+        : "";
+      const safeUid = String((body && body.uid) || caller).trim().slice(0, 128);
       const db = await loadDb();
       const result = upsertRegisteredUser(db, {
-        uid: (body && body.uid) || caller,
+        uid: safeUid,
         email: caller,
-        name: (body && body.name) || caller.split("@")[0],
-        picture: (body && body.picture) || ""
+        name: safeName,
+        picture: safePicture
       }, { bumpLogin: true });
       await saveDb(db);
       let emailNotification = null;
@@ -1439,48 +1453,55 @@ module.exports = async function apiHandler(req, res) {
     }
 
     if (p === "/api/subscriptions/unranked" && method === "POST") {
-      const body = await readBody(req);
-      const caller = getCallerEmail(req) || String((body && body.email) || "").trim().toLowerCase();
-      if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
-      const db = await loadDb();
-      const cur = db.subscriptions[caller];
-      if (cur && PAID_PLANS.includes(cur.tier) && Number(cur.expires) > Date.now()) {
-        return sendJson(res, 400, { error: "B\u1ea1n \u0111ang c\u00f3 g\u00f3i cao h\u01a1n Unranked." });
-      }
-      const now = Date.now();
-      db.subscriptions[caller] = { tier: "unranked", since: now, expires: now + 365 * DAY_MS };
-      if (db.revokedSubscriptions) delete db.revokedSubscriptions[caller];
-      const uRes = upsertRegisteredUser(db, { email: caller, name: (body && body.name) || caller.split("@")[0] });
-      await saveDb(db);
-      if (uRes.shouldNotify && uRes.user) {
-        try { await sendNewUserNotification(db, uRes.user); } catch (e) { /* safe */ }
-      }
-      return sendJson(res, 200, { ok: true, subscription: db.subscriptions[caller] });
+      // #4/#5 Unranked tier is now 10,000 VND/year via VietQR (/api/orders) — free self-upgrade locked down
+      return sendJson(res, 402, {
+        ok: false,
+        error: "G\u00f3i Unranked y\u00eau c\u1ea7u thanh to\u00e1n 10.000\u0111/n\u0103m qua VietQR (/api/orders)."
+      });
     }
 
     if (p === "/api/payment-requests" && method === "POST") {
+      const rl = security.checkSlidingWindowRateLimit("payment_req", security.getClientIp(req), 12, 10 * 60 * 1000);
+      if (!rl.allowed) {
+        return sendJson(res, 429, { error: "Qu\u00e1 nhi\u1ec1u y\u00eau c\u1ea7u thanh to\u00e1n. Th\u1eed l\u1ea1i sau " + rl.retryAfterSec + " gi\u00e2y." });
+      }
       const body = await readBody(req);
       const caller = getCallerEmail(req) || String((body && body.userEmail) || "").trim().toLowerCase();
       if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
-      if (!body || !PAID_PLANS.includes(body.plan)) return sendJson(res, 400, { error: "G\u00f3i thanh to\u00e1n kh\u00f4ng h\u1ee3p l\u1ec7." });
+      const planKey = String((body && body.plan) || "").trim().toLowerCase();
+      if (!PLAN_PRICES[planKey]) return sendJson(res, 400, { error: "G\u00f3i thanh to\u00e1n kh\u00f4ng h\u1ee3p l\u1ec7." });
+      const receiptCheck = security.validateReceiptDataUrl(body && body.receiptImage);
+      if (!receiptCheck.ok) return sendJson(res, 400, { error: receiptCheck.error });
       const db = await loadDb();
       const dup = db.payment_requests.some(function (r) {
-        return r && String(r.userEmail || "").toLowerCase() === caller && r.plan === body.plan && r.status === "pending";
+        return r && String(r.userEmail || "").toLowerCase() === caller && r.plan === planKey && r.status === "pending";
       });
       if (dup) return sendJson(res, 409, { error: "B\u1ea1n \u0111\u00e3 c\u00f3 y\u00eau c\u1ea7u \u0111ang ch\u1edd duy\u1ec7t cho g\u00f3i n\u00e0y." });
+      // #4/#5 Server-side authoritative pricing (discard client body.amount)
+      const basePrice = PLAN_PRICES[planKey];
+      let discountPct = 0;
+      const voucherCode = String((body && body.voucher) || "").trim().toUpperCase();
+      if (voucherCode && Array.isArray(db.vouchers)) {
+        const v = db.vouchers.find(function (x) { return x && String(x.code || "").toUpperCase() === voucherCode; });
+        if (v && Number(v.discountPercent) > 0 && (!v.expiresAt || Date.parse(v.expiresAt) > Date.now())) {
+          discountPct = Math.min(100, Math.max(0, Number(v.discountPercent)));
+        }
+      }
+      const serverAmount = Math.max(0, Math.round(basePrice * (100 - discountPct) / 100));
+      // #6 Manual "Tôi đã thanh toán" ALWAYS creates status "pending" (NEVER "PAID" or tier upgrade)
       const rec = {
-        id: String(body.id || ("req_" + Date.now())),
-        userId: String(body.userId || caller),
+        id: "req_" + Date.now() + "_" + crypto.randomBytes(3).toString("hex"),
+        userId: caller,
         userEmail: caller,
-        userName: String(body.userName || caller),
-        plan: body.plan,
-        amount: Number(body.amount) || 0,
-        voucher: String(body.voucher || ""),
-        memo: String(body.memo || ""),
-        transferNote: String(body.transferNote || ""),
-        receiptImage: typeof body.receiptImage === "string" ? body.receiptImage.slice(0, 600000) : "",
+        userName: String((body && body.userName) || caller).trim().slice(0, 120),
+        plan: planKey,
+        amount: serverAmount,
+        voucher: voucherCode,
+        memo: String((body && body.memo) || "").trim().slice(0, 120),
+        transferNote: String((body && body.transferNote) || "").trim().slice(0, 200),
+        receiptImage: receiptCheck.value,
         status: "pending",
-        createdAt: body.createdAt || new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         reviewedAt: null,
         reviewedBy: null,
         rejectReason: "",
@@ -1527,13 +1548,24 @@ module.exports = async function apiHandler(req, res) {
     }
 
     if (p === "/api/docs/cache" && method === "POST") {
+      const rl = security.checkSlidingWindowRateLimit("doc_cache", security.getClientIp(req), 30, 10 * 60 * 1000);
+      if (!rl.allowed) return sendJson(res, 429, { ok: false, error: "Rate limit exceeded." });
       const body = await readBody(req);
       const hash = docCache.normalizeSha256(body.hash || body.fileHash || "");
       if (!hash) {
         return sendJson(res, 400, { ok: false, code: "INVALID_HASH", error: "Invalid SHA-256 hash." });
       }
+      const uploadCheck = security.validateUploadMeta({
+        filename: body.fileName || "document.pdf",
+        mimeType: body.mimeType || "",
+        sizeBytes: Buffer.byteLength(String(body.parsedText || ""), "utf8"),
+        maxBytes: 2 * 1024 * 1024
+      });
+      if (!uploadCheck.ok) {
+        return sendJson(res, 400, { ok: false, error: uploadCheck.error });
+      }
       const saved = await docCache.setCachedDoc(hash, {
-        fileName: body.fileName || "",
+        fileName: uploadCheck.filename,
         mimeType: body.mimeType || "",
         parsedText: body.parsedText || "",
         parsedQuestions: body.parsedQuestions || null
@@ -1804,6 +1836,10 @@ module.exports = async function apiHandler(req, res) {
     }
 
     if (p === "/api/lms/verify-pin" && method === "POST") {
+      const rl = security.checkSlidingWindowRateLimit("lms_pin", security.getClientIp(req), 12, 5 * 60 * 1000);
+      if (!rl.allowed) {
+        return sendJson(res, 429, { ok: false, error: "Qu\u00e1 nhi\u1ec1u l\u1ea7n th\u1eed m\u00e3 PIN. Vui l\u00f2ng ch\u1edd " + rl.retryAfterSec + " gi\u00e2y." });
+      }
       const body = await readBody(req);
       const code = String(body.code || "").trim().toUpperCase();
       const studentId = String(body.studentId || "").trim();
@@ -1977,21 +2013,47 @@ module.exports = async function apiHandler(req, res) {
 
     /* ---------- Automated VietQR Orders & SePay Webhook (MB Bank 316463) ---------- */
     if (p === "/api/orders" && method === "POST") {
+      const rl = security.checkSlidingWindowRateLimit("orders", security.getClientIp(req), 20, 10 * 60 * 1000);
+      if (!rl.allowed) {
+        return sendJson(res, 429, { ok: false, error: "Qu\u00e1 nhi\u1ec1u y\u00eau c\u1ea7u t\u1ea1o \u0111\u01a1n. Th\u1eed l\u1ea1i sau " + rl.retryAfterSec + " gi\u00e2y." });
+      }
       const body = await readBody(req);
-      const userEmail = String(body.email || body.userEmail || getCallerEmail(req) || "").trim().toLowerCase();
+      const userEmail = String(getCallerEmail(req) || body.email || body.userEmail || "").trim().toLowerCase();
       const planId = String(body.planId || body.plan || "").trim().toLowerCase();
-      if (!userEmail) return sendJson(res, 400, { ok: false, error: "Thiếu email tài khoản." });
-      if (!PLAN_PRICES[planId]) return sendJson(res, 400, { ok: false, error: "Gói nâng cấp không hợp lệ." });
+      if (!userEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userEmail)) {
+        return sendJson(res, 400, { ok: false, error: "Thi\u1ebfu email t\u00e0i kho\u1ea3n h\u1ee3p l\u1ec7." });
+      }
+      if (!PLAN_PRICES[planId]) return sendJson(res, 400, { ok: false, error: "G\u00f3i n\u00e2ng c\u1ea5p kh\u00f4ng h\u1ee3p l\u1ec7." });
+      // #5 Reject negative, zero, non-integer, or tampered quantities
+      if (body.quantity !== undefined) {
+        const qty = Number(body.quantity);
+        if (!Number.isInteger(qty) || qty !== 1) {
+          return sendJson(res, 400, { ok: false, error: "S\u1ed1 l\u01b0\u1ee3ng \u0111\u01a1n h\u00e0ng kh\u00f4ng h\u1ee3p l\u1ec7 (ch\u1ec9 h\u1ed7 tr\u1ee3 1 g\u00f3i/l\u1ea7n)." });
+        }
+      }
 
       const db = await loadDb();
       if (!db.sepayOrders || typeof db.sepayOrders !== "object") db.sepayOrders = {};
 
+      // #4 Server-side authoritative pricing (client amount/price/total is completely ignored)
       const basePrice = PLAN_PRICES[planId];
       let discountPct = 0;
       const voucherCode = String(body.voucherCode || "").trim().toUpperCase();
       if (voucherCode && Array.isArray(db.vouchers)) {
         const v = db.vouchers.find(function (x) { return x && String(x.code || "").toUpperCase() === voucherCode; });
-        if (v && Number(v.discountPercent) > 0) {
+        if (!v || v.active === false) {
+          return sendJson(res, 400, { ok: false, error: "M\u00e3 gi\u1ea3m gi\u00e1 kh\u00f4ng t\u1ed3n t\u1ea1i ho\u1eb7c \u0111\u00e3 ng\u1eebng ho\u1ea1t \u0111\u1ed9ng." });
+        }
+        if (v.expiresAt && Date.parse(v.expiresAt) <= Date.now()) {
+          return sendJson(res, 400, { ok: false, error: "M\u00e3 gi\u1ea3m gi\u00e1 \u0111\u00e3 h\u1ebft h\u1ea1n." });
+        }
+        if (Number(v.maxUses) > 0 && Number(v.usedCount || 0) >= Number(v.maxUses)) {
+          return sendJson(res, 400, { ok: false, error: "M\u00e3 gi\u1ea3m gi\u00e1 \u0111\u00e3 h\u1ebft l\u01b0\u1ee3t s\u1eed d\u1ee5ng." });
+        }
+        if (v.usedBy && v.usedBy[userEmail]) {
+          return sendJson(res, 409, { ok: false, error: "T\u00e0i kho\u1ea3n c\u1ee7a b\u1ea1n \u0111\u00e3 s\u1eed d\u1ee5ng m\u00e3 gi\u1ea3m gi\u00e1 n\u00e0y." });
+        }
+        if (Number(v.discountPercent) > 0) {
           discountPct = Math.min(100, Math.max(0, Number(v.discountPercent)));
         }
       }
@@ -2004,7 +2066,7 @@ module.exports = async function apiHandler(req, res) {
         orderCode: orderCode,
         userId: userEmail,
         userEmail: userEmail,
-        userName: String(body.userName || ""),
+        userName: String(body.userName || "").trim().slice(0, 120),
         planId: planId,
         baseAmount: basePrice,
         discountPercent: discountPct,
@@ -2021,7 +2083,13 @@ module.exports = async function apiHandler(req, res) {
 
       return sendJson(res, 201, {
         ok: true,
-        order: order,
+        order: {
+          orderCode: order.orderCode,
+          planId: order.planId,
+          expectedAmount: order.expectedAmount,
+          status: order.status,
+          createdAt: order.createdAt
+        },
         qrUrl: buildDynamicVietQrUrl(expectedAmount, orderCode)
       });
     }
@@ -2030,12 +2098,25 @@ module.exports = async function apiHandler(req, res) {
       const urlObj = new URL(String(req.url || "/"), "http://localhost");
       const code = String(urlObj.searchParams.get("code") || "").trim().toUpperCase();
       if (!code || !/^AITUTOR[A-Z0-9]+$/.test(code)) {
-        return sendJson(res, 400, { ok: false, error: "Mã đơn hàng không hợp lệ." });
+        return sendJson(res, 400, { ok: false, error: "M\u00e3 \u0111\u01a1n h\u00e0ng kh\u00f4ng h\u1ee3p l\u1ec7." });
       }
       const db = await loadDb();
       const order = db.sepayOrders && db.sepayOrders[code];
       if (!order) {
-        return sendJson(res, 404, { ok: false, code: "ORDER_NOT_FOUND", error: "Không tìm thấy đơn hàng." });
+        return sendJson(res, 404, { ok: false, code: "ORDER_NOT_FOUND", error: "Kh\u00f4ng t\u00ecm th\u1ea5y \u0111\u01a1n h\u00e0ng." });
+      }
+      // #2 Strict IDOR check: caller must own the order or be a verified admin
+      let callerEmail = getCallerEmail(req);
+      let callerIsVerifiedAdmin = false;
+      try {
+        const adm = await verifyAdminRequest(req);
+        if (adm && adm.email) {
+          callerIsVerifiedAdmin = true;
+          if (!callerEmail) callerEmail = String(adm.email).toLowerCase();
+        }
+      } catch (e) { /* non-admin caller */ }
+      if (!callerIsVerifiedAdmin && (!callerEmail || callerEmail !== String(order.userEmail || "").toLowerCase())) {
+        return sendJson(res, 403, { ok: false, error: "Forbidden: Kh\u00f4ng c\u00f3 quy\u1ec1n xem tr\u1ea1ng th\u00e1i \u0111\u01a1n h\u00e0ng n\u00e0y." });
       }
       const sub = (db.subscriptions && db.subscriptions[order.userEmail]) || null;
       return sendJson(res, 200, {
@@ -2046,17 +2127,20 @@ module.exports = async function apiHandler(req, res) {
         paidAmount: order.paidAmount || 0,
         status: order.status,
         paidAt: order.paidAt || "",
-        order: order,
-        subscription: order.status === "PAID" ? sub : null
+        expiresAt: order.status === "PAID" && sub ? sub.expires : null,
+        subscription: order.status === "PAID" && sub ? { tier: sub.tier, expires: sub.expires } : null
       });
     }
 
     if (p === "/api/webhooks/sepay" && method === "POST") {
       const expectedKey = String(process.env.SEPAY_WEBHOOK_API_KEY || "").trim();
+      if (!expectedKey) {
+        return sendJson(res, 500, { success: false, error: "Server misconfiguration: SEPAY_WEBHOOK_API_KEY is not set" });
+      }
       const authHeader = String((req.headers && (req.headers.authorization || req.headers.Authorization)) || "").trim();
       const matchAuth = authHeader.match(/^Apikey\s+(.+)$/i);
       const providedKey = matchAuth ? matchAuth[1].trim() : "";
-      if (!expectedKey || !providedKey || providedKey !== expectedKey) {
+      if (!providedKey || !security.timingSafeEqualStr(providedKey, expectedKey)) {
         return sendJson(res, 401, { success: false, error: "Unauthorized SePay webhook Apikey" });
       }
 
@@ -2116,6 +2200,17 @@ module.exports = async function apiHandler(req, res) {
           sepayTransactionId: txId,
           autoApproved: true
         };
+        // #7 Atomically record voucher redemption to prevent replay/reuse
+        if (order.voucherCode && Array.isArray(db.vouchers)) {
+          const v = db.vouchers.find(function (x) { return x && String(x.code || "").toUpperCase() === String(order.voucherCode).toUpperCase(); });
+          if (v) {
+            if (!v.usedBy || typeof v.usedBy !== "object") v.usedBy = {};
+            if (!v.usedBy[userEmail]) {
+              v.usedBy[userEmail] = nowIso;
+              v.usedCount = Number(v.usedCount || 0) + 1;
+            }
+          }
+        }
       }
       if (Array.isArray(db.payment_requests)) {
         db.payment_requests.forEach(function (pr) {
@@ -2233,10 +2328,12 @@ module.exports = async function apiHandler(req, res) {
       });
     }
 
-    /* ---------- Strict Admin Routes ---------- */
+    /* ---------- Strict Admin Routes (#1 Server-Side Verified JWT/Session + Admin Allowlist) ---------- */
     if (p.startsWith("/api/admin/")) {
-      if (!isCallerAdmin(req)) {
-        return sendJson(res, 403, { error: "Forbidden: Ch\u1ec9 t\u00e0i kho\u1ea3n phamduchieurobotics@gmail.com c\u00f3 quy\u1ec1n qu\u1ea3n tr\u1ecb." });
+      try {
+        await verifyAdminRequest(req);
+      } catch (authErr) {
+        return sendJson(res, authErr.status || 403, { error: authErr.message || "Forbidden: Admin authentication required." });
       }
       const db = await loadDb();
       if (!db.revokedSubscriptions) db.revokedSubscriptions = {};
