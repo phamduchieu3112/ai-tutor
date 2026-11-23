@@ -596,8 +596,22 @@ function fmtIsoDisplay(iso) {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return String(iso);
-  const p = function (n) { return n < 10 ? "0" + n : String(n); };
-  return p(d.getHours()) + ":" + p(d.getMinutes()) + " " + p(d.getDate()) + "/" + p(d.getMonth() + 1) + "/" + d.getFullYear();
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Ho_Chi_Minh",
+      hour: "2-digit",
+      minute: "2-digit",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour12: false
+    }).formatToParts(d);
+    const get = function (t) { const f = parts.find(function (p) { return p.type === t; }); return f ? f.value : ""; };
+    return get("hour") + ":" + get("minute") + " " + get("day") + "/" + get("month") + "/" + get("year");
+  } catch (e) {
+    const p = function (n) { return n < 10 ? "0" + n : String(n); };
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + " " + p(d.getDate()) + "/" + p(d.getMonth() + 1) + "/" + d.getFullYear();
+  }
 }
 
 function buildLmsEmailTemplate(item, type, lang) {
@@ -629,32 +643,15 @@ function buildLmsEmailTemplate(item, type, lang) {
         ? ("[AI Tutor] 課題結果通知: " + studentName + " – " + quizTitle + " (" + scoreStr + ")")
         : ("[AI Tutor] Báo cáo kết quả: " + studentName + " – " + quizTitle + " (" + scoreStr + ")"));
     const ctaUrl = String(item.reviewUrl || "").trim() || receiptUrl || assignUrl;
-    const ctaLabel = l === "en" ? "Review Exam & Answers Online" : (l === "ja" ? "問題と解答をオンラインで確認" : "Xem lại đề & bài làm chi tiết trực tuyến");
-
-    const breakdownHtml = breakdown.length
-      ? '<div style="margin:18px 0 12px">' +
-          '<div style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#475569;margin-bottom:8px">' +
-            (l === "en" ? "Question-by-Question Breakdown" : (l === "ja" ? "問題別の解答詳細" : "Chi tiết bài làm từng câu")) +
-          '</div>' +
-          breakdown.map(function (q, idx) {
-            const ok = !!q.ok;
-            const badge = ok
-              ? '<span style="color:#059669;font-weight:700">✅ ' + (l === "en" ? "Correct" : (l === "ja" ? "正解" : "Đúng")) + '</span>'
-              : '<span style="color:#dc2626;font-weight:700">❌ ' + (l === "en" ? "Incorrect" : (l === "ja" ? "不正解" : "Sai")) + '</span>';
-            return '<div style="border:1px solid #e2e8f0;border-left:4px solid ' + (ok ? "#10b981" : "#ef4444") + ';border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#ffffff">' +
-              '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><strong>' + (l === "en" ? "Q" : (l === "ja" ? "問" : "Câu ")) + (q.index || (idx + 1)) + '</strong> &nbsp; ' + badge + '</div>' +
-              '<div style="font-size:13.5px;color:#0f172a;margin-bottom:6px">' + escHtml(String(q.prompt || q.text || "").slice(0, 400)) + '</div>' +
-              '<div style="font-size:12.5px;color:#475569">' +
-                (l === "en" ? "Selected" : (l === "ja" ? "解答" : "Bạn chọn")) + ': <strong>' + escHtml(String(q.pickedText || "—")) + '</strong> · ' +
-                (l === "en" ? "Correct Answer" : (l === "ja" ? "正解" : "Đáp án đúng")) + ': <strong style="color:#059669">' + escHtml(String(q.correctText || "—")) + '</strong>' +
-              '</div>' +
-            '</div>';
-          }).join("") +
-        '</div>'
-      : '';
+    const ctaLabel = l === "en" ? "View Exam & Detailed Answers Online" : (l === "ja" ? "問題と解答をオンラインで確認" : "Xem lại đề & bài làm chi tiết trực tuyến");
+    const reviewHint = l === "en"
+      ? "Click the button below to view the full question-by-question breakdown, print A4 worksheet, or export PDF + QR code."
+      : (l === "ja"
+        ? "下のボタンから全問の解答詳細・A4印刷・PDF + QR出力をご確認いただけます。"
+        : "Nhấn nút bên dưới để xem chi tiết bài làm từng câu, in phiếu A4 hoặc tải PDF kèm mã QR.");
 
     const html =
-      '<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;color:#0f172a;background:#f8fafc;padding:20px;border-radius:12px">' +
+      '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#0f172a;background:#f8fafc;padding:20px;border-radius:12px">' +
         '<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:24px">' +
           '<div style="font-size:12px;font-weight:700;color:#5347cd;text-transform:uppercase;letter-spacing:.05em">AI Tutor · Creator Studio</div>' +
           '<h2 style="margin:8px 0 14px;font-size:19px;color:#0f172a">' + escHtml(subject) + '</h2>' +
@@ -667,18 +664,11 @@ function buildLmsEmailTemplate(item, type, lang) {
             (durStr ? '<tr><td style="padding:6px 0;color:#64748b">' + (l === "en" ? "Duration" : (l === "ja" ? "所要時間" : "Thời gian làm")) + '</td><td style="padding:6px 0">' + escHtml(durStr) + '</td></tr>' : '') +
             (tabSwitches !== "" ? '<tr><td style="padding:6px 0;color:#64748b">' + (l === "en" ? "Tab Switches" : (l === "ja" ? "タブ切替回数" : "Số lần chuyển tab")) + '</td><td style="padding:6px 0">' + escHtml(tabSwitches) + '</td></tr>' : '') +
           '</table>' +
-          (feedback ? '<div style="background:#f1f5f9;border-left:4px solid #5347cd;padding:12px 14px;border-radius:6px;font-size:14px;margin-bottom:16px"><strong>' + (l === "en" ? "Teacher Remark:" : (l === "ja" ? "講師コメント:" : "Nhận xét:")) + '</strong><br>' + escHtml(feedback) + '</div>' : '') +
-          breakdownHtml +
-          (ctaUrl ? '<p style="margin:20px 0 6px"><a href="' + escHtml(ctaUrl) + '" style="display:inline-block;background:#5347cd;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:8px;font-weight:700;font-size:14px">' + escHtml(ctaLabel) + '</a></p><p style="font-size:12px;color:#64748b;word-break:break-all;margin:0">' + escHtml(ctaUrl) + '</p>' : '') +
+          (feedback ? '<div style="background:#f1f5f9;border-left:4px solid #5347cd;padding:12px 14px;border-radius:6px;font-size:14px;margin-bottom:14px"><strong>' + (l === "en" ? "Teacher Remark:" : (l === "ja" ? "講師コメント:" : "Nhận xét của giáo viên:")) + '</strong><br>' + escHtml(feedback) + '</div>' : '') +
+          '<p style="font-size:13px;color:#475569;line-height:1.5;margin:0 0 14px">' + escHtml(reviewHint) + '</p>' +
+          (ctaUrl ? '<p style="margin:0 0 8px"><a href="' + escHtml(ctaUrl) + '" style="display:inline-block;background:#5347cd;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:8px;font-weight:700;font-size:14px">' + escHtml(ctaLabel) + '</a></p><p style="font-size:12px;color:#64748b;word-break:break-all;margin:0">' + escHtml(ctaUrl) + '</p>' : '') +
         '</div>' +
       '</div>';
-
-    const breakdownText = breakdown.length
-      ? "\n--- Chi tiết từng câu ---\n" + breakdown.map(function (q, idx) {
-          return "Câu " + (q.index || (idx + 1)) + " [" + (q.ok ? "Đúng" : "Sai") + "]: " + String(q.prompt || q.text || "").slice(0, 200) +
-            "\n  Bạn chọn: " + String(q.pickedText || "—") + " | Đáp án đúng: " + String(q.correctText || "—");
-        }).join("\n") + "\n"
-      : "";
 
     const text = subject + "\n" +
       "Học sinh: " + studentName + (className ? (" (" + className + ")") : "") + "\n" +
@@ -686,10 +676,9 @@ function buildLmsEmailTemplate(item, type, lang) {
       "Điểm số: " + scoreStr + (correctStr ? (" (" + correctStr + ")") : "") + "\n" +
       (subTimeStr ? ("Thời điểm nộp: " + subTimeStr + "\n") : "") +
       (durStr ? ("Thời gian làm: " + durStr + "\n") : "") +
-      (tabSwitches !== "" ? ("Chuyển tab: " + tabSwitches + "\n") : "") +
+      (tabSwitches !== "" ? ("Số lần chuyển tab: " + tabSwitches + "\n") : "") +
       (feedback ? ("Nhận xét: " + feedback + "\n") : "") +
-      breakdownText +
-      (ctaUrl ? ("Xem lại trực tuyến: " + ctaUrl + "\n") : "");
+      (ctaUrl ? ("Xem chi tiết bài làm trực tuyến: " + ctaUrl + "\n") : "");
     return { subject: subject, html: html, text: text };
   }
 
@@ -1549,10 +1538,104 @@ module.exports = async function apiHandler(req, res) {
       if (syncedCount > 0) await saveDb(db);
 
       const idSet = new Set(syncedIds);
+      if (Array.isArray(body.submissions) && body.submissions.length) {
+        const subMap = new Map(db.lmsSubmissions.map(function (s) { return [String(s.id), s]; }));
+        let subAdded = false;
+        body.submissions.forEach(function (s) {
+          if (s && s.id && !subMap.has(String(s.id))) {
+            db.lmsSubmissions.push(s);
+            subMap.set(String(s.id), s);
+            subAdded = true;
+          }
+        });
+        if (subAdded) await saveDb(db);
+      }
+
       const cloudSubs = db.lmsSubmissions.filter(function (s) {
         return s && (idSet.has(String(s.assignmentId)) || (s.assignCode && db.lmsAssignments[s.assignCode]));
       });
       return sendJson(res, 200, { ok: true, syncedCount: syncedCount, submissions: cloudSubs });
+    }
+
+    /* ---------- Public Completed Attempt Result Resolver (Unauthenticated-Safe) ---------- */
+    if (p === "/api/lms/public-attempt" && method === "GET") {
+      const urlObj = new URL(String(req.url || "/"), "http://localhost");
+      const code = String(urlObj.searchParams.get("code") || urlObj.searchParams.get("assign") || "").trim().toUpperCase();
+      const attemptId = String(urlObj.searchParams.get("attempt") || "").trim();
+      if (!code || !attemptId) {
+        return sendJson(res, 400, { ok: false, code: "MISSING_PARAMS", error: "Thiếu mã bài tập hoặc mã lượt nộp." });
+      }
+      const db = await loadDb();
+      const entry = db.lmsAssignments && db.lmsAssignments[code];
+      const allSubs = Array.isArray(db.lmsSubmissions) ? db.lmsSubmissions : [];
+      const rawSub = allSubs.find(function (s) {
+        if (!s || String(s.id) !== attemptId) return false;
+        if (entry && String(s.assignmentId) === String(entry.id)) return true;
+        if (s.assignCode && String(s.assignCode).toUpperCase() === code) return true;
+        return false;
+      });
+      if (!rawSub) {
+        return sendJson(res, 404, { ok: false, code: "ATTEMPT_NOT_FOUND", error: "Không tìm thấy kết quả bài làm với mã này." });
+      }
+
+      const stuRec = entry && Array.isArray(entry.assignedStudents)
+        ? entry.assignedStudents.find(function (st) { return String(st.id) === String(rawSub.studentId); })
+        : null;
+
+      // Strip sensitive fields (parentEmail, parentEmailTarget, raw pin)
+      const safeSub = {
+        id: rawSub.id,
+        assignmentId: rawSub.assignmentId,
+        assignCode: rawSub.assignCode || code,
+        quizTitle: rawSub.quizTitle || (entry && entry.title) || "",
+        studentId: rawSub.studentId,
+        studentName: rawSub.studentName || (stuRec && stuRec.fullName) || "",
+        className: (stuRec && stuRec.className) || rawSub.className || "",
+        attemptNo: rawSub.attemptNo || 1,
+        score: rawSub.score10,
+        score10: rawSub.score10,
+        maxScore: 10,
+        correctCount: rawSub.correctCount,
+        totalQuestions: rawSub.totalQuestions,
+        durationSec: rawSub.durationSec,
+        durationSeconds: rawSub.durationSec,
+        tabSwitches: rawSub.tabSwitches || 0,
+        submittedAt: rawSub.submittedAt,
+        teacherRemark: rawSub.teacherRemark || (entry && entry.teacherNote) || "",
+        records: Array.isArray(rawSub.records) ? rawSub.records : [],
+        askTeacherIds: Array.isArray(rawSub.askTeacherIds) ? rawSub.askTeacherIds : [],
+        parentReportSentAt: rawSub.parentReportSentAt || rawSub.parentEmailSentAt || ""
+      };
+
+      const safeAssign = entry ? {
+        id: entry.id,
+        code: entry.code,
+        title: entry.title,
+        gradeLevel: entry.gradeLevel || "unclassified",
+        subject: entry.subject || "",
+        deadline: entry.deadline || "",
+        revealMode: "immediate",
+        teacherNote: entry.teacherNote || "",
+        quizSnapshot: entry.quizSnapshot || null
+      } : {
+        id: rawSub.assignmentId,
+        code: code,
+        title: rawSub.quizTitle || "Bài tập",
+        revealMode: "immediate",
+        quizSnapshot: null
+      };
+
+      return sendJson(res, 200, {
+        ok: true,
+        student: {
+          id: safeSub.studentId,
+          fullName: safeSub.studentName,
+          className: safeSub.className,
+          school: (stuRec && stuRec.school) || ""
+        },
+        assignment: safeAssign,
+        submission: safeSub
+      });
     }
 
     if (p === "/api/lms/public-assignment" && method === "GET") {

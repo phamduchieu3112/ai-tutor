@@ -91,10 +91,13 @@
         })
       });
     });
+    const localSubsToPush = loadSubmissions().filter(function (s) {
+      return s && bundles.some(function (b) { return String(b.id) === String(s.assignmentId); });
+    });
     const resp = await fetch("/api/lms/assignments/sync", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assignments: bundles })
+      body: JSON.stringify({ assignments: bundles, submissions: localSubsToPush })
     });
     if (!resp.ok) return;
     const data = await resp.json().catch(function () { return {}; });
@@ -2746,21 +2749,24 @@
     lmsState.remoteLoading = false;
 
     const localAssign = loadAssignments().find(function (a) { return String(a.code || "").toUpperCase() === normCode; });
-    if (localAssign && opts && (opts.attemptId || opts.review)) {
-      const allSubs = loadSubmissions();
-      if (opts.attemptId) {
-        const found = allSubs.find(function (s) { return String(s.id) === String(opts.attemptId); });
-        if (found) lmsState.lastSubmissionId = found.id;
-      } else if (opts.review) {
-        const assignSubs = allSubs.filter(function (s) { return String(s.assignmentId) === String(localAssign.id); });
-        if (assignSubs.length) lmsState.lastSubmissionId = assignSubs[assignSubs.length - 1].id;
+    const wantedAttemptId = (opts && opts.attemptId) ? String(opts.attemptId).trim() : "";
+    let foundLocalSub = null;
+    if (wantedAttemptId) {
+      foundLocalSub = loadSubmissions().find(function (s) { return String(s.id) === wantedAttemptId; }) || null;
+      if (foundLocalSub) lmsState.lastSubmissionId = foundLocalSub.id;
+    } else if (localAssign && opts && opts.review) {
+      const assignSubs = loadSubmissions().filter(function (s) { return String(s.assignmentId) === String(localAssign.id); });
+      if (assignSubs.length) {
+        foundLocalSub = assignSubs[assignSubs.length - 1];
+        lmsState.lastSubmissionId = foundLocalSub.id;
       }
     }
 
-    if (!localAssign && normCode && typeof fetch === "function") {
+    // Direct Public Attempt Result hydration (?assign=CODE&attempt=ID) — bypasses login & PIN!
+    if (wantedAttemptId && (!foundLocalSub || !localAssign) && normCode && typeof fetch === "function") {
       lmsState.remoteLoading = true;
-      const attemptParam = (opts && opts.attemptId) ? ("&attempt=" + encodeURIComponent(opts.attemptId)) : "";
-      fetch("/api/lms/public-assignment?code=" + encodeURIComponent(normCode) + attemptParam)
+      lmsState.remoteLoadingMsg = tr("Đang tải kết quả bài làm...");
+      fetch("/api/lms/public-attempt?code=" + encodeURIComponent(normCode) + "&attempt=" + encodeURIComponent(wantedAttemptId))
         .then(function (resp) {
           return resp.json().catch(function () { return {}; }).then(function (data) {
             return { ok: resp.ok, status: resp.status, data: data };
@@ -2769,17 +2775,50 @@
         .then(function (r) {
           if (lmsState.activeAssignCode !== normCode) return;
           lmsState.remoteLoading = false;
+          lmsState.remoteLoadingMsg = "";
+          if (r.ok && r.data && r.data.submission) {
+            if (r.data.assignment) lmsState.remoteAssignment = r.data.assignment;
+            if (r.data.student) lmsState.remoteStudents = [r.data.student];
+            const localSubs = loadSubmissions();
+            if (!localSubs.some(function (s) { return String(s.id) === String(r.data.submission.id); })) {
+              localSubs.push(r.data.submission);
+              saveSubmissions(localSubs);
+            }
+            lmsState.lastSubmissionId = r.data.submission.id;
+          } else {
+            lmsState.remoteError = {
+              code: (r.data && r.data.code) || ("HTTP_" + r.status),
+              message: (r.data && r.data.error) || tr("Không tìm thấy kết quả bài làm với mã này.")
+            };
+          }
+          refreshStudio();
+        })
+        .catch(function (err) {
+          if (lmsState.activeAssignCode !== normCode) return;
+          lmsState.remoteLoading = false;
+          lmsState.remoteLoadingMsg = "";
+          lmsState.remoteError = {
+            code: "NETWORK_ERROR",
+            message: (err && err.message) || tr("Không thể kết nối máy chủ để tải kết quả bài làm.")
+          };
+          refreshStudio();
+        });
+    } else if (!localAssign && normCode && typeof fetch === "function") {
+      lmsState.remoteLoading = true;
+      lmsState.remoteLoadingMsg = tr("Đang tải đề bài...");
+      fetch("/api/lms/public-assignment?code=" + encodeURIComponent(normCode))
+        .then(function (resp) {
+          return resp.json().catch(function () { return {}; }).then(function (data) {
+            return { ok: resp.ok, status: resp.status, data: data };
+          });
+        })
+        .then(function (r) {
+          if (lmsState.activeAssignCode !== normCode) return;
+          lmsState.remoteLoading = false;
+          lmsState.remoteLoadingMsg = "";
           if (r.ok && r.data && r.data.assignment) {
             lmsState.remoteAssignment = r.data.assignment;
             lmsState.remoteStudents = Array.isArray(r.data.students) ? r.data.students : [];
-            if (r.data.submission) {
-              const localSubs = loadSubmissions();
-              if (!localSubs.some(function (s) { return String(s.id) === String(r.data.submission.id); })) {
-                localSubs.push(r.data.submission);
-                saveSubmissions(localSubs);
-              }
-              lmsState.lastSubmissionId = r.data.submission.id;
-            }
           } else {
             lmsState.remoteError = {
               code: (r.data && r.data.code) || ("HTTP_" + r.status),
@@ -2793,6 +2832,7 @@
         .catch(function (err) {
           if (lmsState.activeAssignCode !== normCode) return;
           lmsState.remoteLoading = false;
+          lmsState.remoteLoadingMsg = "";
           lmsState.remoteError = {
             code: "NETWORK_ERROR",
             message: (err && err.message) || tr("Không thể kết nối máy chủ để tải bài tập.")
@@ -2816,8 +2856,8 @@
   function renderStudentAssignmentView(root) {
     if (lmsState.remoteLoading) {
       root.innerHTML = '<div class="ql-wrap"><div class="ql-card"><div class="ql-section" style="text-align:center;padding:48px 24px">' +
-        '<h3>' + esc(tr("Đang tải đề bài...")) + '</h3>' +
-        '<p class="muted">' + esc(tr("Đang kết nối máy chủ AI Tutor để tải bài tập ")) + '<code>' + esc(lmsState.activeAssignCode || "") + '</code></p>' +
+        '<h3>' + esc(lmsState.remoteLoadingMsg || tr("Đang tải đề bài...")) + '</h3>' +
+        '<p class="muted">' + esc(tr("Đang kết nối máy chủ AI Tutor cho mã bài ")) + '<code>' + esc(lmsState.activeAssignCode || "") + '</code></p>' +
       '</div></div></div>';
       return;
     }
@@ -3251,6 +3291,7 @@
     const subs = loadSubmissions();
     subs.push(sub);
     saveSubmissions(subs);
+    syncAssignmentsToCloud([assign], true).catch(function () { /* ensure attempt is synced for parent email link */ });
 
     if (student && resolvedParentEmail && assign.parentEmailEnabled !== false && assign.notifyParent !== false) {
       dispatchParentReportEmail(assign, student, sub, { interactive: false });
