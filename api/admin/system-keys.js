@@ -1,7 +1,7 @@
 /* ============================================================
    AI Tutor - Vercel Serverless Endpoint: /api/admin/system-keys
    ============================================================ */
-const { handleAdminSystemKeys } = require("../lib/admin-keys");
+const { handleAdminSystemKeys } = require("../../lib/admin-keys");
 
 module.exports = async function adminSystemKeysHandler(req, res) {
   const urlObj = new URL(String(req.url || "/"), "http://localhost");

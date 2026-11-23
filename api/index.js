@@ -6,12 +6,12 @@ const fs = require("fs");
 const path = require("path");
 const net = require("net");
 const tls = require("tls");
-const { maskApiKey, encryptSecret, isEncryptionConfigured } = require("./lib/crypto");
-const { handleAiProxy } = require("./lib/ai-proxy");
-const { handleAdminSystemKeys, handleAdminMe } = require("./lib/admin-keys");
-const { verifyAdminRequest } = require("./lib/auth");
-const storage = require("./lib/storage");
-const docCache = require("./lib/doc-cache");
+const { maskApiKey, encryptSecret, isEncryptionConfigured } = require("../lib/crypto");
+const { handleAiProxy } = require("../lib/ai-proxy");
+const { handleAdminSystemKeys, handleAdminMe } = require("../lib/admin-keys");
+const { verifyAdminRequest } = require("../lib/auth");
+const storage = require("../lib/storage");
+const docCache = require("../lib/doc-cache");
 
 // Load local .env if present (zero-dependency)
 (function loadDotEnv() {
