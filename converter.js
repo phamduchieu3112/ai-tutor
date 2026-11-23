@@ -819,7 +819,7 @@
           '</div>' +
 
           '<div style="padding-top:14px;border-top:1px solid var(--border)">' +
-            '<div class="panel-head" style="margin-bottom:8px"><div><h3 style="margin:0;font-size:1rem">🌐 Ng\u00f4n ng\u1eef giao di\u1ec7n (Language / 表示言語)</h3><p class="muted" style="margin:2px 0 0;font-size:.8rem">Chuy\u1ec3n \u0111\u1ed5i t\u1ee9c th\u00ec gi\u1eefa Ti\u1ebfng Vi\u1ec7t, Ti\u1ebfng Anh v\u00e0 Ti\u1ebfng Nh\u1eadt (gi\u1eef nguy\u00ean ph\u00f4ng ch\u1eef h\u1ec7 th\u1ed1ng).</p></div></div>' +
+            '<div class="panel-head" style="margin-bottom:8px"><div><h3 style="margin:0;font-size:1rem">Ng\u00f4n ng\u1eef giao di\u1ec7n</h3><p class="muted" style="margin:2px 0 0;font-size:.8rem">Chuy\u1ec3n \u0111\u1ed5i t\u1ee9c th\u00ec gi\u1eefa Ti\u1ebfng Vi\u1ec7t, Ti\u1ebfng Anh v\u00e0 Ti\u1ebfng Nh\u1eadt (gi\u1eef nguy\u00ean ph\u00f4ng ch\u1eef h\u1ec7 th\u1ed1ng).</p></div></div>' +
             '<div class="seg" role="group" aria-label="Ch\u1ecdn ng\u00f4n ng\u1eef">' +
               '<button type="button" class="seg-btn' + (curLang === "vi" ? " active" : "") + '" data-lang-set="vi">VI</button>' +
               '<button type="button" class="seg-btn' + (curLang === "en" ? " active" : "") + '" data-lang-set="en">EN</button>' +

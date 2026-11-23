@@ -24,6 +24,7 @@
   <script src="/app.js?v=20261123a" defer></script>
   <script src="/converter.js?v=20261123b" defer></script>
   <script src="/studio.js?v=20261123a" defer></script>
+  <script src="/lms.js?v=20261123a" defer></script>
   <script src="/vocab.js?v=20261123a" defer></script>
   <script src="/cloud-share-pdf.js?v=20261123a" defer></script>
 </head>
@@ -165,8 +166,13 @@
   <!-- APP SHELL -->
   <div id="appShell" class="hidden no-print">
     <div class="notice-banner" id="noticeBanner" role="note">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"></path></svg>
-      <span><strong>L&#x1b0;u &#xfd; quan tr&#x1ecd;ng:</strong> D&#x1eef; li&#x1ec7;u b&#x1ed9; &#x111;&#x1ec1; c&#xe1; nh&#xe2;n, ti&#x1ebf;n &#x111;&#x1ed9; l&#xe0;m b&#xe0;i (Auto-save) v&#xe0; S&#x1ed5; tay c&#xe2;u hay sai &#x111;&#x1b0;&#x1ee3;c l&#x1b0;u tr&#x1ef1;c ti&#x1ebf;p tr&#xea;n tr&#xec;nh duy&#x1ec7;t n&#xe0;y v&#xe0; h&#x1ed7; tr&#x1ee3; sao l&#x1b0;u Google Drive / JSON. Vui l&#xf2;ng kh&#xf4;ng x&#xf3;a cache tr&#xec;nh duy&#x1ec7;t ho&#x1eb7;c h&#xe3;y sao l&#x1b0;u &#x111;&#x1ecb;nh k&#x1ef3; trong m&#x1ee5;c <strong>Sao l&#x1b0;u &amp; Kh&#xf4;i ph&#x1ee5;c</strong>.</span>
+      <div class="notice-banner-main">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+        <span>D&#x1eef; li&#x1ec7;u h&#x1ecd;c t&#x1ead;p &#x111;&#x1b0;&#x1ee3;c l&#x1b0;u c&#x1ee5;c b&#x1ed9; tr&#xea;n tr&#xec;nh duy&#x1ec7;t. Sao l&#x1b0;u &#x111;&#x1ecb;nh k&#x1ef3; qua Google Drive ho&#x1eb7;c JSON trong m&#x1ee5;c Sao l&#x1b0;u &amp; Kh&#xf4;i ph&#x1ee5;c.</span>
+      </div>
+      <button type="button" class="notice-banner-close" id="noticeBannerClose" aria-label="&#x110;&#xf3;ng th&#xf4;ng b&#xe1;o" title="&#x110;&#xf3;ng th&#xf4;ng b&#xe1;o">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+      </button>
     </div>
 
     <div class="page">

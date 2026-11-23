@@ -54,6 +54,15 @@
           contextWindow: "128K"
         },
         {
+          id: "groq:llama-3.1-8b-instant",
+          rawModel: "llama-3.1-8b-instant",
+          label: "Groq Llama 3.1 8B Instant (Si\u00eau t\u1ed1c < 400ms \u2022 Mi\u1ec5n ph\u00ed)",
+          vision: false,
+          pdf: false,
+          free: true,
+          contextWindow: "128K"
+        },
+        {
           id: "groq:openai/gpt-oss-20b",
           rawModel: "openai/gpt-oss-20b",
           label: "Groq GPT-OSS 20B (Si\u00eau t\u1ed1c \u2022 Mi\u1ec5n ph\u00ed)",
@@ -362,10 +371,18 @@
   }
 
   const DEFAULT_STREAMING = true;
+  const FAST_TEXT_MODELS = [
+    "groq:llama-3.1-8b-instant",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "groq:openai/gpt-oss-20b",
+    "openrouter:openrouter/free"
+  ];
 
   return {
     DEFAULT_MODEL_ID: DEFAULT_MODEL_ID,
     DEFAULT_STREAMING: DEFAULT_STREAMING,
+    FAST_TEXT_MODELS: FAST_TEXT_MODELS,
     PROVIDERS: PROVIDERS,
     PROVIDER_MAP: PROVIDER_MAP,
     ALLOWED_MODELS: ALLOWED_MODELS,

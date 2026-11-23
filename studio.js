@@ -29,7 +29,8 @@
       shuffleO: false,
       sound: true,
       streak: true,
-      redemption: false
+      redemption: false,
+      advOpen: false
     },
     play: null,
     timerId: null,
@@ -182,7 +183,12 @@
     editor: ["/creator-studio/editor", "Tr\u00ecnh so\u1ea1n th\u1ea3o Quiz | AI Tutor"],
     lobby: ["/creator-studio/lobby", "C\u00e0i \u0111\u1eb7t Quiz | AI Tutor"],
     play: ["/creator-studio/play", "\u0110ang ch\u01a1i Quiz | AI Tutor"],
-    summary: ["/creator-studio/summary", "T\u1ed5ng k\u1ebft Quiz | AI Tutor"]
+    summary: ["/creator-studio/summary", "T\u1ed5ng k\u1ebft Quiz | AI Tutor"],
+    students: ["/creator-studio/students", "H\u1ecdc sinh & L\u1edbp h\u1ecdc | AI Tutor"],
+    assignments: ["/creator-studio/assignments", "Giao b\u00e0i t\u1eadp | AI Tutor"],
+    gradebook: ["/creator-studio/gradebook", "S\u1ed5 \u0111i\u1ec3m & Ph\u00e2n t\u00edch | AI Tutor"],
+    "student-assign": ["/creator-studio/assignment", "L\u00e0m b\u00e0i t\u1eadp | AI Tutor"],
+    "parent-receipt": ["/creator-studio/receipt", "X\u00e1c nh\u1eadn k\u1ebft qu\u1ea3 | AI Tutor"]
   };
   function syncStudioRoute(replace) {
     if (!U() || U().state.tab !== "studio") return;
@@ -193,10 +199,16 @@
       document.title = "L\u00e0m b\u00e0i chia s\u1ebb | AI Tutor";
       return;
     }
+    if ((window.location.search || "").indexOf("assign=") !== -1 && sState.screen === "student-assign") return;
+    if ((window.location.search || "").indexOf("receipt=") !== -1 && sState.screen === "parent-receipt") return;
     if (typeof U().syncHistory === "function") U().syncHistory(entry[0], entry[1], !!replace);
   }
   function applySubRoute(sub) {
-    if (sub === "home") { stopStudioTimer(); sState.screen = "home"; return; }
+    if (sub === "home" || sub === "students" || sub === "assignments" || sub === "gradebook" || sub === "student-assign" || sub === "parent-receipt") {
+      stopStudioTimer();
+      sState.screen = sub;
+      return;
+    }
     if ((sub === "editor" || sub === "lobby") && sState.quiz) { stopStudioTimer(); sState.screen = sub; return; }
     if ((sub === "play" || sub === "summary") && sState.play) { sState.screen = sub; return; }
     sState.screen = "home";
@@ -212,6 +224,11 @@
     else if (sState.screen === "lobby") renderLobby(root);
     else if (sState.screen === "play") renderPlay(root);
     else if (sState.screen === "summary") renderSummary(root);
+    else if (sState.screen === "students" && window.UETLms) window.UETLms.renderStudentsView(root);
+    else if (sState.screen === "assignments" && window.UETLms) window.UETLms.renderAssignmentsView(root);
+    else if (sState.screen === "gradebook" && window.UETLms) window.UETLms.renderGradebookView(root);
+    else if (sState.screen === "student-assign" && window.UETLms) window.UETLms.renderStudentAssignmentView(root);
+    else if (sState.screen === "parent-receipt" && window.UETLms) window.UETLms.renderParentReceiptView(root);
 
     if (!sState.mounted) {
       sState.mounted = true;
@@ -228,7 +245,8 @@
     const decks = U().getDecks();
     const convCount = window.UETConverter ? window.UETConverter.getValidQuestions().length : 0;
 
-    let h = '<div class="panel" style="margin-bottom:16px">' +
+    let h = (window.UETLms && typeof window.UETLms.renderStudioSubnav === "function" ? window.UETLms.renderStudioSubnav("home") : "") +
+      '<div class="panel" style="margin-bottom:16px">' +
       '<div class="panel-head"><div><h2>🎮 Creator Studio / Quiz Studio</h2>' +
       '<p class="muted" style="margin:0;font-size:.86rem">Tr\u00ecnh t\u1ea1o &amp; ch\u01a1i Quiz t\u01b0\u01a1ng t\u00e1c chu\u1ea9n Quizizz / Wayground (KaTeX, Streak, Redemption, th\u1eddi gian t\u1eebng c\u00e2u).</p></div></div>' +
       '<div class="admin-grid" style="margin:12px 0 0">' +
@@ -257,7 +275,8 @@
           '<div class="deck-sub"><span>' + (qz.questions ? qz.questions.length : 0) + ' c\u00e2u h\u1ecfi</span>' + (qz.updatedAt ? '<span>C\u1eadp nh\u1eadt: ' + U().esc(U().fmtDateTime(qz.updatedAt)) + '</span>' : "") + '</div>' +
           '<div class="deck-actions">' +
             '<button type="button" class="btn btn-emerald btn-sm" data-sact="play-saved" data-id="' + U().esc(qz.id) + '">▶ B\u1eaft \u0111\u1ea7u l\u00e0m b\u00e0i (Play)</button>' +
-            '<button type="button" class="btn btn-primary btn-sm" data-sact="edit-saved" data-id="' + U().esc(qz.id) + '">Ch\u1ec9nh s\u1eeda</button>' +
+            '<button type="button" class="btn btn-primary btn-sm" data-sact="assign-saved" data-id="' + U().esc(qz.id) + '">Giao b\u00e0i</button>' +
+            '<button type="button" class="btn btn-outline btn-sm" data-sact="edit-saved" data-id="' + U().esc(qz.id) + '">Ch\u1ec9nh s\u1eeda</button>' +
             '<select data-sact="card-vis" data-id="' + U().esc(qz.id) + '" aria-label="Quy\u1ec1n truy c\u1eadp Quiz" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.78rem;font-weight:700">' +
               '<option value="public"' + (isPub ? " selected" : "") + '>🌐 Public</option>' +
               '<option value="private"' + (!isPub ? " selected" : "") + '>🔒 Private</option>' +
@@ -449,6 +468,20 @@
   }
 
   /* ======================== 4.2 QUIZ LOBBY / SETTINGS ======================== */
+  const QL_ICONS = {
+    arrowLeft: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>',
+    chevronDown: '<svg class="ql-acc-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>',
+    lock: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>',
+    play: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>'
+  };
+
+  function qlSwitch(id, checked, disabled) {
+    return '<span class="ql-switch">' +
+      '<input type="checkbox" id="' + id + '"' + (checked ? " checked" : "") + (disabled ? " disabled" : "") + '>' +
+      '<span class="ql-slider"></span>' +
+    '</span>';
+  }
+
   function renderLobby(root) {
     const qz = sState.quiz;
     if (!qz) { sState.screen = "home"; renderHome(root); return; }
@@ -471,97 +504,186 @@
         opts += '<option value="' + c + '"' + (lb.sessionIdx === c ? " selected" : "") + '>' +
           (doneMap[String(c)] ? "✓ " : "") + "Phi\u00ean " + c + "/" + info.totalSessions + " (C\u00e2u " + s + "–" + e + " · " + cnt + " c\u00e2u)</option>";
       }
-      // Clickable pills for fast jumping (cap pill grid at 60 items so 824/4=206 stays ultra-snappy via dropdown)
-      let pillsHtml = "";
-      if (info.totalSessions <= 60) {
-        pillsHtml = '<div class="pills pills-sm" style="max-height:110px;overflow-y:auto;margin:6px 0 0">';
-        for (let c = 1; c <= info.totalSessions; c++) {
-          const s = (c - 1) * info.size + 1;
-          const e = Math.min(c * info.size, total);
-          const cnt = e - s + 1;
-          const done = !!doneMap[String(c)];
-          pillsHtml += '<button type="button" class="pill' + (lb.sessionIdx === c ? " active" : "") + '" data-sact="pick-sess" data-sess="' + c + '" title="C\u00e2u ' + s + '–' + e + '">' +
-            (done ? "✓ " : "") + "Phi\u00ean " + c + " (" + cnt + ")</button>";
-        }
-        pillsHtml += "</div>";
-      }
       sessionPickerHtml =
-        '<div style="margin-top:10px">' +
-          '<div class="pills pills-sm" style="margin-bottom:6px">' +
-            [4, 5, 10, 25, 50, 100].map(function (n) {
-              return '<button type="button" class="pill' + (info.size === n ? " active" : "") + '" data-sact="sess-preset" data-val="' + n + '">' + n + ' c\u00e2u/phi\u00ean</button>';
-            }).join("") +
+        '<div class="ql-grid-2">' +
+          '<div class="ql-field">' +
+            '<div class="ql-field-head">' +
+              '<label class="ql-field-label" for="lbPerSession">S\u1ed1 c\u00e2u m\u1ed7i phi\u00ean</label>' +
+              '<div class="ql-quick-tags">' +
+                [10, 25, 50, 100].map(function (n) {
+                  return '<button type="button" class="ql-tag' + (info.size === n ? " active" : "") + '" data-sact="sess-preset" data-val="' + n + '">' + n + '</button>';
+                }).join("") +
+              '</div>' +
+            '</div>' +
+            '<input type="number" class="ql-input" id="lbPerSession" min="1" max="' + total + '" value="' + info.size + '">' +
           '</div>' +
-          '<div style="display:grid;grid-template-columns:160px 1fr;gap:10px;align-items:end">' +
-            '<label class="field" style="margin:0">S\u1ed1 c\u00e2u m\u1ed7i phi\u00ean<input type="number" id="lbPerSession" min="1" max="' + total + '" value="' + info.size + '"></label>' +
-            '<label class="field" style="margin:0">Ch\u1ecdn phi\u00ean mu\u1ed1n l\u00e0m<select id="lbSessionIdx">' + opts + '</select></label>' +
+          '<div class="ql-field">' +
+            '<div class="ql-field-head">' +
+              '<label class="ql-field-label" for="lbSessionIdx">Ch\u1ecdn phi\u00ean</label>' +
+            '</div>' +
+            '<select class="ql-select" id="lbSessionIdx">' + opts + '</select>' +
           '</div>' +
-          '<div class="checkout-notice" style="margin:8px 0 0;padding:8px 12px;font-size:.82rem">📊 <strong>' + U().esc(info.summary) + '</strong></div>' +
-          pillsHtml +
-        '</div>';
+        '</div>' +
+        '<p class="ql-helper">' + U().esc(info.summary) + '</p>';
     } else if (lb.splitMode === "random") {
+      const randPresets = [10, 20, 40, 50].filter(function (n) { return n <= total; });
       sessionPickerHtml =
-        '<div style="margin-top:8px;display:flex;align-items:end;gap:10px;flex-wrap:wrap">' +
-          '<label class="field" style="margin:0;width:200px">S\u1ed1 c\u00e2u ng\u1eabu nhi\u00ean (1–' + total + ')<input type="number" id="lbRandomCount" min="1" max="' + total + '" value="' + lb.randomCount + '"></label>' +
-          '<div class="pills pills-sm" style="margin:0">' +
-            [4, 5, 10, 20, 40, 50].filter(function (n) { return n <= total; }).map(function (n) {
-              return '<button type="button" class="pill' + (lb.randomCount === n ? " active" : "") + '" data-sact="rand-preset" data-val="' + n + '">' + n + ' c\u00e2u</button>';
-            }).join("") +
+        '<div class="ql-grid-2">' +
+          '<div class="ql-field">' +
+            '<div class="ql-field-head">' +
+              '<label class="ql-field-label" for="lbRandomCount">S\u1ed1 c\u00e2u ng\u1eabu nhi\u00ean</label>' +
+              (randPresets.length ? '<div class="ql-quick-tags">' +
+                randPresets.map(function (n) {
+                  return '<button type="button" class="ql-tag' + (lb.randomCount === n ? " active" : "") + '" data-sact="rand-preset" data-val="' + n + '">' + n + '</button>';
+                }).join("") +
+              '</div>' : "") +
+            '</div>' +
+            '<input type="number" class="ql-input" id="lbRandomCount" min="1" max="' + total + '" value="' + lb.randomCount + '">' +
           '</div>' +
-        '</div>';
+        '</div>' +
+        '<p class="ql-helper">Ch\u1ecdn ng\u1eabu nhi\u00ean ' + lb.randomCount + ' trong t\u1ed5ng s\u1ed1 ' + total + ' c\u00e2u h\u1ecfi.</p>';
+    } else {
+      sessionPickerHtml =
+        '<p class="ql-helper">L\u00e0m to\u00e0n b\u1ed9 ' + total + ' c\u00e2u h\u1ecfi trong m\u1ed9t phi\u00ean duy nh\u1ea5t.</p>';
     }
 
+    const activeAdvCount =
+      (lb.shuffleQ && advOk ? 1 : 0) +
+      (lb.shuffleO && advOk ? 1 : 0) +
+      (lb.sound ? 1 : 0) +
+      (lb.streak && advOk ? 1 : 0) +
+      (lb.redemption && advOk ? 1 : 0);
+
+    const sessCount = Math.min(lb.sessionIdx * info.size, total) - (lb.sessionIdx - 1) * info.size;
     const startLabel = lb.splitMode === "sessions"
-      ? ("🚀 B\u1eaft \u0111\u1ea7u Phi\u00ean " + lb.sessionIdx + "/" + info.totalSessions + " (" + (Math.min(lb.sessionIdx * info.size, total) - (lb.sessionIdx - 1) * info.size) + " c\u00e2u)")
-      : (lb.splitMode === "random" ? ("🚀 B\u1eaft \u0111\u1ea7u (" + lb.randomCount + " c\u00e2u ng\u1eabu nhi\u00ean)") : ("🚀 B\u1eaft \u0111\u1ea7u to\u00e0n b\u1ed9 (" + total + " c\u00e2u)"));
+      ? ("B\u1eaft \u0111\u1ea7u Phi\u00ean " + lb.sessionIdx + "/" + info.totalSessions + " (" + sessCount + " c\u00e2u)")
+      : (lb.splitMode === "random"
+        ? ("B\u1eaft \u0111\u1ea7u (" + lb.randomCount + " c\u00e2u ng\u1eabu nhi\u00ean)")
+        : ("B\u1eaft \u0111\u1ea7u to\u00e0n b\u1ed9 (" + total + " c\u00e2u)"));
+
+    const uniformDisabled = lb.timeMode !== "uniform";
 
     root.innerHTML =
-      '<div class="panel" style="max-width:780px;margin:0 auto">' +
-        '<div class="panel-head"><div><h2>⚙️ C\u00e0i \u0111\u1eb7t tr\u01b0\u1edbc khi l\u00e0m b\u00e0i (Quiz Lobby)</h2>' +
-        '<p class="muted" style="margin:0">' + U().esc(qz.title) + ' • <strong>' + total + '</strong> c\u00e2u h\u1ecfi</p></div>' +
-        '<button type="button" class="btn btn-outline btn-sm" data-sact="back-editor">← Quay l\u1ea1i Editor</button></div>' +
-
-        /* Session Splitter Box (Free for all users!) */
-        '<div class="radio-group" style="margin-bottom:14px;background:var(--bg2)">' +
-          '<legend style="font-weight:700;font-size:.86rem">📦 Ch\u1ecdn s\u1ed1 l\u01b0\u1ee3ng c\u00e2u &amp; Chia phi\u00ean l\u00e0m b\u00e0i</legend>' +
-          '<div class="pills" style="margin:6px 0 0">' +
-            '<button type="button" class="pill' + (lb.splitMode === "sessions" ? " active" : "") + '" data-sact="split-mode" data-val="sessions">Chia nhi\u1ec1u phi\u00ean (VD: 50 c\u00e2u/phi\u00ean)</button>' +
-            '<button type="button" class="pill' + (lb.splitMode === "random" ? " active" : "") + '" data-sact="split-mode" data-val="random">Ch\u1ecdn ng\u1eabu nhi\u00ean N c\u00e2u</button>' +
-            '<button type="button" class="pill' + (lb.splitMode === "all" ? " active" : "") + '" data-sact="split-mode" data-val="all">L\u00e0m to\u00e0n b\u1ed9 (' + total + ' c\u00e2u)</button>' +
+      '<div class="ql-wrap">' +
+        '<div class="ql-card">' +
+          /* Section 1: Card Header */
+          '<div class="ql-header">' +
+            '<div>' +
+              '<h2 class="ql-title">C\u00e0i \u0111\u1eb7t tr\u01b0\u1edbc khi l\u00e0m b\u00e0i</h2>' +
+              '<p class="ql-subtitle"><span>' + U().esc(qz.title) + '</span><span>·</span><span>' + total + ' c\u00e2u h\u1ecfi</span></p>' +
+            '</div>' +
+            '<button type="button" class="ql-back-btn" data-sact="back-editor">' + QL_ICONS.arrowLeft + '<span>Quay l\u1ea1i tr\u00ecnh so\u1ea1n th\u1ea3o</span></button>' +
           '</div>' +
-          sessionPickerHtml +
-        '</div>' +
 
-        (!advOk ? '<p class="lock-note">🔒 M\u1ed9t s\u1ed1 t\u00ednh n\u0103ng n\u00e2ng cao (Streak 🔥, Redemption Question, \u0110\u1ea3o \u0111\u1ec1/\u0111\u00e1p \u00e1n) m\u1edf kh\u00f3a t\u1eeb G\u00f3i Silver tr\u1edf l\u00ean.</p>' : "") +
-
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">' +
-          '<label class="field">Ch\u1ebf \u0111\u1ed9 th\u1eddi gian<select id="lbTimeMode">' +
-            '<option value="per_q"' + (lb.timeMode === "per_q" ? " selected" : "") + '>D\u00f9ng th\u1eddi gian ri\u00eang t\u1eebng c\u00e2u</option>' +
-            '<option value="uniform"' + (lb.timeMode === "uniform" ? " selected" : "") + '>Ghi \u0111\u00e8 th\u1eddi gian chung cho t\u1ea5t c\u1ea3 c\u00e2u</option>' +
-            '<option value="unlimited"' + (lb.timeMode === "unlimited" ? " selected" : "") + '>Kh\u00f4ng gi\u1edbi h\u1ea1n th\u1eddi gian</option>' +
-          '</select></label>' +
-          '<label class="field">Th\u1eddi gian chung (gi\u00e2y)<input type="number" id="lbUniformSec" min="5" max="600" value="' + lb.uniformSec + '"' + (lb.timeMode !== "uniform" ? " disabled" : "") + '></label>' +
-          '<label class="field">Hi\u1ec7n \u0111\u00e1p \u00e1n \u0111\u00fang sau m\u1ed7i c\u00e2u<select id="lbShowAnswer">' +
-            '<option value="full"' + (lb.showAnswer === "full" ? " selected" : "") + '>B\u1eadt (Hi\u1ec7n \u0111\u00e1p \u00e1n \u0111\u00fang + \u0110\u00fang/Sai)</option>' +
-            '<option value="right_wrong"' + (lb.showAnswer === "right_wrong" ? " selected" : "") + '>Ch\u1ec9 hi\u1ec7n \u0110\u00fang / Sai</option>' +
-            '<option value="off"' + (lb.showAnswer === "off" ? " selected" : "") + '>T\u1eaft (\u1ea8n cho \u0111\u1ebfn khi n\u1ed9p b\u00e0i)</option>' +
-          '</select></label>' +
-          '<div class="field"><span>T\u00f9y ch\u1ecdn hi\u1ec3n th\u1ecb</span>' +
-            '<label class="check-row" style="margin:4px 0"><input type="checkbox" id="lbShowExplain"' + (lb.showExplain ? " checked" : "") + '> Hi\u1ec7n gi\u1ea3i th\u00edch \u0111\u00e1p \u00e1n ngay sau m\u1ed7i c\u00e2u</label>' +
-            '<label class="check-row" style="margin:4px 0"><input type="checkbox" id="lbAllowReview"' + (lb.allowReview ? " checked" : "") + '> Cho ph\u00e9p xem l\u1ea1i b\u00e0i l\u00e0m &amp; \u0111\u00e1p \u00e1n sau khi n\u1ed9p</label>' +
+          /* Section 2: Quiz Mode & Session Splitting */
+          '<div class="ql-section">' +
+            '<span class="ql-section-label">Ch\u1ebf \u0111\u1ed9 l\u00e0m b\u00e0i &amp; Chia phi\u00ean</span>' +
+            '<div class="ql-seg" role="tablist">' +
+              '<button type="button" role="tab" aria-selected="' + (lb.splitMode === "sessions" ? "true" : "false") + '" class="ql-seg-btn' + (lb.splitMode === "sessions" ? " active" : "") + '" data-sact="split-mode" data-val="sessions">Chia phi\u00ean l\u00e0m b\u00e0i</button>' +
+              '<button type="button" role="tab" aria-selected="' + (lb.splitMode === "random" ? "true" : "false") + '" class="ql-seg-btn' + (lb.splitMode === "random" ? " active" : "") + '" data-sact="split-mode" data-val="random">Ng\u1eabu nhi\u00ean N c\u00e2u</button>' +
+              '<button type="button" role="tab" aria-selected="' + (lb.splitMode === "all" ? "true" : "false") + '" class="ql-seg-btn' + (lb.splitMode === "all" ? " active" : "") + '" data-sact="split-mode" data-val="all">To\u00e0n b\u1ed9 \u0111\u1ec1</button>' +
+            '</div>' +
+            sessionPickerHtml +
           '</div>' +
-        '</div>' +
 
-        '<div class="radio-group" style="margin-top:12px"><legend style="font-weight:700;font-size:.86rem">T\u00f9y ch\u1ecdn n\u00e2ng cao chu\u1ea9n Quizizz</legend>' +
-          '<label class="check-row"><input type="checkbox" id="lbShuffleQ"' + (lb.shuffleQ && advOk ? " checked" : "") + (!advOk ? " disabled" : "") + '> \u0110\u1ea3o th\u1ee9 t\u1ef1 c\u00e2u h\u1ecfi</label>' +
-          '<label class="check-row"><input type="checkbox" id="lbShuffleO"' + (lb.shuffleO && advOk ? " checked" : "") + (!advOk ? " disabled" : "") + '> \u0110\u1ea3o th\u1ee9 t\u1ef1 \u0111\u00e1p \u00e1n (Zero-Drift)</label>' +
-          '<label class="check-row"><input type="checkbox" id="lbSound"' + (lb.sound ? " checked" : "") + '> B\u1eadt \u00e2m thanh hi\u1ec7u \u1ee9ng \u0110\u00fang / Sai</label>' +
-          '<label class="check-row"><input type="checkbox" id="lbStreak"' + (lb.streak && advOk ? " checked" : "") + (!advOk ? " disabled" : "") + '> B\u1eadt thanh Streak 🔥 &amp; \u0111i\u1ec3m th\u01b0\u1edfng t\u1ed1c \u0111\u1ed9</label>' +
-          '<label class="check-row"><input type="checkbox" id="lbRedemption"' + (lb.redemption && advOk ? " checked" : "") + (!advOk ? " disabled" : "") + '> C\u00e2u h\u1ecfi c\u1ee9u v\u1edbt (Redemption Question – l\u00e0m l\u1ea1i c\u00e2u sai \u1edf cu\u1ed1i b\u00e0i)</label>' +
-        '</div>' +
+          /* Section 3: Time Settings & Answer Feedback */
+          '<div class="ql-section">' +
+            '<span class="ql-section-label">Th\u1eddi gian &amp; Ph\u1ea3n h\u1ed3i \u0111\u00e1p \u00e1n</span>' +
+            '<div class="ql-grid-2 ql-grid-top">' +
+              '<div class="ql-field">' +
+                '<div class="ql-field-head"><label class="ql-field-label" for="lbTimeMode">Ch\u1ebf \u0111\u1ed9 th\u1eddi gian</label></div>' +
+                '<select class="ql-select" id="lbTimeMode">' +
+                  '<option value="per_q"' + (lb.timeMode === "per_q" ? " selected" : "") + '>Th\u1eddi gian ri\u00eang t\u1eebng c\u00e2u</option>' +
+                  '<option value="uniform"' + (lb.timeMode === "uniform" ? " selected" : "") + '>Th\u1eddi gian chung cho m\u1ecdi c\u00e2u</option>' +
+                  '<option value="unlimited"' + (lb.timeMode === "unlimited" ? " selected" : "") + '>Kh\u00f4ng gi\u1edbi h\u1ea1n th\u1eddi gian</option>' +
+                '</select>' +
+              '</div>' +
+              '<div class="ql-field' + (uniformDisabled ? " is-disabled" : "") + '">' +
+                '<div class="ql-field-head"><label class="ql-field-label" for="lbUniformSec">Th\u1eddi gian chung (gi\u00e2y)</label></div>' +
+                '<input type="number" class="ql-input" id="lbUniformSec" min="5" max="600" value="' + lb.uniformSec + '"' + (uniformDisabled ? " disabled" : "") + '>' +
+              '</div>' +
+            '</div>' +
 
-        '<div class="modal-actions">' +
-          '<button type="button" class="btn btn-emerald" style="font-size:1rem;padding:11px 28px" data-sact="start-play">' + startLabel + '</button>' +
+            '<div class="ql-toggle-list">' +
+              '<label class="ql-toggle-row" for="lbShowAnswerToggle">' +
+                '<span class="ql-toggle-info">' +
+                  '<span class="ql-toggle-title">Hi\u1ec7n \u0111\u00e1p \u00e1n \u0111\u00fang ngay l\u1eadp t\u1ee9c</span>' +
+                  '<span class="ql-toggle-desc">Hi\u1ec3n th\u1ecb k\u1ebft qu\u1ea3 \u0111\u00fang/sai v\u00e0 \u0111\u00e1p \u00e1n ngay sau khi ch\u1ecdn</span>' +
+                '</span>' +
+                qlSwitch("lbShowAnswerToggle", lb.showAnswer !== "off", false) +
+              '</label>' +
+              '<label class="ql-toggle-row" for="lbShowExplain">' +
+                '<span class="ql-toggle-info">' +
+                  '<span class="ql-toggle-title">Hi\u1ec7n gi\u1ea3i th\u00edch chi ti\u1ebft</span>' +
+                  '<span class="ql-toggle-desc">Hi\u1ec3n th\u1ecb ph\u1ea7n gi\u1ea3i th\u00edch \u0111\u00e1p \u00e1n ngay sau m\u1ed7i c\u00e2u</span>' +
+                '</span>' +
+                qlSwitch("lbShowExplain", !!lb.showExplain, false) +
+              '</label>' +
+              '<label class="ql-toggle-row" for="lbAllowReview">' +
+                '<span class="ql-toggle-info">' +
+                  '<span class="ql-toggle-title">Cho ph\u00e9p xem l\u1ea1i sau khi n\u1ed9p</span>' +
+                  '<span class="ql-toggle-desc">Xem l\u1ea1i to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi v\u00e0 \u0111\u00e1p \u00e1n \u1edf m\u00e0n h\u00ecnh t\u1ed5ng k\u1ebft</span>' +
+                '</span>' +
+                qlSwitch("lbAllowReview", !!lb.allowReview, false) +
+              '</label>' +
+            '</div>' +
+          '</div>' +
+
+          /* Section 4: Advanced Settings Collapsible Accordion (closed by default) */
+          '<div class="ql-accordion">' +
+            '<button type="button" class="ql-acc-trigger" data-sact="toggle-adv" aria-expanded="' + (lb.advOpen ? "true" : "false") + '">' +
+              '<span class="ql-acc-left">' +
+                '<span class="ql-acc-title">C\u00e0i \u0111\u1eb7t n\u00e2ng cao</span>' +
+                '<span class="ql-acc-pill" id="qlAdvCountPill">' + activeAdvCount + ' \u0111ang b\u1eadt</span>' +
+              '</span>' +
+              QL_ICONS.chevronDown +
+            '</button>' +
+            '<div class="ql-acc-body' + (lb.advOpen ? "" : " hidden") + '">' +
+              (!advOk ? '<div class="ql-lock-note">' + QL_ICONS.lock + '<span>M\u1ed9t s\u1ed1 t\u00f9y ch\u1ecdn n\u00e2ng cao y\u00eau c\u1ea7u g\u00f3i Silver tr\u1edf l\u00ean.</span></div>' : "") +
+              '<div class="ql-adv-grid">' +
+                '<label class="ql-adv-card' + (!advOk ? " is-disabled" : "") + '" for="lbShuffleQ">' +
+                  '<span class="ql-toggle-info">' +
+                    '<span class="ql-toggle-title">\u0110\u1ea3o th\u1ee9 t\u1ef1 c\u00e2u h\u1ecfi</span>' +
+                    '<span class="ql-toggle-desc">Tr\u1ed9n ng\u1eabu nhi\u00ean th\u1ee9 t\u1ef1 c\u00e1c c\u00e2u h\u1ecfi</span>' +
+                  '</span>' +
+                  qlSwitch("lbShuffleQ", lb.shuffleQ && advOk, !advOk) +
+                '</label>' +
+                '<label class="ql-adv-card' + (!advOk ? " is-disabled" : "") + '" for="lbShuffleO">' +
+                  '<span class="ql-toggle-info">' +
+                    '<span class="ql-toggle-title">\u0110\u1ea3o th\u1ee9 t\u1ef1 \u0111\u00e1p \u00e1n (Zero-Drift)</span>' +
+                    '<span class="ql-toggle-desc">X\u00e1o tr\u1ed9n ph\u01b0\u01a1ng \u00e1n, gi\u1eef \u0111\u00fang kh\u00f3a \u0111\u00e1p \u00e1n</span>' +
+                  '</span>' +
+                  qlSwitch("lbShuffleO", lb.shuffleO && advOk, !advOk) +
+                '</label>' +
+                '<label class="ql-adv-card" for="lbSound">' +
+                  '<span class="ql-toggle-info">' +
+                    '<span class="ql-toggle-title">Hi\u1ec7u \u1ee9ng \u00e2m thanh</span>' +
+                    '<span class="ql-toggle-desc">Ph\u00e1t \u00e2m thanh ph\u1ea3n h\u1ed3i khi tr\u1ea3 l\u1eddi \u0111\u00fang/sai</span>' +
+                  '</span>' +
+                  qlSwitch("lbSound", !!lb.sound, false) +
+                '</label>' +
+                '<label class="ql-adv-card' + (!advOk ? " is-disabled" : "") + '" for="lbStreak">' +
+                  '<span class="ql-toggle-info">' +
+                    '<span class="ql-toggle-title">Thanh chu\u1ed7i \u0111\u00fang &amp; th\u01b0\u1edfng t\u1ed1c \u0111\u1ed9</span>' +
+                    '<span class="ql-toggle-desc">C\u1ed9ng \u0111i\u1ec3m th\u01b0\u1edfng khi tr\u1ea3 l\u1eddi nhanh li\u00ean ti\u1ebfp</span>' +
+                  '</span>' +
+                  qlSwitch("lbStreak", lb.streak && advOk, !advOk) +
+                '</label>' +
+                '<label class="ql-adv-card' + (!advOk ? " is-disabled" : "") + '" for="lbRedemption">' +
+                  '<span class="ql-toggle-info">' +
+                    '<span class="ql-toggle-title">C\u00e2u h\u1ecfi c\u1ee9u v\u1edbt</span>' +
+                    '<span class="ql-toggle-desc">L\u00e0m l\u1ea1i c\u00e2u \u0111\u00e3 tr\u1ea3 l\u1eddi sai \u1edf cu\u1ed1i phi\u00ean</span>' +
+                  '</span>' +
+                  qlSwitch("lbRedemption", lb.redemption && advOk, !advOk) +
+                '</label>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+
+          /* Card Footer */
+          '<div class="ql-footer">' +
+            '<button type="button" class="ql-cta-btn" data-sact="start-play">' + QL_ICONS.play + '<span>' + startLabel + '</span></button>' +
+          '</div>' +
         '</div>' +
       '</div>';
   }
@@ -868,9 +990,16 @@
 
   /* ======================== EVENTS & SHORTCUTS ======================== */
   function onStudioClick(e) {
+    if (window.UETLms && typeof window.UETLms.handleClick === "function" && window.UETLms.handleClick(e)) return;
     const b = e.target.closest ? e.target.closest("[data-sact]") : null;
     if (!b || b.disabled) return;
     const act = b.getAttribute("data-sact");
+    if (act === "assign-saved") {
+      if (window.UETLms && typeof window.UETLms.openAssignModalForQuiz === "function") {
+        window.UETLms.openAssignModalForQuiz(b.getAttribute("data-id"));
+      }
+      return;
+    }
     if (act === "new-manual") { sState.quiz = newEmptyQuiz(); sState.screen = "editor"; render(); }
     else if (act === "import-deck") {
       const sel = U().$("stPickDeck");
@@ -926,6 +1055,7 @@
       sState.screen = "lobby"; render();
     }
     else if (act === "back-lobby") { stopStudioTimer(); sState.screen = "lobby"; render(); }
+    else if (act === "toggle-adv") { sState.lobby.advOpen = !sState.lobby.advOpen; render(); }
     else if (act === "split-mode") { sState.lobby.splitMode = b.getAttribute("data-val"); render(); }
     else if (act === "sess-preset") { sState.lobby.perSession = parseInt(b.getAttribute("data-val"), 10) || 50; sState.lobby.sessionIdx = 1; render(); }
     else if (act === "pick-sess") { sState.lobby.sessionIdx = parseInt(b.getAttribute("data-sess"), 10) || 1; render(); }
@@ -1007,6 +1137,7 @@
   }
 
   function onStudioChange(e) {
+    if (window.UETLms && typeof window.UETLms.handleChange === "function" && window.UETLms.handleChange(e)) return;
     const t = e.target;
     if (!t) return;
     if (t.getAttribute("data-sact") === "q-time") {
@@ -1056,14 +1187,15 @@
     else if (t.id === "lbRandomCount") { sState.lobby.randomCount = Math.max(1, parseInt(t.value, 10) || 20); render(); }
     else if (t.id === "lbTimeMode") { sState.lobby.timeMode = t.value; render(); }
     else if (t.id === "lbUniformSec") sState.lobby.uniformSec = Math.max(5, parseInt(t.value, 10) || 30);
+    else if (t.id === "lbShowAnswerToggle") sState.lobby.showAnswer = t.checked ? "full" : "off";
     else if (t.id === "lbShowAnswer") sState.lobby.showAnswer = t.value;
     else if (t.id === "lbShowExplain") sState.lobby.showExplain = t.checked;
     else if (t.id === "lbAllowReview") sState.lobby.allowReview = t.checked;
-    else if (t.id === "lbShuffleQ") sState.lobby.shuffleQ = t.checked;
-    else if (t.id === "lbShuffleO") sState.lobby.shuffleO = t.checked;
-    else if (t.id === "lbSound") sState.lobby.sound = t.checked;
-    else if (t.id === "lbStreak") sState.lobby.streak = t.checked;
-    else if (t.id === "lbRedemption") sState.lobby.redemption = t.checked;
+    else if (t.id === "lbShuffleQ") { sState.lobby.shuffleQ = t.checked; render(); }
+    else if (t.id === "lbShuffleO") { sState.lobby.shuffleO = t.checked; render(); }
+    else if (t.id === "lbSound") { sState.lobby.sound = t.checked; render(); }
+    else if (t.id === "lbStreak") { sState.lobby.streak = t.checked; render(); }
+    else if (t.id === "lbRedemption") { sState.lobby.redemption = t.checked; render(); }
   }
 
   function onKeyDown(e) {
@@ -1100,12 +1232,20 @@
     render();
   }
 
+  function openLmsScreen(screenName) {
+    stopStudioTimer();
+    sState.screen = screenName || "home";
+    if (U().state.tab !== "studio") U().showTab("studio");
+    else render();
+  }
+
   window.UETStudio = {
     render: render,
     applySubRoute: applySubRoute,
     openFromDeck: openFromDeck,
     openLobbyFromDeck: openLobbyFromDeck,
     openFromQuestions: openFromQuestions,
+    openLmsScreen: openLmsScreen,
     onKeyDown: onKeyDown
   };
 })();

@@ -16,6 +16,7 @@ const STATIC_FILES = [
   "app.js",
   "converter.js",
   "studio.js",
+  "lms.js",
   "vocab.js",
   "cloud-share-pdf.js",
   "data/manifest.json",

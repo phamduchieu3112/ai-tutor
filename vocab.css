@@ -1413,3 +1413,13 @@
 .vocab-studio-container .vs-grade-incorrect { border-left: 4px solid #dc2626; background: rgba(220,38,38,.1); }
 .vocab-studio-container .vs-btn-accept { padding: 7px 12px; border-radius: 8px; border: 1px solid #d97706; background: #fef3c7; color: #92400e; font-weight: 700; cursor: pointer; font-size: 13px; }
 .vocab-studio-container .vs-btn-accept:hover { background: #fde68a; }
+
+/* Stage 2 Shimmer Skeletons (Zero Layout Shift) */
+@keyframes vsShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.vocab-studio-container .vs-shimmer {
+  display: inline-block; height: 14px; border-radius: 6px; vertical-align: middle;
+  background: linear-gradient(90deg, rgba(148,163,184,.16) 25%, rgba(148,163,184,.32) 50%, rgba(148,163,184,.16) 75%);
+  background-size: 200% 100%; animation: vsShimmer 1.2s ease-in-out infinite;
+}
+.vocab-studio-container .vs-shimmer-line { display: block; width: 100%; height: 14px; margin: 5px 0; }
+.vocab-studio-container .vs-shimmer-pill { width: 54px; height: 18px; border-radius: 999px; }

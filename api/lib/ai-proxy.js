@@ -422,6 +422,13 @@ async function handleAiProxy(req, res) {
   let body;
   try {
     body = await readBoundedJsonBody(req, MAX_BODY_BYTES);
+    // Defensive normalization: unwrap nested payload if a client sends { model, payload: { contents, ... } }
+    if (body && body.payload && typeof body.payload === "object" && !body.contents && !body.messages) {
+      body = Object.assign({}, body.payload, {
+        model: body.model || body.payload.model,
+        stream: body.stream === true || body.payload.stream === true
+      });
+    }
   } catch (bodyErr) {
     return sendJsonWithCors(res, bodyErr.status || 400, { error: bodyErr.message }, corsCheck);
   }

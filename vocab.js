@@ -2035,85 +2035,326 @@
     } catch (e) { /* ignore */ }
   }
 
-  /* Tier 1 – Exact Match (0 LLM tokens, preserves meaningful grammatical distinctions) */
-  function gradeTier1Exact(userInput, expectedRaw) {
+  /* ===== Ultra-Fast Shared AI Client for Vocab Studio (Personal Keys + Proxy Failover + thinkingBudget: 0) ===== */
+  function stripMarkdownFences(raw) {
+    return String(raw || "")
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```\s*$/i, "")
+      .trim();
+  }
+
+  function extractJsonObject(raw) {
+    const cleaned = stripMarkdownFences(raw);
+    const first = cleaned.indexOf("{");
+    const last = cleaned.lastIndexOf("}");
+    if (first === -1 || last === -1 || last <= first) throw new Error("No JSON object in AI response");
+    return JSON.parse(cleaned.slice(first, last + 1));
+  }
+
+  function getPersonalVocabAiKeys() {
+    const out = {};
+    try {
+      const rawV2 = localStorage.getItem("uet_master_api_keys_v2");
+      if (rawV2) {
+        const parsed = JSON.parse(rawV2);
+        if (parsed && typeof parsed === "object") {
+          ["groq", "gemini", "openrouter", "openai", "deepseek"].forEach(function (prov) {
+            const arr = Array.isArray(parsed[prov]) ? parsed[prov] : (typeof parsed[prov] === "string" ? [parsed[prov]] : []);
+            const valid = arr.map(function (item) {
+              return typeof item === "string" ? item.trim() : String((item && (item.key || item.value)) || "").trim();
+            }).filter(Boolean);
+            if (valid.length > 0) out[prov] = valid[0];
+          });
+        }
+      }
+      if (!out.gemini) {
+        const legacyGem = String(localStorage.getItem("uet_master_gemini_key") || "").trim();
+        if (legacyGem) out.gemini = legacyGem;
+      }
+    } catch (e) { /* ignore storage errors */ }
+    return out;
+  }
+
+  function buildFastAiTargets() {
+    const keys = getPersonalVocabAiKeys();
+    const targets = [];
+    // Fastest personal providers first (Groq LPU ~200ms -> Gemini 2.5 Flash thinkingBudget=0 ~500ms -> OpenRouter -> OpenAI -> DeepSeek)
+    if (keys.groq) targets.push({ mode: "direct", provider: "groq", model: "llama-3.1-8b-instant", endpoint: "https://api.groq.com/openai/v1/chat/completions", key: keys.groq });
+    if (keys.gemini) targets.push({ mode: "direct", provider: "gemini", model: "gemini-2.5-flash", endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent", key: keys.gemini });
+    if (keys.openrouter) targets.push({ mode: "direct", provider: "openrouter", model: "openrouter/free", endpoint: "https://openrouter.ai/api/v1/chat/completions", key: keys.openrouter });
+    if (keys.openai) targets.push({ mode: "direct", provider: "openai", model: "gpt-4o-mini", endpoint: "https://api.openai.com/v1/chat/completions", key: keys.openai });
+    if (keys.deepseek) targets.push({ mode: "direct", provider: "deepseek", model: "deepseek-chat", endpoint: "https://api.deepseek.com/chat/completions", key: keys.deepseek });
+    // Always append server /api/ai/proxy failover (Gemini -> Groq -> OpenRouter) with top-level payload
+    targets.push({ mode: "proxy", provider: "gemini", model: "gemini-2.5-flash" });
+    targets.push({ mode: "proxy", provider: "groq", model: "groq:llama-3.1-8b-instant" });
+    targets.push({ mode: "proxy", provider: "openrouter", model: "openrouter:openrouter/free" });
+    return targets;
+  }
+
+  async function callFastVocabAI(opts) {
+    const sysText = String((opts && opts.system) || "Return strict JSON only.");
+    const userText = String((opts && opts.user) || "");
+    const maxTokens = Number((opts && opts.maxTokens) || 256);
+    const temperature = typeof (opts && opts.temperature) === "number" ? opts.temperature : 0;
+    const timeoutMs = Number((opts && opts.timeoutMs) || 8000);
+    const extSignal = opts && opts.signal;
+    const targets = buildFastAiTargets();
+    const errors = [];
+
+    for (let i = 0; i < targets.length; i++) {
+      if (extSignal && extSignal.aborted) throw apiError("cancelled", "Aborted");
+      const t = targets[i];
+      const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, timeoutMs) : null;
+      const onExtAbort = function () { if (ctrl) ctrl.abort(); };
+      if (extSignal && extSignal.addEventListener) extSignal.addEventListener("abort", onExtAbort, { once: true });
+
+      try {
+        let res;
+        if (t.mode === "direct" && t.provider === "gemini") {
+          res = await fetch(t.endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-goog-api-key": t.key },
+            signal: ctrl ? ctrl.signal : undefined,
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: sysText }] },
+              contents: [{ role: "user", parts: [{ text: userText }] }],
+              generationConfig: {
+                temperature: temperature,
+                maxOutputTokens: maxTokens,
+                responseMimeType: "application/json",
+                thinkingConfig: { thinkingBudget: 0 }
+              }
+            })
+          });
+        } else if (t.mode === "direct") {
+          res = await fetch(t.endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + t.key },
+            signal: ctrl ? ctrl.signal : undefined,
+            body: JSON.stringify({
+              model: t.model,
+              messages: [{ role: "system", content: sysText }, { role: "user", content: userText }],
+              temperature: temperature,
+              max_tokens: maxTokens,
+              response_format: { type: "json_object" }
+            })
+          });
+        } else {
+          // Server /api/ai/proxy expects TOP-LEVEL model, systemInstruction, contents, generationConfig
+          const u = U() && U().state && U().state.user;
+          const hdr = { "Content-Type": "application/json" };
+          if (u && u.email) hdr["X-User-Email"] = u.email;
+          if (u && u.credential) hdr["Authorization"] = "Bearer " + u.credential;
+          const genCfg = {
+            temperature: temperature,
+            maxOutputTokens: maxTokens,
+            responseMimeType: "application/json"
+          };
+          if (t.provider === "gemini") genCfg.thinkingConfig = { thinkingBudget: 0 };
+          res = await fetch("/api/ai/proxy", {
+            method: "POST",
+            headers: hdr,
+            signal: ctrl ? ctrl.signal : undefined,
+            body: JSON.stringify({
+              model: t.model,
+              stream: false,
+              systemInstruction: { parts: [{ text: sysText }] },
+              contents: [{ role: "user", parts: [{ text: userText }] }],
+              generationConfig: genCfg
+            })
+          });
+        }
+
+        if (!res.ok) {
+          const errTxt = await res.text().catch(function () { return ""; });
+          const reason = t.mode + ":" + t.provider + "(" + t.model + ") HTTP " + res.status + " " + errTxt.slice(0, 120);
+          errors.push(reason);
+          console.warn("[VocabStudio AI] Fallback after failure:", reason);
+          continue;
+        }
+        const data = await res.json();
+        const rawText = (data && data.text) ||
+          (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) ||
+          (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+        if (!rawText) {
+          errors.push(t.mode + ":" + t.provider + " empty text");
+          continue;
+        }
+        return extractJsonObject(rawText);
+      } catch (err) {
+        if (extSignal && extSignal.aborted) throw apiError("cancelled", "Aborted");
+        const reason = t.mode + ":" + t.provider + " " + ((err && err.message) || "error");
+        errors.push(reason);
+        console.warn("[VocabStudio AI] Attempt failed:", reason);
+      } finally {
+        if (timer) clearTimeout(timer);
+        if (extSignal && extSignal.removeEventListener) extSignal.removeEventListener("abort", onExtAbort);
+      }
+    }
+    throw new Error("All AI providers failed: " + errors.slice(0, 3).join(" | "));
+  }
+
+  /* Tier 1 – Deterministic Zero-Latency Match (0ms, 0 LLM tokens) */
+  function stripViDiacritics(str) {
+    return String(str || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[\u0111\u0110]/g, "d")
+      .toLowerCase();
+  }
+
+  function levenshtein(a, b) {
+    const s = String(a || ""), t = String(b || "");
+    const m = s.length, n = t.length;
+    if (Math.abs(m - n) > 2) return Math.abs(m - n);
+    const dp = new Array(n + 1);
+    for (let j = 0; j <= n; j++) dp[j] = j;
+    for (let i = 1; i <= m; i++) {
+      let prev = dp[0];
+      dp[0] = i;
+      for (let j = 1; j <= n; j++) {
+        const tmp = dp[j];
+        const cost = s.charCodeAt(i - 1) === t.charCodeAt(j - 1) ? 0 : 1;
+        dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
+        prev = tmp;
+      }
+    }
+    return dp[n];
+  }
+
+  function gradeTier1Exact(userInput, expectedRaw, wordObj) {
     const cleanUser = String(userInput || "").normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
     const expectedStr = String(expectedRaw || "").trim();
-    const variants = expectedStr.split(/[\/|;]/).map(function (v) {
-      return v.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
-    }).filter(Boolean);
-    const exact = !!cleanUser && variants.indexOf(cleanUser) !== -1;
-    if (exact) {
+    if (!cleanUser) return null;
+
+    const variantSet = new Set();
+    expectedStr.split(/[\/|;,]/).forEach(function (v) {
+      const nv = v.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
+      if (nv) variantSet.add(nv);
+    });
+    if (wordObj && Array.isArray(wordObj.synonyms)) {
+      wordObj.synonyms.forEach(function (syn) {
+        const ns = String(syn || "").normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
+        if (ns) variantSet.add(ns);
+      });
+    }
+    const variants = Array.from(variantSet);
+
+    // 1. Exact normalized match -> CORRECT (100)
+    if (variants.indexOf(cleanUser) !== -1) {
       return {
         tier: 1,
         status: "CORRECT",
         score: 100,
-        feedback: "Ch\u00ednh x\u00e1c tuy\u1ec7t \u0111\u1ed1i (Tier 1 Exact Match \u2022 0 token).",
+        feedback: "Ch\u00ednh x\u00e1c tuy\u1ec7t \u0111\u1ed1i (Tier 1 \u2022 0ms, 0 token).",
         expected_answer: expectedStr
       };
     }
+
+    // 2. Vietnamese diacritic-insensitive exact match (e.g. "tang ham" vs "tầng hầm") -> PARTIAL (80)
+    const userNoTone = stripViDiacritics(cleanUser);
+    for (let i = 0; i < variants.length; i++) {
+      if (userNoTone === stripViDiacritics(variants[i]) && cleanUser !== variants[i]) {
+        return {
+          tier: 1,
+          status: "PARTIAL",
+          score: 80,
+          feedback: "Thi\u1ebfu d\u1ea5u ti\u1ebfng Vi\u1ec7t (\u0111\u00e1p \u00e1n chu\u1ea9n: \"" + variants[i] + "\").",
+          expected_answer: expectedStr
+        };
+      }
+    }
+
+    // 3. Minor 1-character typo (Levenshtein === 1 for words >= 5 chars) -> PARTIAL (75)
+    if (cleanUser.length >= 5) {
+      for (let i = 0; i < variants.length; i++) {
+        if (variants[i].length >= 5 && levenshtein(cleanUser, variants[i]) === 1) {
+          return {
+            tier: 1,
+            status: "PARTIAL",
+            score: 75,
+            feedback: "G\u1ea7n \u0111\u00fang, sai nh\u1eb9 ch\u00ednh t\u1ea3 (\u0111\u00e1p \u00e1n chu\u1ea9n: \"" + variants[i] + "\").",
+            expected_answer: expectedStr
+          };
+        }
+      }
+    }
+
     return null;
   }
 
-  /* Tier 2 – Semantic AI Evaluation (temperature: 0.1, validated JSON 0-100) */
+  /* Session + Memory Cache for Tier 2 Semantic Grading */
+  const GRADE_CACHE_KEY = "vocabStudio.gradeCache.v1";
+  const gradeMemCache = new Map();
+  function getGradeCache(cacheKey) {
+    if (gradeMemCache.has(cacheKey)) return gradeMemCache.get(cacheKey);
+    try {
+      const raw = sessionStorage.getItem(GRADE_CACHE_KEY);
+      if (raw) {
+        const obj = JSON.parse(raw);
+        if (obj && obj[cacheKey]) {
+          gradeMemCache.set(cacheKey, obj[cacheKey]);
+          return obj[cacheKey];
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+  function setGradeCache(cacheKey, val) {
+    gradeMemCache.set(cacheKey, val);
+    try {
+      const raw = sessionStorage.getItem(GRADE_CACHE_KEY);
+      const obj = raw ? JSON.parse(raw) : {};
+      const keys = Object.keys(obj);
+      if (keys.length > 200) delete obj[keys[0]];
+      obj[cacheKey] = val;
+      sessionStorage.setItem(GRADE_CACHE_KEY, JSON.stringify(obj));
+    } catch (e) { /* ignore */ }
+  }
+
+  /* Tier 2 – Ultra-Fast Compact AI Semantic Grader (thinkingBudget: 0, temperature: 0, max_tokens: 120) */
   async function gradeTier2Semantic(userInput, expectedRaw, direction, wordObj) {
     const expectedStr = String(expectedRaw || "").trim();
+    const normWord = String((wordObj && wordObj.en) || expectedStr).trim().toLowerCase();
+    const normInput = String(userInput || "").trim().toLowerCase();
+    const cacheKey = normWord + "|" + normInput + "|" + String(direction || "vi-en");
+    const cached = getGradeCache(cacheKey);
+    if (cached) return Object.assign({}, cached, { cached: true });
+
     const lang = (U() && U().state && U().state.lang) || "vi";
-    const langName = lang === "en" ? "English" : (lang === "ja" ? "Japanese" : "Vietnamese");
+    const langCode = lang === "en" ? "EN" : (lang === "ja" ? "JA" : "VI");
     const prompt =
-      "Evaluate the student's vocabulary quiz answer.\n" +
-      "Direction: " + direction + "\n" +
-      "Prompt word: " + (direction === "vi-en" ? (wordObj && wordObj.vi || "") : (wordObj && wordObj.en || "")) + "\n" +
-      "Reference answer: " + expectedStr + "\n" +
-      "Student answer: " + String(userInput || "").trim() + "\n\n" +
-      "Rules:\n" +
-      "- Accept valid synonyms or semantically equivalent phrasing.\n" +
-      "- Distinguish minor spelling mistakes (PARTIAL, 60-85) from meaning-changing errors (INCORRECT, 0-40).\n" +
-      "- Return STRICT JSON ONLY matching this exact schema:\n" +
-      '{"status":"CORRECT|PARTIAL|INCORRECT","score":0,"feedback":"1-2 sentence explanation in ' + langName + '","expected_answer":"' + expectedStr.replace(/"/g, '\\"') + '"}';
+      "Dir:" + direction + "|Prompt:" + (direction === "vi-en" ? (wordObj && wordObj.vi || "") : (wordObj && wordObj.en || "")) +
+      "|Ref:" + expectedStr + "|Ans:" + String(userInput || "").trim() +
+      "\nGrade semantic equivalence. Accept valid synonyms/phrasing. Minor typo=PARTIAL(60-85). Wrong meaning=INCORRECT(0-40)." +
+      '\nReturn strict JSON ONLY: {"s":"CORRECT|PARTIAL|INCORRECT","p":0-100,"f":"<1 short sentence in ' + langCode + '>"}';
 
     try {
-      const u = U() && U().state && U().state.user;
-      const hdr = { "Content-Type": "application/json" };
-      if (u && u.email) hdr["X-User-Email"] = u.email;
-      if (u && u.credential) hdr["Authorization"] = "Bearer " + u.credential;
-
-      const res = await fetch("/api/ai/proxy", {
-        method: "POST",
-        headers: hdr,
-        body: JSON.stringify({
-          provider: "gemini",
-          model: "gemini-2.5-flash",
-          stream: false,
-          payload: {
-            systemInstruction: { parts: [{ text: "You are a strict, fair bilingual language grading engine. Output valid JSON only." }] },
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.1, responseMimeType: "application/json", maxOutputTokens: 256 }
-          }
-        })
+      const parsed = await callFastVocabAI({
+        system: "Strict bilingual vocab grader. Output compact JSON only.",
+        user: prompt,
+        temperature: 0,
+        maxTokens: 120,
+        timeoutMs: 7000
       });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-      const rawText = (data && data.text) ||
-        (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) ||
-        (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
-      const jsonMatch = String(rawText).match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("Invalid JSON");
-      const parsed = JSON.parse(jsonMatch[0]);
-      const validStatuses = ["CORRECT", "PARTIAL", "INCORRECT"];
-      const status = validStatuses.indexOf(String(parsed.status || "").toUpperCase()) !== -1
-        ? String(parsed.status).toUpperCase()
-        : "INCORRECT";
-      const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || (status === "CORRECT" ? 100 : (status === "PARTIAL" ? 65 : 0)))));
-      const feedback = typeof parsed.feedback === "string" && parsed.feedback.trim()
-        ? parsed.feedback.trim().slice(0, 320)
-        : (status === "CORRECT" ? "Ch\u00ednh x\u00e1c v\u1ec1 m\u1eb7t ng\u1eef ngh\u0129a." : "\u0110\u00e1p \u00e1n ch\u01b0a kh\u1edbp ng\u1eef ngh\u0129a.");
-      const expected_answer = typeof parsed.expected_answer === "string" && parsed.expected_answer.trim()
-        ? parsed.expected_answer.trim()
-        : expectedStr;
-      return { tier: 2, status: status, score: score, feedback: feedback, expected_answer: expected_answer };
+      const rawStatus = String(parsed.s || parsed.status || "").toUpperCase();
+      const status = ["CORRECT", "PARTIAL", "INCORRECT"].indexOf(rawStatus) !== -1 ? rawStatus : "INCORRECT";
+      const rawScore = parsed.p !== undefined ? parsed.p : parsed.score;
+      const score = Math.max(0, Math.min(100, Math.round(Number(rawScore) || (status === "CORRECT" ? 100 : (status === "PARTIAL" ? 65 : 0)))));
+      const feedback = String(parsed.f || parsed.feedback || "").trim().slice(0, 260) ||
+        (status === "CORRECT" ? "Ch\u00ednh x\u00e1c v\u1ec1 m\u1eb7t ng\u1eef ngh\u0129a." : "\u0110\u00e1p \u00e1n ch\u01b0a kh\u1edbp ng\u1eef ngh\u0129a.");
+      const out = {
+        tier: 2,
+        status: status,
+        score: score,
+        feedback: feedback,
+        expected_answer: String(parsed.expected_answer || expectedStr)
+      };
+      setGradeCache(cacheKey, out);
+      return out;
     } catch (err) {
-      // Safe fallback without fabricating an AI semantic evaluation
+      console.warn("[VocabStudio AI] Tier 2 semantic grading fallback:", err && err.message);
       return {
         tier: 1,
         status: "INCORRECT",
@@ -2210,7 +2451,7 @@
       const ok = !!q.options[choiceIndex].correct;
       gradeRes = { tier: 1, status: ok ? "CORRECT" : "INCORRECT", score: ok ? 100 : 0, feedback: ok ? "Ch\u00ednh x\u00e1c!" : "Ch\u01b0a \u0111\u00fang.", expected_answer: q.answer };
     } else {
-      gradeRes = gradeTier1Exact(answer, q.answer);
+      gradeRes = gradeTier1Exact(answer, q.answer, q.word);
       if (!gradeRes) {
         s.gradingBusy = true;
         renderQuiz();
@@ -2672,87 +2913,88 @@
     };
   }
 
-  /* Hybrid AI Enrichment (NEVER fabricates IPA or audio; clearly flagged as aiEnriched) */
-  async function enrichDictionaryWithAI(result, signal) {
-    if (!result || !result.en) return result;
+  /* Stage 2 Ultra-Fast Compact AI Enrichment (12s graceful timeout, 600 tokens, thinkingBudget: 0, NEVER fabricates IPA/audio) */
+  async function fetchCompactAiEnrichment(wordEn, signal) {
+    if (!wordEn) return null;
     try {
-      const u = U() && U().state && U().state.user;
-      const hdr = { "Content-Type": "application/json" };
-      if (u && u.email) hdr["X-User-Email"] = u.email;
-      if (u && u.credential) hdr["Authorization"] = "Bearer " + u.credential;
       const prompt =
-        "Provide structured Cambridge-style learner enrichment for the English word: \"" + result.en + "\".\n" +
-        "Do NOT generate IPA or audio URLs.\n" +
-        "Return STRICT JSON ONLY:\n" +
-        '{"cefr":"A1|A2|B1|B2|C1|C2","syllables":"e.g. ex\u00b7am\u00b7ple","collocations":["..."],"wordFamily":["..."],"senses":[{"pos":"noun|verb|adj","defVi":"Vietnamese meaning","defEn":"concise English definition","grammarPattern":"e.g. [C] / + to V","examples":[{"en":"...","vi":"..."}]}]}';
-      const res = await fetch("/api/ai/proxy", {
-        method: "POST",
-        headers: hdr,
-        signal: signal,
-        body: JSON.stringify({
-          provider: "gemini",
-          model: "gemini-2.5-flash",
-          stream: false,
-          payload: {
-            systemInstruction: { parts: [{ text: "You are a bilingual Cambridge lexicographer. Return strict JSON only." }] },
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.1, responseMimeType: "application/json", maxOutputTokens: 700 }
-          }
-        })
+        'Word:"' + wordEn + '". Return compact JSON ONLY (no IPA, no audio, top 3 senses, 2 short examples/sense):\n' +
+        '{"c":"A1-C2","sy":"syl·la·bles","co":["colloc1","colloc2"],"wf":["form1","form2"],"s":[{"p":"n/v/adj","v":"nghĩa VI","e":"short EN def","g":"[C]/+to V","x":[["EN ex","VI ex"]]}]}';
+      return await callFastVocabAI({
+        system: "Compact Cambridge EN-VI lexicographer. Strict JSON only.",
+        user: prompt,
+        temperature: 0,
+        maxTokens: 600,
+        timeoutMs: 12000,
+        signal: signal
       });
-      if (!res.ok) return result;
-      const data = await res.json();
-      const rawText = (data && data.text) ||
-        (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) ||
-        (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
-      const m = String(rawText).match(/\{[\s\S]*\}/);
-      if (!m) return result;
-      const ai = JSON.parse(m[0]);
-      if (/^(A1|A2|B1|B2|C1|C2)$/i.test(String(ai.cefr || "").trim())) result.cefr = String(ai.cefr).trim().toUpperCase();
-      if (typeof ai.syllables === "string" && ai.syllables.trim()) result.syllables = ai.syllables.trim();
-      if (Array.isArray(ai.collocations)) result.collocations = ai.collocations.map(String).filter(Boolean).slice(0, 8);
-      if (Array.isArray(ai.wordFamily)) result.wordFamily = ai.wordFamily.map(String).filter(Boolean).slice(0, 8);
-      if (Array.isArray(ai.senses) && ai.senses.length > 0) {
-        if (!Array.isArray(result.senses) || result.senses.length === 0) {
-          result.senses = ai.senses.slice(0, 4).map(function (s, i) {
-            return {
-              id: "ai_s_" + i,
-              pos: String(s.pos || result.pos || ""),
-              defEn: String(s.defEn || ""),
-              defVi: String(s.defVi || result.vi || ""),
-              grammarPattern: String(s.grammarPattern || ""),
-              examples: Array.isArray(s.examples) ? s.examples.slice(0, 3) : [],
-              selected: i === 0,
-              verified: false
-            };
-          });
-        } else {
-          result.senses.forEach(function (vs, idx) {
-            const match = ai.senses[idx] || ai.senses[0];
-            if (!match) return;
-            if (!vs.defVi && match.defVi) vs.defVi = String(match.defVi);
-            if (!vs.grammarPattern && match.grammarPattern) vs.grammarPattern = String(match.grammarPattern);
-            if ((!vs.examples || vs.examples.length < 2) && Array.isArray(match.examples)) {
-              vs.examples = (vs.examples || []).concat(match.examples.slice(0, 2)).slice(0, 3);
-            }
-          });
-        }
+    } catch (e) {
+      if (e && e.kind === "cancelled") throw e;
+      console.warn("[VocabStudio AI] Stage 2 dictionary enrichment skipped:", e && e.message);
+      return null;
+    }
+  }
+
+  function mergeAiEnrichmentIntoResult(result, ai) {
+    if (!result || !ai || typeof ai !== "object") return result;
+    const cefr = String(ai.c || ai.cefr || "").trim().toUpperCase();
+    if (/^(A1|A2|B1|B2|C1|C2)$/.test(cefr)) result.cefr = cefr;
+    const syl = String(ai.sy || ai.syllables || "").trim();
+    if (syl) result.syllables = syl;
+    const colls = Array.isArray(ai.co || ai.collocations) ? (ai.co || ai.collocations) : [];
+    if (colls.length) result.collocations = colls.map(String).filter(Boolean).slice(0, 6);
+    const wf = Array.isArray(ai.wf || ai.wordFamily) ? (ai.wf || ai.wordFamily) : [];
+    if (wf.length) result.wordFamily = wf.map(String).filter(Boolean).slice(0, 6);
+
+    const rawSenses = Array.isArray(ai.s || ai.senses) ? (ai.s || ai.senses).slice(0, 3) : [];
+    if (rawSenses.length > 0) {
+      const normSenses = rawSenses.map(function (s, i) {
+        const rawEx = Array.isArray(s.x || s.examples) ? (s.x || s.examples).slice(0, 2) : [];
+        const examples = rawEx.map(function (ex) {
+          if (Array.isArray(ex)) return { en: String(ex[0] || "").trim(), vi: String(ex[1] || "").trim() };
+          if (ex && typeof ex === "object") return { en: String(ex.en || "").trim(), vi: String(ex.vi || "").trim() };
+          return { en: String(ex || "").trim(), vi: "" };
+        }).filter(function (ex) { return ex.en; });
+        return {
+          id: "ai_s_" + i,
+          pos: String(s.p || s.pos || result.pos || "").trim(),
+          defVi: String(s.v || s.defVi || "").trim(),
+          defEn: String(s.e || s.defEn || "").trim(),
+          grammarPattern: String(s.g || s.grammarPattern || "").trim(),
+          examples: examples,
+          selected: i === 0,
+          verified: false
+        };
+      });
+      if (!result.vi && normSenses[0] && normSenses[0].defVi) result.vi = normSenses[0].defVi;
+      if (!Array.isArray(result.senses) || result.senses.length === 0) {
+        result.senses = normSenses;
+      } else {
+        result.senses.slice(0, 3).forEach(function (vs, idx) {
+          const match = normSenses[idx] || normSenses[0];
+          if (!match) return;
+          if (!vs.defVi && match.defVi) vs.defVi = match.defVi;
+          if (!vs.grammarPattern && match.grammarPattern) vs.grammarPattern = match.grammarPattern;
+          if ((!vs.examples || vs.examples.length < 2) && match.examples.length) {
+            vs.examples = (vs.examples || []).concat(match.examples).slice(0, 2);
+          }
+        });
       }
-      result.aiEnriched = true;
-    } catch (e) { /* graceful fallback without AI enrichment */ }
+    }
+    result.aiEnriched = true;
     return result;
   }
 
-  async function lookupTerm(q, selected, signal) {
+  async function lookupTerm(q, selected, signal, onAiHydrated) {
     const cleanQ = String(q || "").trim();
-    if (!cleanQ || cleanQ.length > 150) throw apiError("input", "Hãy nhập từ hoặc cụm từ từ 1 đến 150 ký tự");
+    if (!cleanQ || cleanQ.length > 150) throw apiError("input", "H\u00e3y nh\u1eadp t\u1eeb ho\u1eb7c c\u1ee5m t\u1eeb t\u1eeb 1 \u0111\u1ebfn 150 k\u00fd t\u1ef1");
     const direction = detectLookupDirection(cleanQ, selected || "auto");
     const key = direction + ":" + cleanAnswer(cleanQ);
     const cached = DictCache.get(key);
-    if (cached && cached.fresh) return Object.assign({}, cached.result, { source: "cache", cachedAt: cached.cachedAt });
+    if (cached && cached.fresh) return Object.assign({}, cached.result, { source: "cache", cachedAt: cached.cachedAt, aiLoading: false });
     if (navigator.onLine === false) {
-      if (cached) return Object.assign({}, cached.result, { source: "stale-cache", cachedAt: cached.cachedAt });
-      throw apiError("network", "Bạn đang mất mạng. Hãy nhập từ thủ công.");
+      if (cached) return Object.assign({}, cached.result, { source: "stale-cache", cachedAt: cached.cachedAt, aiLoading: false });
+      throw apiError("network", "B\u1ea1n \u0111ang m\u1ea5t m\u1ea1ng. H\u00e3y nh\u1eadp t\u1eeb th\u1ee7 c\u00f4ng.");
     }
     const result = {
       en: direction === "en-vi" ? cleanQ : "",
@@ -2763,37 +3005,59 @@
       definition: "",
       audioUrl: "",
       direction: direction,
-      warnings: []
+      warnings: [],
+      aiLoading: true
     };
     let translated = false, detailsOK = false, notFound = false;
     const failures = [];
+
+    // Stage 2 starts IN PARALLEL with Stage 1 immediately for en-vi (never waits for Stage 1!)
+    let stage2Promise = direction === "en-vi" ? fetchCompactAiEnrichment(cleanQ, signal) : null;
+
     if (direction === "en-vi") {
-      const outcomes = await Promise.allSettled([translateTerm(cleanQ, direction, signal), englishDetails(cleanQ, signal)]);
-      if (outcomes[0].status === "fulfilled") { result.vi = outcomes[0].value; translated = true; }
-      else failures.push(outcomes[0].reason);
-      if (outcomes[1].status === "fulfilled") { Object.assign(result, outcomes[1].value); detailsOK = true; }
-      else { failures.push(outcomes[1].reason); notFound = outcomes[1].reason && outcomes[1].reason.kind === "not-found"; }
+      const outcomes = await Promise.allSettled([englishDetails(cleanQ, signal), translateTerm(cleanQ, direction, signal)]);
+      if (outcomes[0].status === "fulfilled") { Object.assign(result, outcomes[0].value); detailsOK = true; }
+      else { failures.push(outcomes[0].reason); notFound = outcomes[0].reason && outcomes[0].reason.kind === "not-found"; }
+      if (outcomes[1].status === "fulfilled") { result.vi = outcomes[1].value; translated = true; }
+      else failures.push(outcomes[1].reason);
     } else {
       try { result.en = await translateTerm(cleanQ, direction, signal); translated = true; }
       catch (e) { failures.push(e); }
-      if (translated) {
+      if (translated && result.en) {
+        stage2Promise = fetchCompactAiEnrichment(result.en, signal);
         try { Object.assign(result, await englishDetails(result.en, signal)); detailsOK = true; }
         catch (e) { failures.push(e); notFound = e && e.kind === "not-found"; }
       }
     }
     if ((signal && signal.aborted) || failures.some(function (e) { return e && e.kind === "cancelled"; })) {
-      throw apiError("cancelled", "Đã hủy tra cứu");
+      throw apiError("cancelled", "\u0110\u00e3 h\u1ee7y tra c\u1ee9u");
     }
-    if (failures.length && cached) {
-      return Object.assign({}, cached.result, { source: "stale-cache", cachedAt: cached.cachedAt });
+    if (failures.length && cached && !detailsOK && !translated) {
+      return Object.assign({}, cached.result, { source: "stale-cache", cachedAt: cached.cachedAt, aiLoading: false });
     }
-    if (notFound) result.warnings.push("Chưa có IPA hoặc ví dụ từ điển; vẫn có thể lưu bản dịch hoặc nhập tay.");
+    if (notFound) result.warnings.push("Ch\u01b0a c\u00f3 IPA ho\u1eb7c v\u00ed d\u1ee5 t\u1eeb \u0111i\u1ec3n; v\u1eabn c\u00f3 th\u1ec3 l\u01b0u b\u1ea3n d\u1ecbch ho\u1eb7c nh\u1eadp tay.");
     if (!translated && !detailsOK) throw failures[0] || apiError("network", "Kh\u00f4ng l\u1ea5y \u0111\u01b0\u1ee3c k\u1ebft qu\u1ea3");
-    if (result.en) {
-      await enrichDictionaryWithAI(result, signal);
+
+    // Stage 1 returns IMMEDIATELY (< 400ms) while Stage 2 hydrates asynchronously in the background!
+    const stage1Out = Object.assign({}, result, { source: "api", aiLoading: !!stage2Promise });
+    if (stage2Promise) {
+      stage2Promise.then(function (aiData) {
+        if (signal && signal.aborted) return;
+        stage1Out.aiLoading = false;
+        if (aiData) mergeAiEnrichmentIntoResult(stage1Out, aiData);
+        if ((translated || stage1Out.vi) && (detailsOK || notFound || stage1Out.aiEnriched)) {
+          DictCache.put(key, stage1Out);
+        }
+        if (typeof onAiHydrated === "function") onAiHydrated(stage1Out);
+      }).catch(function () {
+        if (signal && signal.aborted) return;
+        stage1Out.aiLoading = false;
+        if (typeof onAiHydrated === "function") onAiHydrated(stage1Out);
+      });
+    } else if (translated && (detailsOK || notFound)) {
+      DictCache.put(key, stage1Out);
     }
-    if (translated && (detailsOK || notFound)) DictCache.put(key, result);
-    return Object.assign({}, result, { source: "api" });
+    return stage1Out;
   }
 
   const dictionaryViews = {
@@ -2842,22 +3106,91 @@
     renderDictionary();
     try {
       const qEl = $(prefix + "Query"), dEl = $(prefix + "Direction");
-      const result = await lookupTerm(qEl ? qEl.value : "", dEl ? dEl.value : "auto", controller.signal);
+      const result = await lookupTerm(qEl ? qEl.value : "", dEl ? dEl.value : "auto", controller.signal, function (hydrated) {
+        if (token !== state.token) return;
+        state.result = hydrated;
+        if (context === "page") hydrateDictionarySlotsInPlace(hydrated);
+        else fillWordForm(hydrated);
+        if (state.controller === controller) state.controller = null;
+      });
       if (token !== state.token) return;
       state.result = result;
       if (context === "modal") fillWordForm(result);
+      // Paint Stage 1 immediately! Do NOT clear controller yet if Stage 2 is still hydrating so Cancel/New Lookup can abort it.
+      state.busy = false;
+      if (!result.aiLoading) state.controller = null;
+      renderDictionary();
     } catch (e) {
       if (token === state.token && (!e || e.kind !== "cancelled")) {
-        state.error = (e && e.message) || "Không thể tra cứu";
+        state.error = (e && e.message) || "Kh\u00f4ng th\u1ec3 tra c\u1ee9u";
         toast(state.error, "warning");
       }
-    } finally {
       if (token === state.token) {
         state.busy = false;
         state.controller = null;
         renderDictionary();
       }
     }
+  }
+
+  function buildDictCefrSlotHtml(r) {
+    if (r.aiLoading) return '<span class="vs-shimmer vs-shimmer-pill" aria-label="Loading CEFR"></span>';
+    return (r.cefr ? '<span class="vs-pill vs-cefr">' + esc(r.cefr) + '</span>' : '') +
+      (r.aiEnriched ? ' <span class="vs-pill vs-badge-ai">✨ AI Enrichment</span>' : '');
+  }
+
+  function buildDictSensesSlotHtml(r) {
+    const senses = Array.isArray(r.senses) && r.senses.length > 0
+      ? r.senses
+      : [{ id: "s_0", pos: r.pos || "", defEn: r.definition || "", defVi: r.vi || "", grammarPattern: "", examples: r.example ? [{ en: r.example, vi: "" }] : [], selected: true, verified: !!r.verifiedDict }];
+    r.senses = senses;
+    return '<div class="vs-muted" style="font-size:12px;margin-bottom:6px;font-weight:700">Ch\u1ecdn c\u00e1c ngh\u0129a mu\u1ed1n l\u01b0u v\u00e0o b\u1ed9 t\u1eeb:</div>' +
+      senses.map(function (s, idx) {
+        const needViShimmer = r.aiLoading && !s.defVi;
+        const needExShimmer = r.aiLoading && (!Array.isArray(s.examples) || s.examples.length === 0);
+        return '<label class="vs-sense-card">' +
+          '<input type="checkbox" data-vs-sense-idx="' + idx + '"' + (s.selected ? " checked" : "") + '>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+              (s.pos ? '<span class="vs-pill">' + esc(posLabel(s.pos)) + '</span>' : '') +
+              (s.grammarPattern ? '<span class="vs-pill vs-mono">' + esc(s.grammarPattern) + '</span>' : '') +
+              (s.defVi ? '<strong>' + esc(s.defVi) + '</strong>' : (needViShimmer ? '<span class="vs-shimmer" style="width:140px"></span>' : '')) +
+            '</div>' +
+            (s.defEn ? '<p style="margin:3px 0;font-size:13px">' + esc(s.defEn) + '</p>' : '') +
+            (Array.isArray(s.examples) && s.examples.length ? s.examples.map(function (ex) {
+              const exEn = typeof ex === "string" ? ex : (ex.en || "");
+              const exVi = typeof ex === "string" ? "" : (ex.vi || "");
+              return '<div class="vs-sense-ex">' +
+                '<button type="button" class="vs-quiet vs-btn-xs" data-vs-speak-text="' + esc(exEn) + '" title="Nghe v\u00ed d\u1ee5">🔊</button>' +
+                '<span><em>' + esc(exEn) + '</em>' + (exVi ? (' — <span class="vs-muted">' + esc(exVi) + '</span>') : (r.aiLoading ? ' <span class="vs-shimmer" style="width:110px"></span>' : '')) + '</span></div>';
+            }).join("") : (needExShimmer ? '<span class="vs-shimmer vs-shimmer-line" style="width:82%"></span>' : '')) +
+          '</div>' +
+        '</label>';
+      }).join("");
+  }
+
+  function buildDictExtraSlotHtml(r) {
+    if (r.aiLoading && (!r.collocations || !r.collocations.length) && (!r.wordFamily || !r.wordFamily.length)) {
+      return '<div class="vs-dict-detail"><span>Collocations &amp; Word Family</span><div class="vs-chip-row"><span class="vs-shimmer vs-shimmer-pill" style="width:92px"></span><span class="vs-shimmer vs-shimmer-pill" style="width:76px"></span><span class="vs-shimmer vs-shimmer-pill" style="width:84px"></span></div></div>';
+    }
+    return (r.collocations && r.collocations.length ? '<div class="vs-dict-detail"><span>Collocations</span><div class="vs-chip-row">' + r.collocations.map(function (c) { return '<span class="vs-pill">' + esc(c) + '</span>'; }).join("") + '</div></div>' : '') +
+      (r.wordFamily && r.wordFamily.length ? '<div class="vs-dict-detail"><span>Word Family</span><div class="vs-chip-row">' + r.wordFamily.map(function (wf) { return '<button type="button" class="vs-chip-link" data-vs-lookup-word="' + esc(wf) + '">' + esc(wf) + '</button>'; }).join("") + '</div></div>' : '');
+  }
+
+  function hydrateDictionarySlotsInPlace(r) {
+    if (!r) return;
+    const cefrEl = $("vsDictCefrSlot");
+    if (cefrEl) cefrEl.innerHTML = buildDictCefrSlotHtml(r);
+    const sylEl = $("vsDictSyllablesSlot");
+    if (sylEl && r.syllables) sylEl.textContent = " (" + r.syllables + ")";
+    const meanEl = $("vsDictMeaningSlot");
+    if (meanEl && r.vi) meanEl.textContent = r.vi;
+    const sensesEl = $("vsDictSensesSlot");
+    if (sensesEl) sensesEl.innerHTML = buildDictSensesSlotHtml(r);
+    const extraEl = $("vsDictExtraSlot");
+    if (extraEl) extraEl.innerHTML = buildDictExtraSlotHtml(r);
+    const qs = $("vsDictQuickSave");
+    if (qs) qs.disabled = !r.en || (!r.vi && !(Array.isArray(r.senses) && r.senses.some(function (s) { return s.selected && (s.defVi || s.defEn); })));
   }
 
   function renderDictionary() {
@@ -2873,13 +3206,13 @@
       const btn = $(prefix + "Button"), cancel = $(prefix + "Cancel"), status = $(prefix + "Status");
       if (btn) {
         btn.disabled = state.busy;
-        btn.textContent = state.busy ? "Đang tra…" : "Tra cứu";
+        btn.textContent = state.busy ? "\u0110ang tra\u2026" : "Tra c\u1ee9u";
       }
       if (cancel) cancel.hidden = !state.busy;
       if (status) {
         status.textContent = state.busy
-          ? "Đang tra cứu. Mỗi yêu cầu tối đa 8 giây…"
-          : (state.error || (state.result ? "Đã tra cứu · Bạn có thể lưu ngay hoặc chỉnh lại nội dung" : "Tự nhận diện theo dấu tiếng Việt. Có thể chọn chiều thủ công."));
+          ? "\u0110ang tra c\u1ee9u\u2026"
+          : (state.error || (state.result ? (state.result.aiLoading ? "\u0110\u00e3 hi\u1ec3n th\u1ecb t\u1eeb \u0111i\u1ec3n \u00b7 AI \u0111ang b\u1ed5 sung ngh\u0129a Vi\u1ec7t & v\u00ed d\u1ee5 song ng\u1eef\u2026" : "\u0110\u00e3 tra c\u1ee9u \u00b7 B\u1ea1n c\u00f3 th\u1ec3 l\u01b0u ngay ho\u1eb7c ch\u1ec9nh l\u1ea1i n\u1ed9i dung") : "T\u1ef1 nh\u1eadn di\u1ec7n theo d\u1ea5u ti\u1ebfng Vi\u1ec7t. C\u00f3 th\u1ec3 ch\u1ecdn chi\u1ec1u th\u1ee7 c\u00f4ng."));
       }
     });
 
@@ -2889,10 +3222,6 @@
     resBox.hidden = !r;
     if (!r) { resBody.innerHTML = ""; return; }
     const otherDecks = getOtherDecksForWord(r.en, dictDeck);
-    const senses = Array.isArray(r.senses) && r.senses.length > 0
-      ? r.senses
-      : [{ id: "s_0", pos: r.pos || "", defEn: r.definition || "", defVi: r.vi || "", grammarPattern: "", examples: r.example ? [{ en: r.example, vi: "" }] : [], selected: true, verified: !!r.verifiedDict }];
-    r.senses = senses;
 
     const svgFallback = '<svg class="vs-dict-svg" viewBox="0 0 64 64" width="52" height="52" aria-hidden="true">' +
       '<rect width="64" height="64" rx="14" fill="currentColor" opacity="0.1"/>' +
@@ -2905,12 +3234,11 @@
           '<div style="min-width:0">' +
             '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
               '<span class="vs-eyebrow">' + (r.direction === "vi-en" ? "VI\u1ec6T \u2192 ANH" : "ANH \u2192 VI\u1ec6T") + '</span>' +
-              (r.cefr ? '<span class="vs-pill vs-cefr">' + esc(r.cefr) + '</span>' : '') +
               (r.verifiedDict ? '<span class="vs-pill vs-badge-verified">✓ Verified Dictionary</span>' : '') +
-              (r.aiEnriched ? '<span class="vs-pill vs-badge-ai">✨ AI Enrichment</span>' : '') +
+              '<span id="vsDictCefrSlot">' + buildDictCefrSlotHtml(r) + '</span>' +
             '</div>' +
             '<h2 class="vs-dict-word">' + esc(r.en || "Ch\u01b0a c\u00f3 t\u1eeb ti\u1ebfng Anh") +
-              (r.syllables ? ' <span class="vs-muted" style="font-size:13px;font-weight:500">(' + esc(r.syllables) + ')</span>' : '') +
+              '<span id="vsDictSyllablesSlot" class="vs-muted" style="font-size:13px;font-weight:500">' + (r.syllables ? (' (' + esc(r.syllables) + ')') : '') + '</span>' +
             '</h2>' +
             '<div class="vs-row" style="gap:10px;flex-wrap:wrap;margin-top:4px">' +
               (r.ukIpa ? '<span class="vs-mono vs-muted">UK ' + esc(r.ukIpa) + '</span>' : (r.ipa ? '<span class="vs-mono vs-muted">' + esc(r.ipa) + '</span>' : '')) +
@@ -2924,36 +3252,14 @@
         '</div>' +
       '</div>' +
       (r.pos ? '<p class="vs-dict-pos">' + esc(posLabel(r.pos)) + "</p>" : "") +
-      '<p class="vs-dict-meaning">' + esc(r.vi || "Ch\u01b0a c\u00f3 ngh\u0129a ti\u1ebfng Vi\u1ec7t") + "</p>" +
-      '<div class="vs-senses-list"><div class="vs-muted" style="font-size:12px;margin-bottom:6px;font-weight:700">Ch\u1ecdn c\u00e1c ngh\u0129a mu\u1ed1n l\u01b0u v\u00e0o b\u1ed9 t\u1eeb:</div>' +
-        senses.map(function (s, idx) {
-          return '<label class="vs-sense-card">' +
-            '<input type="checkbox" data-vs-sense-idx="' + idx + '"' + (s.selected ? " checked" : "") + '>' +
-            '<div style="flex:1;min-width:0">' +
-              '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
-                (s.pos ? '<span class="vs-pill">' + esc(posLabel(s.pos)) + '</span>' : '') +
-                (s.grammarPattern ? '<span class="vs-pill vs-mono">' + esc(s.grammarPattern) + '</span>' : '') +
-                (s.defVi ? '<strong>' + esc(s.defVi) + '</strong>' : '') +
-              '</div>' +
-              (s.defEn ? '<p style="margin:3px 0;font-size:13px">' + esc(s.defEn) + '</p>' : '') +
-              (Array.isArray(s.examples) && s.examples.length ? s.examples.map(function (ex) {
-                const exEn = typeof ex === "string" ? ex : (ex.en || "");
-                const exVi = typeof ex === "string" ? "" : (ex.vi || "");
-                return '<div class="vs-sense-ex">' +
-                  '<button type="button" class="vs-quiet vs-btn-xs" data-vs-speak-text="' + esc(exEn) + '" title="Nghe v\u00ed d\u1ee5">🔊</button>' +
-                  '<span><em>' + esc(exEn) + '</em>' + (exVi ? (' — <span class="vs-muted">' + esc(exVi) + '</span>') : '') + '</span></div>';
-              }).join("") : '') +
-            '</div>' +
-          '</label>';
-        }).join("") +
-      '</div>' +
+      '<p id="vsDictMeaningSlot" class="vs-dict-meaning">' + (r.vi ? esc(r.vi) : (r.aiLoading ? '<span class="vs-shimmer" style="width:180px"></span>' : "Ch\u01b0a c\u00f3 ngh\u0129a ti\u1ebfng Vi\u1ec7t")) + "</p>" +
+      '<div id="vsDictSensesSlot" class="vs-senses-list">' + buildDictSensesSlotHtml(r) + '</div>' +
       (r.synonyms && r.synonyms.length ? '<div class="vs-dict-detail"><span>\u0110\u1ed3ng ngh\u0129a (Synonyms)</span><div class="vs-chip-row">' + r.synonyms.map(function (syn) { return '<button type="button" class="vs-chip-link" data-vs-lookup-word="' + esc(syn) + '">' + esc(syn) + '</button>'; }).join("") + '</div></div>' : '') +
       (r.antonyms && r.antonyms.length ? '<div class="vs-dict-detail"><span>Tr\u00e1i ngh\u0129a (Antonyms)</span><div class="vs-chip-row">' + r.antonyms.map(function (ant) { return '<button type="button" class="vs-chip-link" data-vs-lookup-word="' + esc(ant) + '">' + esc(ant) + '</button>'; }).join("") + '</div></div>' : '') +
-      (r.collocations && r.collocations.length ? '<div class="vs-dict-detail"><span>Collocations</span><div class="vs-chip-row">' + r.collocations.map(function (c) { return '<span class="vs-pill">' + esc(c) + '</span>'; }).join("") + '</div></div>' : '') +
-      (r.wordFamily && r.wordFamily.length ? '<div class="vs-dict-detail"><span>Word Family</span><div class="vs-chip-row">' + r.wordFamily.map(function (wf) { return '<button type="button" class="vs-chip-link" data-vs-lookup-word="' + esc(wf) + '">' + esc(wf) + '</button>'; }).join("") + '</div></div>' : '') +
+      '<div id="vsDictExtraSlot">' + buildDictExtraSlotHtml(r) + '</div>' +
       (r.warnings && r.warnings.length ? '<div class="vs-dict-notice">' + r.warnings.map(esc).join("<br>") + "</div>" : "");
     const qs = $("vsDictQuickSave");
-    if (qs) qs.disabled = !r.en || (!r.vi && !senses.some(function (s) { return s.selected && (s.defVi || s.defEn); }));
+    if (qs) qs.disabled = !r.en || (!r.vi && !(Array.isArray(r.senses) && r.senses.some(function (s) { return s.selected && (s.defVi || s.defEn); })));
   }
 
   function saveDictionaryWord() {
