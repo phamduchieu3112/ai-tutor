@@ -34,6 +34,7 @@
     },
     play: null,
     timerId: null,
+    editorPage: 1,
     mounted: false
   };
 
@@ -102,31 +103,58 @@
     };
   }
 
-  function openFromDeck(deck) {
-    if (!deck) return;
-    stopStudioTimer();
-    sState.quiz = Object.assign({}, deck, {
+  function persistQuizToStudioList(qz) {
+    if (!qz || !Array.isArray(qz.questions) || qz.questions.length === 0) return qz;
+    const saved = Object.assign({}, qz, { updatedAt: new Date().toISOString() });
+    const list = loadQuizzes().filter(function (x) { return x && x.id !== saved.id; });
+    list.unshift(saved);
+    saveQuizzes(list);
+    return saved;
+  }
+
+  function cloneDeckToQuiz(deck) {
+    if (!deck) return null;
+    const rawQs = Array.isArray(deck.questions) ? deck.questions : [];
+    return Object.assign({}, deck, {
       id: deck.id && String(deck.id).indexOf("qz_") === 0 ? deck.id : ("qz_deck_" + deck.id),
       deckId: deck.id,
-      title: deck.title,
+      title: deck.title || "Quiz kh\u00f4ng t\u00ean",
       tag: deck.tag || "T\u1ed5ng h\u1ee3p",
       isPublic: typeof deck.isPublic === "boolean" ? deck.isPublic : true,
       shareCode: deck.shareCode || "",
-      questions: deck.questions.map(function (q, i) {
+      questions: rawQs.map(function (q, i) {
         return Object.assign({}, q, {
           id: q.id || ("sq_" + i),
-          text: q.text,
-          type: q.type === "multiple" ? "multiple" : "single",
-          options: q.options.slice(),
-          correct: q.correct.slice(),
+          text: q.text || "",
+          type: q.type === "multiple" || q.type === "Checkbox" ? "multiple" : "single",
+          options: Array.isArray(q.options) ? q.options.slice() : [],
+          correct: Array.isArray(q.correct) ? q.correct.slice() : [],
           time: Number.isFinite(Number(q.time)) ? Number(q.time) : 30,
           image: q.image || "",
           explanation: q.explanation || ""
         });
       })
     });
+  }
+
+  function openFromDeck(deck, opts) {
+    if (!deck) return;
+    stopStudioTimer();
+    const o = opts || {};
+    sState.quiz = cloneDeckToQuiz(deck);
+    sState.editorPage = 1;
+    if (o.saveToList !== false && sState.quiz.questions.length > 0) {
+      persistQuizToStudioList(sState.quiz);
+    }
     sState.screen = "editor";
-    U().showTab("studio");
+    if (o.skipNav) return;
+    if (U().state && U().state.tab === "studio") {
+      render();
+    } else if (typeof U().navigateTo === "function") {
+      U().navigateTo("/creator-studio/editor");
+    } else {
+      U().showTab("studio");
+    }
   }
 
   function openFromQuestions(title, tag, items) {
@@ -137,7 +165,7 @@
       tag: tag || "T\u1ed5ng h\u1ee3p",
       isPublic: true,
       shareCode: "",
-      questions: items.map(function (q, i) {
+      questions: (Array.isArray(items) ? items : []).map(function (q, i) {
         return {
           id: "sq_" + Date.now() + "_" + i,
           text: q.text,
@@ -150,8 +178,16 @@
         };
       })
     };
+    sState.editorPage = 1;
+    if (sState.quiz.questions.length > 0) persistQuizToStudioList(sState.quiz);
     sState.screen = "editor";
-    U().showTab("studio");
+    if (U().state && U().state.tab === "studio") {
+      render();
+    } else if (typeof U().navigateTo === "function") {
+      U().navigateTo("/creator-studio/editor");
+    } else {
+      U().showTab("studio");
+    }
   }
 
   function saveCurrentQuiz() {
@@ -253,9 +289,10 @@
         '<div class="deck-row"><strong>✍️ T\u1ea1o Quiz th\u1ee7 c\u00f4ng</strong><span class="muted" style="font-size:.8rem">T\u1ef1 so\u1ea1n t\u1eebng c\u00e2u h\u1ecfi v\u1edbi toolbar B/I/U, LaTeX &amp; \u1ea3nh</span>' +
           '<button type="button" class="btn btn-primary btn-sm" data-sact="new-manual">T\u1ea1o Quiz m\u1edbi</button></div>' +
         '<div class="deck-row"><strong>📚 L\u1ea5y t\u1eeb Kho \u0111\u1ec1 AI Tutor</strong><span class="muted" style="font-size:.8rem">Hi\u1ec7n c\u00f3 ' + decks.length + ' b\u1ed9 \u0111\u1ec1 trong Kho \u0111\u1ec1</span>' +
-          (decks.length ? '<div style="display:flex;gap:6px"><select id="stPickDeck" style="flex:1;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text)">' +
+          (decks.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap"><select id="stPickDeck" style="flex:1;min-width:160px;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text)">' +
             decks.map(function (d) { return '<option value="' + U().esc(d.id) + '">' + U().esc(d.title) + ' (' + d.questions.length + ' c\u00e2u)</option>'; }).join("") +
-            '</select><button type="button" class="btn btn-primary btn-sm" data-sact="import-deck">M\u1edf</button></div>' : '<span class="muted" style="font-size:.78rem">Ch\u01b0a c\u00f3 b\u1ed9 \u0111\u1ec1 n\u00e0o</span>') +
+            '</select><button type="button" class="btn btn-primary btn-sm" data-sact="import-deck">M\u1edf</button>' +
+            '<button type="button" class="btn btn-emerald btn-sm" data-sact="assign-deck">Giao cho h\u1ecdc sinh</button></div>' : '<span class="muted" style="font-size:.78rem">Ch\u01b0a c\u00f3 b\u1ed9 \u0111\u1ec1 n\u00e0o</span>') +
         '</div>' +
         '<div class="deck-row"><strong>✨ Nh\u1eadp t\u1eeb AI Converter</strong><span class="muted" style="font-size:.8rem">Hi\u1ec7n c\u00f3 ' + convCount + ' c\u00e2u h\u1ee3p l\u1ec7 trong AI Converter</span>' +
           '<button type="button" class="btn btn-emerald btn-sm" data-sact="import-conv"' + (convCount === 0 ? " disabled" : "") + '>L\u1ea5y t\u1eeb AI Converter (' + convCount + ')</button></div>' +
@@ -275,7 +312,7 @@
           '<div class="deck-sub"><span>' + (qz.questions ? qz.questions.length : 0) + ' c\u00e2u h\u1ecfi</span>' + (qz.updatedAt ? '<span>C\u1eadp nh\u1eadt: ' + U().esc(U().fmtDateTime(qz.updatedAt)) + '</span>' : "") + '</div>' +
           '<div class="deck-actions">' +
             '<button type="button" class="btn btn-emerald btn-sm" data-sact="play-saved" data-id="' + U().esc(qz.id) + '">▶ B\u1eaft \u0111\u1ea7u l\u00e0m b\u00e0i (Play)</button>' +
-            '<button type="button" class="btn btn-primary btn-sm" data-sact="assign-saved" data-id="' + U().esc(qz.id) + '">Giao b\u00e0i</button>' +
+            '<button type="button" class="btn btn-primary btn-sm" data-sact="assign-saved" data-id="' + U().esc(qz.id) + '">Giao cho h\u1ecdc sinh</button>' +
             '<button type="button" class="btn btn-outline btn-sm" data-sact="edit-saved" data-id="' + U().esc(qz.id) + '">Ch\u1ec9nh s\u1eeda</button>' +
             '<select data-sact="card-vis" data-id="' + U().esc(qz.id) + '" aria-label="Quy\u1ec1n truy c\u1eadp Quiz" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.78rem;font-weight:700">' +
               '<option value="public"' + (isPub ? " selected" : "") + '>🌐 Public</option>' +
@@ -305,7 +342,8 @@
     sState.quiz = qz;
     const advLock = U().can("studioAdv") ? "" : " (⏱️ Tu\u1ef3 ch\u1ec9nh th\u1eddi gian ri\u00eang m\u1edf kh\u00f3a \u0111\u1ea7y \u0111\u1ee7 t\u1eeb g\u00f3i Silver)";
 
-    let h = '<div class="studio-header">' +
+    let h = (window.UETLms && typeof window.UETLms.renderStudioSubnav === "function" ? window.UETLms.renderStudioSubnav("editor") : "") +
+      '<div class="studio-header">' +
       '<button type="button" class="btn btn-outline btn-sm" data-sact="back-home">← Danh s\u00e1ch</button>' +
       '<input type="text" id="stQuizTitle" value="' + U().esc(qz.title) + '" placeholder="T\u00ean Quiz..." style="flex:1;min-width:180px;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-weight:700">' +
       '<input type="text" id="stQuizTag" value="' + U().esc(qz.tag) + '" placeholder="M\u00f4n h\u1ecdc / Tag" style="width:140px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">' +
@@ -321,18 +359,47 @@
       '<button type="button" class="btn btn-outline btn-sm" data-sact="share-cur"' + (qz.questions.length === 0 ? " disabled" : "") + '>🔗 Chia s\u1ebb</button>' +
       '<button type="button" class="btn btn-outline btn-sm" data-sact="pdf-cur"' + (qz.questions.length === 0 ? " disabled" : "") + '>🖨️ Xu\u1ea5t PDF</button>' +
       '<button type="button" class="btn btn-primary btn-sm" data-sact="save-quiz">💾 L\u01b0u Quiz</button>' +
+      '<button type="button" class="btn btn-primary btn-sm" data-sact="assign-cur"' + (qz.questions.length === 0 ? " disabled" : "") + '>Giao cho h\u1ecdc sinh</button>' +
       '<button type="button" class="btn btn-emerald btn-sm" data-sact="go-lobby"' + (qz.questions.length === 0 ? " disabled" : "") + '>▶ B\u1eaft \u0111\u1ea7u l\u00e0m b\u00e0i (Play)</button>' +
     '</div>';
 
     h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">' +
       '<span class="muted" style="font-size:.84rem">T\u1ed5ng c\u1ed9ng <strong>' + qz.questions.length + '</strong> c\u00e2u h\u1ecfi' + advLock + '</span>' +
-      '<button type="button" class="btn btn-primary" data-sact="add-q">+ Th\u00eam c\u00e2u h\u1ecfi m\u1edbi</button>' +
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        (qz.questions.length > 20
+          ? '<div style="display:flex;align-items:center;gap:6px">' +
+              '<select id="stSliceCount" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.8rem">' +
+                '<option value="20">20 c\u00e2u ng\u1eabu nhi\u00ean</option>' +
+                '<option value="30">30 c\u00e2u ng\u1eabu nhi\u00ean</option>' +
+                '<option value="50" selected>50 c\u00e2u ng\u1eabu nhi\u00ean</option>' +
+                '<option value="100">100 c\u00e2u ng\u1eabu nhi\u00ean</option>' +
+              '</select>' +
+              '<button type="button" class="btn btn-outline btn-sm" data-sact="slice-quiz">✂️ C\u1eaft b\u1ed9 \u0111\u1ec1 con</button>' +
+            '</div>'
+          : '') +
+        '<button type="button" class="btn btn-primary" data-sact="add-q">+ Th\u00eam c\u00e2u h\u1ecfi m\u1edbi</button>' +
+      '</div>' +
     '</div>';
 
     if (qz.questions.length === 0) {
       h += '<div class="panel"><div class="empty-state">Quiz n\u00e0y ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi n\u00e0o. Nh\u1ea5n <strong>+ Th\u00eam c\u00e2u h\u1ecfi m\u1edbi</strong> \u0111\u1ec3 m\u1edf Question Builder chu\u1ea9n Quizizz!</div></div>';
     } else {
-      h += '<div class="list">' + qz.questions.map(function (q, idx) {
+      const ED_PER_PAGE = 50;
+      const totalEdPages = Math.max(1, Math.ceil(qz.questions.length / ED_PER_PAGE));
+      sState.editorPage = U().clamp(sState.editorPage || 1, 1, totalEdPages);
+      const startIdx = (sState.editorPage - 1) * ED_PER_PAGE;
+      const pageSlice = qz.questions.slice(startIdx, startIdx + ED_PER_PAGE);
+
+      if (totalEdPages > 1) {
+        h += '<div class="pager" style="margin:0 0 10px">' +
+          '<button type="button" data-sact="ed-pg" data-val="' + (sState.editorPage - 1) + '"' + (sState.editorPage <= 1 ? " disabled" : "") + '>&lt;</button>' +
+          '<span class="muted" style="padding:5px 10px;font-size:.82rem">Hi\u1ec3n th\u1ecb c\u00e2u ' + (startIdx + 1) + '–' + (startIdx + pageSlice.length) + ' / ' + qz.questions.length + ' (Trang ' + sState.editorPage + '/' + totalEdPages + ')</span>' +
+          '<button type="button" data-sact="ed-pg" data-val="' + (sState.editorPage + 1) + '"' + (sState.editorPage >= totalEdPages ? " disabled" : "") + '>&gt;</button>' +
+        '</div>';
+      }
+
+      h += '<div class="list">' + pageSlice.map(function (q, offset) {
+        const idx = startIdx + offset;
         const opts = q.options.map(function (o, k) {
           const ok = q.correct.indexOf(k) !== -1;
           return '<div class="studio-opt-pill"><span class="opt-dot' + (ok ? " ok" : "") + '"></span><span class="rich-text">' + U().renderRich(o) + '</span></div>';
@@ -1000,11 +1067,58 @@
       }
       return;
     }
-    if (act === "new-manual") { sState.quiz = newEmptyQuiz(); sState.screen = "editor"; render(); }
+    if (act === "assign-deck") {
+      const sel = U().$("stPickDeck");
+      const d = sel ? U().getDeck(sel.value) : null;
+      if (!d) return;
+      const cloned = cloneDeckToQuiz(d);
+      persistQuizToStudioList(cloned);
+      render();
+      if (window.UETLms && typeof window.UETLms.openAssignModalForQuiz === "function") {
+        window.UETLms.openAssignModalForQuiz(cloned.id);
+      }
+      return;
+    }
+    if (act === "assign-cur") {
+      if (!sState.quiz || !sState.quiz.questions.length) {
+        U().showToast("H\u00e3y th\u00eam \u00edt nh\u1ea5t 1 c\u00e2u h\u1ecfi tr\u01b0\u1edbc khi giao b\u00e0i.", "warning");
+        return;
+      }
+      saveCurrentQuiz();
+      if (window.UETLms && typeof window.UETLms.openAssignModalForQuiz === "function") {
+        window.UETLms.openAssignModalForQuiz(sState.quiz.id);
+      }
+      return;
+    }
+    if (act === "slice-quiz") {
+      if (!sState.quiz || sState.quiz.questions.length <= 1) return;
+      const cnt = Math.max(1, parseInt(U().$("stSliceCount") ? U().$("stSliceCount").value : "50", 10) || 50);
+      const picked = U().shuffle(sState.quiz.questions.slice()).slice(0, Math.min(cnt, sState.quiz.questions.length));
+      const subQuiz = Object.assign({}, sState.quiz, {
+        id: "qz_sub_" + Date.now(),
+        title: sState.quiz.title + " (" + picked.length + " c\u00e2u)",
+        questions: picked
+      });
+      sState.quiz = subQuiz;
+      sState.editorPage = 1;
+      persistQuizToStudioList(subQuiz);
+      render();
+      U().showToast("\u0110\u00e3 c\u1eaft th\u00e0nh b\u1ed9 \u0111\u1ec1 con " + picked.length + " c\u00e2u v\u00e0 l\u01b0u v\u00e0o Danh s\u00e1ch Quiz!", "success");
+      return;
+    }
+    if (act === "ed-pg") {
+      sState.editorPage = Math.max(1, Number(b.getAttribute("data-val")) || 1);
+      render();
+      return;
+    }
+    if (act === "new-manual") { sState.quiz = newEmptyQuiz(); sState.editorPage = 1; sState.screen = "editor"; render(); }
     else if (act === "import-deck") {
       const sel = U().$("stPickDeck");
       const d = sel ? U().getDeck(sel.value) : null;
-      if (d) openFromDeck(d);
+      if (d) {
+        openFromDeck(d);
+        U().showToast("\u0110\u00e3 m\u1edf \"" + d.title + "\" (" + d.questions.length + " c\u00e2u) v\u00e0 l\u01b0u v\u00e0o Creator Studio!", "success");
+      }
     }
     else if (act === "import-conv") {
       const qs = window.UETConverter ? window.UETConverter.getValidQuestions() : [];
@@ -1226,10 +1340,12 @@
 
   function openLobbyFromDeck(deck) {
     if (!deck) return;
-    openFromDeck(deck);
+    openFromDeck(deck, { saveToList: false, skipNav: true });
     initLobbyDefaultsForQuiz(sState.quiz);
     sState.screen = "lobby";
-    render();
+    if (U().state && U().state.tab === "studio") render();
+    else if (typeof U().navigateTo === "function") U().navigateTo("/creator-studio/lobby");
+    else render();
   }
 
   function openLmsScreen(screenName) {

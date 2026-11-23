@@ -804,51 +804,71 @@
 
   function openAssignmentModal(preset) {
     const quizzes = getAllAvailableQuizzes();
-    const students = loadStudents();
     if (!quizzes.length) {
-      U().showToast("Hãy tạo ít nhất 1 bộ đề trong Thư viện trước khi giao bài.", "warning");
+      U().showToast("H\u00e3y t\u1ea1o \u00edt nh\u1ea5t 1 b\u1ed9 \u0111\u1ec1 trong Th\u01b0 vi\u1ec7n tr\u01b0\u1edbc khi giao b\u00e0i.", "warning");
       return;
     }
-    if (!students.length) {
-      U().showToast("Hãy thêm ít nhất 1 học sinh trong mục Học sinh & Lớp học trước khi giao bài.", "warning");
-      return;
-    }
-    const classes = Array.from(new Set(students.map(function (s) { return s.className || "Chưa phân lớp"; }))).sort();
+    const students = loadStudents();
+    const classes = Array.from(new Set(students.map(function (s) { return s.className || "Ch\u01b0a ph\u00e2n l\u1edbp"; }))).sort();
     const defaultDead = new Date(Date.now() + 2 * 86400000);
     defaultDead.setHours(21, 0, 0, 0);
     const p = preset || {};
     const selectedQuizId = p.quizId || quizzes[0].id;
-    const targetMode = p.targetStudentIds ? "students" : "class";
+    const targetMode = (p.targetStudentIds || students.length === 0) ? "students" : "class";
+
+    const renderStudentChecks = function (stList, precheckedIds) {
+      if (!stList.length) {
+        return '<div class="muted" style="font-size:.82rem;padding:6px 0">Ch\u01b0a c\u00f3 h\u1ecdc sinh n\u00e0o trong danh b\u1ea1. D\u00f9ng n\u00fat <strong>+ Th\u00eam h\u1ecdc sinh nhanh</strong> b\u00ean d\u01b0\u1edbi \u0111\u1ec3 th\u00eam ngay!</div>';
+      }
+      return stList.map(function (s) {
+        const chk = precheckedIds && precheckedIds.indexOf(s.id) !== -1;
+        return '<label class="check-row"><input type="checkbox" name="lmsAsStPick" value="' + esc(s.id) + '"' + (chk ? " checked" : "") + '> ' + esc(s.fullName) + ' <span class="muted">(' + esc(s.className) + (s.parentEmail ? (' · ' + esc(s.parentEmail)) : '') + ')</span></label>';
+      }).join("");
+    };
 
     const host = U().$("extraModals");
     if (!host) return;
     host.innerHTML =
       '<div class="modal-overlay" id="lmsAssignModal" role="dialog" aria-modal="true"><div class="modal modal-lg">' +
-        '<h3>' + (p.isRemedial ? "Giao bài tập bổ trợ (Remedial)" : "Tạo bài giao mới") + '</h3>' +
+        '<h3>' + (p.isRemedial ? "Giao b\u00e0i t\u1eadp b\u1ed5 tr\u1ee3 (Remedial)" : "T\u1ea1o b\u00e0i giao m\u1edbi") + '</h3>' +
         '<div class="lms-form-grid">' +
-          '<label class="field">Chọn bộ đề<select id="lmsAsQuiz">' +
+          '<label class="field">Ch\u1ecdn b\u1ed9 \u0111\u1ec1<select id="lmsAsQuiz">' +
             quizzes.map(function (q) {
-              return '<option value="' + esc(q.id) + '"' + (q.id === selectedQuizId ? " selected" : "") + '>' + esc(q.title) + ' (' + q.questions.length + ' câu)</option>';
+              return '<option value="' + esc(q.id) + '"' + (q.id === selectedQuizId ? " selected" : "") + '>' + esc(q.title) + ' (' + q.questions.length + ' c\u00e2u)</option>';
             }).join("") +
           '</select></label>' +
-          '<label class="field">Tiêu đề bài giao<input type="text" id="lmsAsTitle" value="' + esc(p.title || "") + '" placeholder="VD: Bài tập tuần 5 - Chương 2" maxlength="120"></label>' +
+          '<label class="field">Ti\u00eau \u0111\u1ec1 b\u00e0i giao<input type="text" id="lmsAsTitle" value="' + esc(p.title || "") + '" placeholder="VD: B\u00e0i t\u1eadp tu\u1ea7n 5 - Ch\u01b0\u01a1ng 2" maxlength="120"></label>' +
         '</div>' +
 
         '<div class="lms-form-grid" style="margin-top:8px">' +
-          '<label class="field">Đối tượng giao bài<select id="lmsAsTargetMode">' +
-            '<option value="class"' + (targetMode === "class" ? " selected" : "") + '>Cả lớp học</option>' +
-            '<option value="students"' + (targetMode === "students" ? " selected" : "") + '>Chọn từng học sinh</option>' +
+          '<label class="field">\u0110\u1ed1i t\u01b0\u1ee3ng giao b\u00e0i<select id="lmsAsTargetMode">' +
+            '<option value="class"' + (targetMode === "class" ? " selected" : "") + '>C\u1ea3 l\u1edbp h\u1ecdc</option>' +
+            '<option value="students"' + (targetMode === "students" ? " selected" : "") + '>Ch\u1ecdn t\u1eebng h\u1ecdc sinh</option>' +
           '</select></label>' +
-          '<label class="field" id="lmsAsClassWrap"' + (targetMode === "students" ? ' style="display:none"' : '') + '>Chọn lớp<select id="lmsAsClass">' +
-            classes.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join("") +
+          '<label class="field" id="lmsAsClassWrap"' + (targetMode === "students" ? ' style="display:none"' : '') + '>Ch\u1ecdn l\u1edbp<select id="lmsAsClass">' +
+            (classes.length ? classes.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join("") : '<option value="">-- Ch\u01b0a c\u00f3 l\u1edbp --</option>') +
           '</select></label>' +
         '</div>' +
 
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap">' +
+          '<span class="muted" style="font-size:.78rem">Danh s\u00e1ch h\u1ecdc sinh (m\u1ed7i h\u1ecdc sinh c\u00f3 m\u00e3 PIN 4 s\u1ed1 ri\u00eang)</span>' +
+          '<button type="button" class="btn btn-outline btn-sm" id="lmsQuickAddToggle">+ Th\u00eam h\u1ecdc sinh nhanh</button>' +
+        '</div>' +
+
+        '<div id="lmsQuickAddBox" class="' + (students.length === 0 ? "" : "hidden") + '" style="margin-top:8px;padding:10px 12px;border-radius:10px;border:1px dashed var(--brand);background:var(--bg2)">' +
+          '<div class="lms-form-grid">' +
+            '<label class="field" style="margin:0">H\u1ecd v\u00e0 t\u00ean<input type="text" id="lmsQaName" placeholder="Nguy\u1ec5n V\u0103n An" maxlength="100"></label>' +
+            '<label class="field" style="margin:0">L\u1edbp<input type="text" id="lmsQaClass" placeholder="10A1" maxlength="40"></label>' +
+            '<label class="field" style="margin:0">Email ph\u1ee5 huynh<input type="email" id="lmsQaEmail" placeholder="phuhuynh@email.com" maxlength="120"></label>' +
+            '<label class="field" style="margin:0">M\u00e3 PIN 4 s\u1ed1<input type="text" id="lmsQaPin" value="' + genPin() + '" maxlength="4"></label>' +
+          '</div>' +
+          '<div style="margin-top:8px;display:flex;justify-content:flex-end">' +
+            '<button type="button" class="btn btn-primary btn-sm" id="lmsQaSaveBtn">+ L\u01b0u &amp; Ch\u1ecdn h\u1ecdc sinh n\u00e0y</button>' +
+          '</div>' +
+        '</div>' +
+
         '<div id="lmsAsStudentsWrap" class="lms-pick-box' + (targetMode === "students" ? "" : " hidden") + '">' +
-          students.map(function (s) {
-            const chk = p.targetStudentIds && p.targetStudentIds.indexOf(s.id) !== -1;
-            return '<label class="check-row"><input type="checkbox" name="lmsAsStPick" value="' + esc(s.id) + '"' + (chk ? " checked" : "") + '> ' + esc(s.fullName) + ' <span class="muted">(' + esc(s.className) + ')</span></label>';
-          }).join("") +
+          renderStudentChecks(students, p.targetStudentIds || []) +
         '</div>' +
 
         '<div class="lms-form-grid" style="margin-top:8px">' +
@@ -886,6 +906,45 @@
       '</div></div>';
 
     if (typeof U().applyI18n === "function") U().applyI18n(host);
+    U().on("lmsQuickAddToggle", "click", function () {
+      const box = U().$("lmsQuickAddBox");
+      if (box) box.classList.toggle("hidden");
+    });
+    U().on("lmsQaSaveBtn", "click", function () {
+      const nm = (U().$("lmsQaName") ? U().$("lmsQaName").value : "").trim();
+      const cls = (U().$("lmsQaClass") ? U().$("lmsQaClass").value : "").trim() || "Ch\u01b0a ph\u00e2n l\u1edbp";
+      const em = (U().$("lmsQaEmail") ? U().$("lmsQaEmail").value : "").trim();
+      const pin = (U().$("lmsQaPin") ? U().$("lmsQaPin").value : "").trim();
+      if (!nm) { U().showToast("Vui l\u00f2ng nh\u1eadp h\u1ecd v\u00e0 t\u00ean h\u1ecdc sinh.", "warning"); return; }
+      if (!/^\d{4}$/.test(pin)) { U().showToast("M\u00e3 PIN ph\u1ea3i g\u1ed3m \u0111\u00fang 4 ch\u1eef s\u1ed1.", "warning"); return; }
+      const newSt = { id: "st_" + Date.now() + "_" + Math.floor(Math.random() * 1000), fullName: nm, className: cls, school: "", parentEmail: em, phone: "", pin: pin, createdAt: new Date().toISOString() };
+      const curList = loadStudents();
+      curList.push(newSt);
+      saveStudents(curList);
+
+      // Preserve currently checked students + auto-check the new student
+      const checkedIds = [];
+      host.querySelectorAll('input[name="lmsAsStPick"]:checked').forEach(function (cb) { checkedIds.push(cb.value); });
+      checkedIds.push(newSt.id);
+      const sw = U().$("lmsAsStudentsWrap");
+      if (sw) {
+        sw.innerHTML = renderStudentChecks(curList, checkedIds);
+        sw.classList.remove("hidden");
+      }
+      const tm = U().$("lmsAsTargetMode");
+      if (tm) tm.value = "students";
+      const cw = U().$("lmsAsClassWrap");
+      if (cw) cw.style.display = "none";
+      const clSel = U().$("lmsAsClass");
+      if (clSel) {
+        const nextClasses = Array.from(new Set(curList.map(function (s) { return s.className || "Ch\u01b0a ph\u00e2n l\u1edbp"; }))).sort();
+        clSel.innerHTML = nextClasses.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join("");
+      }
+      if (U().$("lmsQaName")) U().$("lmsQaName").value = "";
+      if (U().$("lmsQaEmail")) U().$("lmsQaEmail").value = "";
+      if (U().$("lmsQaPin")) U().$("lmsQaPin").value = genPin();
+      U().showToast("\u0110\u00e3 th\u00eam h\u1ecdc sinh \"" + nm + "\" (PIN: " + pin + ")!", "success");
+    });
     U().on("lmsAsTargetMode", "change", function (e) {
       const isSt = e.target.value === "students";
       const cw = U().$("lmsAsClassWrap");
@@ -900,16 +959,17 @@
       if (!quizObj) return;
       const title = (U().$("lmsAsTitle").value || "").trim() || quizObj.title;
       const deadlineVal = U().$("lmsAsDeadline").value;
-      if (!deadlineVal) { U().showToast("Vui lòng chọn hạn nộp bài.", "warning"); return; }
+      if (!deadlineVal) { U().showToast("Vui l\u00f2ng ch\u1ecdn h\u1ea1n n\u1ed9p b\u00e0i.", "warning"); return; }
       const openVal = U().$("lmsAsOpen").value;
       const tMode = U().$("lmsAsTargetMode").value;
       let targetClass = "", targetStudentIds = [];
       if (tMode === "class") {
         targetClass = U().$("lmsAsClass").value;
+        if (!targetClass) { U().showToast("Ch\u01b0a c\u00f3 l\u1edbp h\u1ecdc n\u00e0o. H\u00e3y th\u00eam h\u1ecdc sinh nhanh tr\u01b0\u1edbc.", "warning"); return; }
       } else {
         const boxes = host.querySelectorAll('input[name="lmsAsStPick"]:checked');
         for (let i = 0; i < boxes.length; i++) targetStudentIds.push(boxes[i].value);
-        if (!targetStudentIds.length) { U().showToast("Vui lòng chọn ít nhất 1 học sinh.", "warning"); return; }
+        if (!targetStudentIds.length) { U().showToast("Vui l\u00f2ng ch\u1ecdn \u00edt nh\u1ea5t 1 h\u1ecdc sinh.", "warning"); return; }
       }
       const item = {
         id: "as_" + Date.now(),
@@ -939,8 +999,12 @@
       saveAssignments(list);
       lmsState.selectedAssignmentId = item.id;
       host.innerHTML = "";
-      U().showToast("Đã tạo bài giao thành công! Mã bài: " + item.code, "success");
-      refreshStudio();
+      U().showToast("\u0110\u00e3 t\u1ea1o b\u00e0i giao th\u00e0nh c\u00f4ng! M\u00e3 b\u00e0i: " + item.code, "success");
+      if (window.UETStudio && typeof window.UETStudio.openLmsScreen === "function") {
+        window.UETStudio.openLmsScreen("assignments");
+      } else {
+        refreshStudio();
+      }
     });
   }
 
