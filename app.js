@@ -40,7 +40,8 @@ const KEYS = {
   userApis: "uet_master_user_apis",
   users: "uet_master_registered_users",
   lang: "uet_master_lang",
-  quizzes: "uet_master_studio_quizzes"
+  quizzes: "uet_master_studio_quizzes",
+  customSubjects: "uet_master_custom_subjects"
 };
 const XLSX_HEADERS = [
   "Question Text", "Question Type", "Option 1", "Option 2", "Option 3", "Option 4",
@@ -216,7 +217,7 @@ function loadJSON(key, fb) {
 }
 function loadObj(key) { const v = loadJSON(key, {}); return v && typeof v === "object" && !Array.isArray(v) ? v : {}; }
 function loadArr(key) { const v = loadJSON(key, []); return Array.isArray(v) ? v : []; }
-const SYNCED_KEYS = [KEYS.decks, KEYS.mistakes, KEYS.history, KEYS.quizzes, KEYS.progress, KEYS.stats, KEYS.pins, KEYS.profiles];
+const SYNCED_KEYS = [KEYS.decks, KEYS.mistakes, KEYS.history, KEYS.quizzes, KEYS.progress, KEYS.stats, KEYS.pins, KEYS.profiles, KEYS.customSubjects];
 function saveJSON(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
@@ -5273,6 +5274,20 @@ const I18N_MAP = {
   "Đã nhắc": { vi: "Đã nhắc", en: "Reminded", ja: "リマインド済" },
   "Lỗi gửi": { vi: "Lỗi gửi", en: "Send Failed", ja: "送信エラー" },
   "Lỗi nhắc": { vi: "Lỗi nhắc", en: "Reminder Failed", ja: "リマインド失敗" },
+  "Chưa phân loại": { vi: "Chưa phân loại", en: "Unclassified", ja: "未分類" },
+  "Đại học": { vi: "Đại học", en: "University", ja: "大学" },
+  "Khối / Cấp học": { vi: "Khối / Cấp học", en: "Grade / Level", ja: "学年・レベル" },
+  "Môn học": { vi: "Môn học", en: "Subject", ja: "科目" },
+  "+ Thêm môn mới...": { vi: "+ Thêm môn mới...", en: "+ Add custom subject...", ja: "+ 新しい科目を追加..." },
+  "Nhập tên môn học mới...": { vi: "Nhập tên môn học mới...", en: "Enter custom subject name...", ja: "新しい科目名を入力..." },
+  "Chỉnh sửa bài giao & Học sinh": { vi: "Chỉnh sửa bài giao & Học sinh", en: "Edit Assignment & Students", ja: "課題・生徒情報を編集" },
+  "Lưu thay đổi": { vi: "Lưu thay đổi", en: "Save Changes", ja: "変更を保存" },
+  "Chưa có email PH": { vi: "Chưa có email PH", en: "No Parent Email", ja: "保護者メール未登録" },
+  "Xem danh sách": { vi: "Xem danh sách", en: "View List", ja: "一覧を見る" },
+  "Thu gọn": { vi: "Thu gọn", en: "Collapse", ja: "折りたたむ" },
+  "Sửa nhanh": { vi: "Sửa nhanh", en: "Quick Edit", ja: "クイック編集" },
+  "Đã cập nhật bài giao thành công!": { vi: "Đã cập nhật bài giao thành công!", en: "Assignment updated successfully!", ja: "課題を更新しました！" },
+  "Đã cập nhật thông tin học sinh và đồng bộ danh bạ.": { vi: "Đã cập nhật thông tin học sinh và đồng bộ danh bạ.", en: "Student info updated and synced to roster.", ja: "生徒情報を更新し名簿に同期しました。" },
   "Tạo & Giao bài": { vi: "Tạo & Giao bài", en: "Create & Assign", ja: "作成して配布" },
   "Vui lòng chọn hạn nộp bài.": { vi: "Vui lòng chọn hạn nộp bài.", en: "Please set a deadline.", ja: "提出期限を設定してください。" },
   "Vui lòng chọn ít nhất 1 học sinh.": { vi: "Vui lòng chọn ít nhất 1 học sinh.", en: "Please select at least 1 student.", ja: "少なくとも1名の生徒を選択してください。" },
@@ -6627,7 +6642,174 @@ function setLang(lang) {
 }
 
 /* ------------------------------ Shared Namespace ------------------------------ */
+/* ======================== VIETNAM CURRICULUM TAXONOMY (LỚP 1–12 & ĐẠI HỌC) ======================== */
+const CURRICULUM_CATALOG = (function () {
+  const G12_PRI_12 = ["Tiếng Việt", "Toán", "Tiếng Anh", "Tự nhiên và Xã hội", "Đạo đức", "Âm nhạc", "Mỹ thuật", "Giáo dục thể chất", "Hoạt động trải nghiệm"];
+  const G3_PRI = ["Tiếng Việt", "Toán", "Tiếng Anh", "Tự nhiên và Xã hội", "Tin học", "Công nghệ", "Đạo đức", "Âm nhạc", "Mỹ thuật", "Giáo dục thể chất", "Hoạt động trải nghiệm"];
+  const G45_PRI = ["Tiếng Việt", "Toán", "Tiếng Anh", "Khoa học", "Lịch sử và Địa lí", "Tin học", "Công nghệ", "Đạo đức", "Âm nhạc", "Mỹ thuật", "Giáo dục thể chất", "Hoạt động trải nghiệm"];
+  const THCS = ["Ngữ văn", "Toán", "Tiếng Anh", "Khoa học tự nhiên", "Lịch sử và Địa lí", "Tin học", "Công nghệ", "Giáo dục công dân", "Âm nhạc", "Mỹ thuật", "Giáo dục thể chất", "Hoạt động trải nghiệm – Hướng nghiệp"];
+  const THPT = ["Ngữ văn", "Toán", "Tiếng Anh", "Vật lí", "Hóa học", "Sinh học", "Lịch sử", "Địa lí", "Giáo dục kinh tế và pháp luật", "Tin học", "Công nghệ", "Giáo dục quốc phòng và an ninh", "Âm nhạc", "Mỹ thuật", "Giáo dục thể chất", "Hoạt động trải nghiệm – Hướng nghiệp"];
+
+  const grades = [
+    { id: "grade_1",  label: "Lớp 1",   group: "Tiểu học", subjects: G12_PRI_12 },
+    { id: "grade_2",  label: "Lớp 2",   group: "Tiểu học", subjects: G12_PRI_12 },
+    { id: "grade_3",  label: "Lớp 3",   group: "Tiểu học", subjects: G3_PRI },
+    { id: "grade_4",  label: "Lớp 4",   group: "Tiểu học", subjects: G45_PRI },
+    { id: "grade_5",  label: "Lớp 5",   group: "Tiểu học", subjects: G45_PRI },
+    { id: "grade_6",  label: "Lớp 6",   group: "THCS",     subjects: THCS },
+    { id: "grade_7",  label: "Lớp 7",   group: "THCS",     subjects: THCS },
+    { id: "grade_8",  label: "Lớp 8",   group: "THCS",     subjects: THCS },
+    { id: "grade_9",  label: "Lớp 9",   group: "THCS",     subjects: THCS },
+    { id: "grade_10", label: "Lớp 10",  group: "THPT",     subjects: THPT },
+    { id: "grade_11", label: "Lớp 11",  group: "THPT",     subjects: THPT },
+    { id: "grade_12", label: "Lớp 12",  group: "THPT",     subjects: THPT },
+    { id: "university", label: "Đại học", group: "Đại học", subjects: [] }
+  ];
+
+  const gradeMap = {};
+  grades.forEach(function (g) { gradeMap[g.id] = g; });
+
+  function loadCustomSubjectsMap() {
+    const raw = loadObj(KEYS.customSubjects);
+    return (raw && typeof raw === "object") ? raw : {};
+  }
+
+  function saveCustomSubject(gradeId, subjectName) {
+    const gId = gradeMap[gradeId] ? gradeId : "university";
+    const name = String(subjectName || "").trim();
+    if (!name || name === "Tổng hợp" || name === "Chưa phân loại") return name;
+    const std = gradeMap[gId] ? gradeMap[gId].subjects : [];
+    const existsStd = std.some(function (s) { return s.toLowerCase() === name.toLowerCase(); });
+    if (existsStd) return std.find(function (s) { return s.toLowerCase() === name.toLowerCase(); });
+    const map = loadCustomSubjectsMap();
+    const list = Array.isArray(map[gId]) ? map[gId].slice() : [];
+    if (!list.some(function (s) { return s.toLowerCase() === name.toLowerCase(); })) {
+      list.push(name);
+      map[gId] = list;
+      saveJSON(KEYS.customSubjects, map);
+    }
+    return name;
+  }
+
+  function getSubjectsForGrade(gradeId) {
+    const g = gradeMap[gradeId];
+    const std = g ? g.subjects.slice() : [];
+    const map = loadCustomSubjectsMap();
+    const custom = Array.isArray(map[gradeId]) ? map[gradeId] : [];
+    const seen = new Set(std.map(function (s) { return s.toLowerCase(); }));
+    custom.forEach(function (c) {
+      const t = String(c || "").trim();
+      if (t && !seen.has(t.toLowerCase())) {
+        seen.add(t.toLowerCase());
+        std.push(t);
+      }
+    });
+    return std;
+  }
+
+  function getGradeLabel(gradeId) {
+    if (!gradeId || gradeId === "unclassified") return "Chưa phân loại";
+    return gradeMap[gradeId] ? gradeMap[gradeId].label : String(gradeId);
+  }
+
+  function detectTaxonomy(item) {
+    if (!item || typeof item !== "object") {
+      return { gradeLevel: "unclassified", gradeLabel: "Chưa phân loại", subject: "", isInferred: true };
+    }
+    const explicitGrade = String(item.gradeLevel || "").trim();
+    const explicitSubj = String(item.subject || "").trim();
+    if (explicitGrade && (gradeMap[explicitGrade] || explicitGrade === "unclassified")) {
+      const subj = explicitSubj || (item.tag && item.tag !== "Tổng hợp" ? String(item.tag).trim() : "");
+      return { gradeLevel: explicitGrade, gradeLabel: getGradeLabel(explicitGrade), subject: subj, isInferred: false };
+    }
+
+    const haystack = (String(item.title || "") + " " + String(item.tag || "") + " " + explicitSubj).trim();
+    const lower = haystack.toLowerCase();
+    let inferredGrade = "unclassified";
+
+    // Detect "Lớp 1" .. "Lớp 12", "Tiếng Anh 6", "Toán 12", "Grade 8"
+    const mGrade = haystack.match(/(?:lớp|lop|grade)\s*(1[0-2]|[1-9])\b/i)
+      || haystack.match(/(?:toán|tiếng anh|tiếng việt|ngữ văn|vật lí|vật lý|hóa học|hóa|sinh học|lịch sử|địa lí|địa lý|tin học|khtn|khoa học)\s*(1[0-2]|[1-9])\b/i);
+    if (mGrade) {
+      inferredGrade = "grade_" + mGrade[1];
+    } else if (/(đại học|giải tích|kinh tế chính trị|mác|lê-nin|triết học|xác suất thống kê|kĩ thuật robot|kỹ thuật điện|uet|đhqghn|n[1-5]\b|ielts|toeic)/i.test(lower)) {
+      inferredGrade = "university";
+    }
+
+    let inferredSubj = explicitSubj || (item.tag && item.tag !== "Tổng hợp" ? String(item.tag).trim() : "");
+    if (!inferredSubj) {
+      const candidates = inferredGrade !== "unclassified" ? getSubjectsForGrade(inferredGrade) : THPT.concat(["Tiếng Việt", "Khoa học tự nhiên", "Khoa học"]);
+      for (let i = 0; i < candidates.length; i++) {
+        if (lower.indexOf(candidates[i].toLowerCase()) !== -1) {
+          inferredSubj = candidates[i];
+          break;
+        }
+      }
+      if (!inferredSubj) {
+        if (/vật lý/i.test(lower)) inferredSubj = "Vật lí";
+        else if (/địa lý/i.test(lower)) inferredSubj = "Địa lí";
+        else if (/kinh tế chính trị/i.test(lower)) inferredSubj = "Kinh tế chính trị";
+        else if (/giải tích/i.test(lower)) inferredSubj = "Giải tích";
+      }
+    }
+
+    return {
+      gradeLevel: inferredGrade,
+      gradeLabel: getGradeLabel(inferredGrade),
+      subject: inferredSubj,
+      isInferred: true
+    };
+  }
+
+  function renderGradeOptionsHtml(selectedGradeId, includeUnclassified) {
+    const sel = String(selectedGradeId || "");
+    let html = "";
+    if (includeUnclassified !== false) {
+      html += '<option value="unclassified"' + (!sel || sel === "unclassified" ? " selected" : "") + '>Chưa phân loại</option>';
+    }
+    const groups = ["Tiểu học", "THCS", "THPT", "Đại học"];
+    groups.forEach(function (grp) {
+      const list = grades.filter(function (g) { return g.group === grp; });
+      html += '<optgroup label="' + esc(grp) + '">' +
+        list.map(function (g) {
+          return '<option value="' + esc(g.id) + '"' + (sel === g.id ? " selected" : "") + '>' + esc(g.label) + '</option>';
+        }).join("") +
+      '</optgroup>';
+    });
+    return html;
+  }
+
+  function renderSubjectOptionsHtml(gradeId, selectedSubject) {
+    const subjects = getSubjectsForGrade(gradeId);
+    const sel = String(selectedSubject || "").trim();
+    let hasSel = false;
+    let html = '<option value="">-- Chọn môn học --</option>';
+    subjects.forEach(function (s) {
+      const isMatch = sel && s.toLowerCase() === sel.toLowerCase();
+      if (isMatch) hasSel = true;
+      html += '<option value="' + esc(s) + '"' + (isMatch ? " selected" : "") + '>' + esc(s) + '</option>';
+    });
+    if (sel && !hasSel) {
+      html += '<option value="' + esc(sel) + '" selected>' + esc(sel) + '</option>';
+    }
+    html += '<option value="__custom__">+ Thêm môn mới...</option>';
+    return html;
+  }
+
+  return {
+    grades: grades,
+    gradeMap: gradeMap,
+    getSubjectsForGrade: getSubjectsForGrade,
+    saveCustomSubject: saveCustomSubject,
+    getGradeLabel: getGradeLabel,
+    detectTaxonomy: detectTaxonomy,
+    renderGradeOptionsHtml: renderGradeOptionsHtml,
+    renderSubjectOptionsHtml: renderSubjectOptionsHtml
+  };
+})();
+
 window.UET = {
+  CURRICULUM: CURRICULUM_CATALOG,
   state: state, KEYS: KEYS, XLSX_HEADERS: XLSX_HEADERS, LETTERS: LETTERS, TIERS: TIERS, TIER_ORDER: TIER_ORDER,
   $: $, esc: esc, renderRich: renderRich, setText: setText, setHTML: setHTML, toggleEl: toggleEl, on: on, clamp: clamp,
   fmtMoney: fmtMoney, fmtDate: fmtDate, fmtDateTime: fmtDateTime,

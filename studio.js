@@ -35,6 +35,8 @@
     play: null,
     timerId: null,
     editorPage: 1,
+    homeGradeFilter: "all",
+    homeSubjectFilter: "all",
     mounted: false
   };
 
@@ -139,11 +141,14 @@
   function cloneDeckToQuiz(deck) {
     if (!deck) return null;
     const rawQs = Array.isArray(deck.questions) ? deck.questions : [];
+    const tax = U().CURRICULUM ? U().CURRICULUM.detectTaxonomy(deck) : { gradeLevel: "unclassified", subject: "" };
     return Object.assign({}, deck, {
       id: deck.id && String(deck.id).indexOf("qz_") === 0 ? deck.id : ("qz_deck_" + deck.id),
       deckId: deck.id,
       title: deck.title || "Quiz kh\u00f4ng t\u00ean",
-      tag: deck.tag || "T\u1ed5ng h\u1ee3p",
+      tag: deck.tag || tax.subject || "T\u1ed5ng h\u1ee3p",
+      gradeLevel: deck.gradeLevel || tax.gradeLevel,
+      subject: deck.subject || tax.subject || "",
       isPublic: typeof deck.isPublic === "boolean" ? deck.isPublic : true,
       shareCode: deck.shareCode || "",
       questions: rawQs.map(normalizeStudioQuestion)
@@ -172,10 +177,14 @@
 
   function openFromQuestions(title, tag, items) {
     stopStudioTimer();
+    const rawTitle = title || "Quiz t\u1eeb AI Converter";
+    const tax = U().CURRICULUM ? U().CURRICULUM.detectTaxonomy({ title: rawTitle, tag: tag }) : { gradeLevel: "unclassified", subject: "" };
     sState.quiz = {
       id: "qz_" + Date.now(),
-      title: title || "Quiz t\u1eeb AI Converter",
-      tag: tag || "T\u1ed5ng h\u1ee3p",
+      title: rawTitle,
+      tag: tag || tax.subject || "T\u1ed5ng h\u1ee3p",
+      gradeLevel: tax.gradeLevel,
+      subject: tax.subject || "",
       isPublic: true,
       shareCode: "",
       questions: (Array.isArray(items) ? items : []).map(normalizeStudioQuestion)
@@ -192,14 +201,31 @@
     }
   }
 
+  function readEditorMetaIntoQuiz(qz) {
+    if (!qz) return;
+    const tEl = U().$("stQuizTitle"), visEl = U().$("stQuizVis");
+    const grEl = U().$("stQuizGrade"), subjSel = U().$("stQuizSubject"), subjCustom = U().$("stQuizSubjectCustom");
+    if (tEl) qz.title = tEl.value.trim() || "Quiz kh\u00f4ng t\u00ean";
+    if (grEl) qz.gradeLevel = grEl.value || "unclassified";
+    let finalSubj = "";
+    if (qz.gradeLevel === "university") {
+      finalSubj = subjCustom ? subjCustom.value.trim() : "";
+    } else if (subjSel) {
+      finalSubj = subjSel.value === "__custom__" ? (subjCustom ? subjCustom.value.trim() : "") : subjSel.value.trim();
+    }
+    if (finalSubj && U().CURRICULUM) {
+      finalSubj = U().CURRICULUM.saveCustomSubject(qz.gradeLevel, finalSubj);
+    }
+    qz.subject = finalSubj;
+    qz.tag = finalSubj || qz.tag || "T\u1ed5ng h\u1ee3p";
+    if (visEl) qz.isPublic = visEl.value === "public";
+    else if (typeof qz.isPublic !== "boolean") qz.isPublic = true;
+  }
+
   function saveCurrentQuiz() {
     const qz = sState.quiz;
     if (!qz) return;
-    const tEl = U().$("stQuizTitle"), tagEl = U().$("stQuizTag"), visEl = U().$("stQuizVis");
-    if (tEl) qz.title = tEl.value.trim() || "Quiz kh\u00f4ng t\u00ean";
-    if (tagEl) qz.tag = tagEl.value.trim() || "T\u1ed5ng h\u1ee3p";
-    if (visEl) qz.isPublic = visEl.value === "public";
-    else if (typeof qz.isPublic !== "boolean") qz.isPublic = true;
+    readEditorMetaIntoQuiz(qz);
     if (qz.questions.length === 0) { U().showToast("H\u00e3y th\u00eam \u00edt nh\u1ea5t 1 c\u00e2u h\u1ecfi tr\u01b0\u1edbc khi l\u01b0u Quiz.", "warning"); return; }
     const list = loadQuizzes().filter(function (x) { return x && x.id !== qz.id; });
     list.unshift(Object.assign({}, qz, { updatedAt: new Date().toISOString() }));
@@ -210,10 +236,8 @@
   function saveQuizToDeckBank() {
     const qz = sState.quiz;
     if (!qz || qz.questions.length === 0) { U().showToast("Quiz ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi n\u00e0o.", "warning"); return; }
-    const tEl = U().$("stQuizTitle"), tagEl = U().$("stQuizTag");
-    if (tEl) qz.title = tEl.value.trim() || qz.title;
-    if (tagEl) qz.tag = tagEl.value.trim() || qz.tag;
-    U().addOrMergeDeck({ mode: "new", title: qz.title, tag: qz.tag, questions: qz.questions });
+    readEditorMetaIntoQuiz(qz);
+    U().addOrMergeDeck({ mode: "new", title: qz.title, tag: qz.tag, gradeLevel: qz.gradeLevel, subject: qz.subject, questions: qz.questions });
   }
 
   const STUDIO_ROUTE_MAP = {
@@ -300,14 +324,73 @@
           '<button type="button" class="btn btn-emerald btn-sm" data-sact="import-conv"' + (convCount === 0 ? " disabled" : "") + '>L\u1ea5y t\u1eeb AI Converter (' + convCount + ')</button></div>' +
       '</div></div>';
 
-    h += '<div class="panel"><div class="panel-head"><h2>Danh s\u00e1ch Quiz \u0111\u00e3 t\u1ea1o (' + quizzes.length + ')</h2></div>';
+    const curr = U().CURRICULUM;
+    const enrichedQuizzes = quizzes.map(function (qz) {
+      const tax = curr ? curr.detectTaxonomy(qz) : { gradeLevel: "unclassified", gradeLabel: "Chưa phân loại", subject: qz.tag || "" };
+      return { qz: qz, tax: tax };
+    });
+
+    const gradeCounts = {};
+    enrichedQuizzes.forEach(function (x) {
+      gradeCounts[x.tax.gradeLevel] = (gradeCounts[x.tax.gradeLevel] || 0) + 1;
+    });
+    const gradeOrder = curr ? curr.grades.map(function (g) { return g.id; }).concat(["unclassified"]) : ["unclassified"];
+    const activeGrades = gradeOrder.filter(function (gid) { return gradeCounts[gid] > 0; });
+    if (sState.homeGradeFilter !== "all" && !gradeCounts[sState.homeGradeFilter]) {
+      sState.homeGradeFilter = "all";
+      sState.homeSubjectFilter = "all";
+    }
+
+    const gradeFiltered = sState.homeGradeFilter === "all"
+      ? enrichedQuizzes
+      : enrichedQuizzes.filter(function (x) { return x.tax.gradeLevel === sState.homeGradeFilter; });
+
+    const subjCounts = {};
+    gradeFiltered.forEach(function (x) {
+      const s = x.tax.subject || "";
+      if (s) subjCounts[s] = (subjCounts[s] || 0) + 1;
+    });
+    const activeSubjects = Object.keys(subjCounts).sort();
+    if (sState.homeSubjectFilter !== "all" && !subjCounts[sState.homeSubjectFilter]) {
+      sState.homeSubjectFilter = "all";
+    }
+
+    const visibleQuizzes = sState.homeSubjectFilter === "all"
+      ? gradeFiltered
+      : gradeFiltered.filter(function (x) { return (x.tax.subject || "") === sState.homeSubjectFilter; });
+
+    h += '<div class="panel"><div class="panel-head"><h2>Danh s\u00e1ch Quiz \u0111\u00e3 t\u1ea1o (' + visibleQuizzes.length + (visibleQuizzes.length !== quizzes.length ? (' / ' + quizzes.length) : '') + ')</h2></div>';
+    if (quizzes.length > 0) {
+      h += '<div class="tax-filter-bar">' +
+        '<div class="tax-pill-row">' +
+          '<button type="button" class="tax-pill' + (sState.homeGradeFilter === "all" ? " active" : "") + '" data-sact="filter-quiz-grade" data-val="all">T\u1ea5t c\u1ea3 <span class="tax-cnt">' + quizzes.length + '</span></button>' +
+          activeGrades.map(function (gid) {
+            const lbl = curr ? curr.getGradeLabel(gid) : gid;
+            return '<button type="button" class="tax-pill' + (sState.homeGradeFilter === gid ? " active" : "") + '" data-sact="filter-quiz-grade" data-val="' + U().esc(gid) + '">' + U().esc(lbl) + ' <span class="tax-cnt">' + gradeCounts[gid] + '</span></button>';
+          }).join("") +
+        '</div>' +
+        (activeSubjects.length > 0
+          ? '<div class="tax-pill-row tax-subj-row">' +
+              '<button type="button" class="tax-pill tax-pill-sm' + (sState.homeSubjectFilter === "all" ? " active" : "") + '" data-sact="filter-quiz-subject" data-val="all">M\u1ecdi m\u00f4n</button>' +
+              activeSubjects.map(function (s) {
+                return '<button type="button" class="tax-pill tax-pill-sm' + (sState.homeSubjectFilter === s ? " active" : "") + '" data-sact="filter-quiz-subject" data-val="' + U().esc(s) + '">' + U().esc(s) + ' <span class="tax-cnt">' + subjCounts[s] + '</span></button>';
+              }).join("") +
+            '</div>'
+          : '') +
+      '</div>';
+    }
     if (quizzes.length === 0) {
       h += '<div class="empty-state">B\u1ea1n ch\u01b0a l\u01b0u Quiz n\u00e0o trong Creator Studio. H\u00e3y t\u1ea1o m\u1edbi ho\u1eb7c ch\u1ecdn t\u1eeb Kho \u0111\u1ec1 \u1edf tr\u00ean!</div>';
+    } else if (visibleQuizzes.length === 0) {
+      h += '<div class="empty-state">Kh\u00f4ng c\u00f3 Quiz n\u00e0o kh\u1edbp b\u1ed9 l\u1ecdc Kh\u1ed1i / M\u00f4n h\u1ecdc \u0111ang ch\u1ecdn.</div>';
     } else {
-      h += '<div class="list">' + quizzes.map(function (qz) {
+      h += '<div class="list">' + visibleQuizzes.map(function (entry) {
+        const qz = entry.qz;
+        const tax = entry.tax;
         const isPub = qz.isPublic !== false;
         return '<div class="deck-row"><div class="deck-title-line"><span class="deck-title">' + U().esc(qz.title) + '</span>' +
-          '<span class="badge">' + U().esc(qz.tag || "T\u1ed5ng h\u1ee3p") + '</span>' +
+          '<span class="badge tax-badge-grade">' + U().esc(tax.gradeLabel) + '</span>' +
+          (tax.subject ? '<span class="badge tax-badge-subj">' + U().esc(tax.subject) + '</span>' : '<span class="badge">' + U().esc(qz.tag || "T\u1ed5ng h\u1ee3p") + '</span>') +
           '<span class="badge ' + (isPub ? "badge-ok" : "badge-warn") + '">' + (isPub ? "🌐 Public" : "🔒 Private") + '</span>' +
           (qz.shareCode ? '<span class="badge">🔑 ' + U().esc(qz.shareCode) + '</span>' : '') +
           '</div>' +
@@ -344,11 +427,27 @@
     sState.quiz = qz;
     const advLock = U().can("studioAdv") ? "" : " (⏱️ Tu\u1ef3 ch\u1ec9nh th\u1eddi gian ri\u00eang m\u1edf kh\u00f3a \u0111\u1ea7y \u0111\u1ee7 t\u1eeb g\u00f3i Silver)";
 
+    const curr = U().CURRICULUM;
+    const tax = curr ? curr.detectTaxonomy(qz) : { gradeLevel: "unclassified", subject: qz.tag || "" };
+    const curGrade = qz.gradeLevel || tax.gradeLevel || "unclassified";
+    const curSubj = qz.subject || tax.subject || "";
+    const isUni = curGrade === "university";
+    const uniList = curr ? curr.getSubjectsForGrade("university") : [];
+
     let h = (window.UETLms && typeof window.UETLms.renderStudioSubnav === "function" ? window.UETLms.renderStudioSubnav("editor") : "") +
       '<div class="studio-header">' +
       '<button type="button" class="btn btn-outline btn-sm" data-sact="back-home">← Danh s\u00e1ch</button>' +
       '<input type="text" id="stQuizTitle" value="' + U().esc(qz.title) + '" placeholder="T\u00ean Quiz..." style="flex:1;min-width:180px;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-weight:700">' +
-      '<input type="text" id="stQuizTag" value="' + U().esc(qz.tag) + '" placeholder="M\u00f4n h\u1ecdc / Tag" style="width:140px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">' +
+      '<select id="stQuizGrade" aria-label="Kh\u1ed1i / C\u1ea5p h\u1ecdc" style="padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.82rem;font-weight:700">' +
+        (curr ? curr.renderGradeOptionsHtml(curGrade, true) : '<option value="unclassified">Ch\u01b0a ph\u00e2n lo\u1ea1i</option>') +
+      '</select>' +
+      (isUni
+        ? '<input type="text" id="stQuizSubjectCustom" list="stUniSubjectList" value="' + U().esc(curSubj) + '" placeholder="Nh\u1eadp / ch\u1ecdn m\u00f4n \u0110\u1ea1i h\u1ecdc..." style="width:170px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">' +
+          '<datalist id="stUniSubjectList">' + uniList.map(function (s) { return '<option value="' + U().esc(s) + '"></option>'; }).join("") + '</datalist>'
+        : '<select id="stQuizSubject" aria-label="M\u00f4n h\u1ecdc" style="padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.82rem">' +
+            (curr ? curr.renderSubjectOptionsHtml(curGrade, curSubj) : '') +
+          '</select>' +
+          '<input type="text" id="stQuizSubjectCustom" class="hidden" value="" placeholder="Nh\u1eadp t\u00ean m\u00f4n h\u1ecdc m\u1edbi..." style="width:160px;padding:8px 10px;border-radius:10px;border:1px solid var(--brand);background:var(--bg2);color:var(--text)">') +
       '<select id="stQuizVis" aria-label="Quy\u1ec1n truy c\u1eadp Quiz" style="padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.82rem;font-weight:700">' +
         '<option value="public"' + (qz.isPublic !== false ? " selected" : "") + '>🌐 Public</option>' +
         '<option value="private"' + (qz.isPublic === false ? " selected" : "") + '>🔒 Private</option>' +
@@ -1260,10 +1359,17 @@
       const qz = loadQuizzes().find(function (x) { return x && x.id === b.getAttribute("data-id"); });
       if (qz && window.UETCloud) window.UETCloud.openPdfModal(qz);
     }
+    else if (act === "filter-quiz-grade") {
+      sState.homeGradeFilter = b.getAttribute("data-val") || "all";
+      sState.homeSubjectFilter = "all";
+      render();
+    }
+    else if (act === "filter-quiz-subject") {
+      sState.homeSubjectFilter = b.getAttribute("data-val") || "all";
+      render();
+    }
     else if (act === "go-lobby") {
-      const tEl = U().$("stQuizTitle"), tagEl = U().$("stQuizTag");
-      if (tEl && sState.quiz) sState.quiz.title = tEl.value.trim() || sState.quiz.title;
-      if (tagEl && sState.quiz) sState.quiz.tag = tagEl.value.trim() || sState.quiz.tag;
+      readEditorMetaIntoQuiz(sState.quiz);
       initLobbyDefaultsForQuiz(sState.quiz);
       sState.screen = "lobby"; render();
     }
@@ -1400,6 +1506,22 @@
         t.value = prev ? "public" : "private";
         U().showToast(err.message || "C\u1eadp nh\u1eadt tr\u1ea1ng th\u00e1i th\u1ea5t b\u1ea1i.", "error");
       }).finally(function () { t.disabled = false; });
+    }
+    else if (t.id === "stQuizGrade") {
+      if (sState.quiz) {
+        const titleEl = U().$("stQuizTitle");
+        if (titleEl) sState.quiz.title = titleEl.value.trim() || sState.quiz.title;
+        sState.quiz.gradeLevel = t.value || "unclassified";
+        render();
+      }
+    }
+    else if (t.id === "stQuizSubject") {
+      const customInp = U().$("stQuizSubjectCustom");
+      if (customInp) {
+        const showCustom = t.value === "__custom__";
+        customInp.classList.toggle("hidden", !showCustom);
+        if (showCustom) customInp.focus();
+      }
     }
     else if (t.id === "lbPerSession") { sState.lobby.perSession = Math.max(1, parseInt(t.value, 10) || 50); sState.lobby.sessionIdx = 1; render(); }
     else if (t.id === "lbSessionIdx") { sState.lobby.sessionIdx = Math.max(1, parseInt(t.value, 10) || 1); render(); }

@@ -468,6 +468,9 @@
     studentQuery: "",
     portfolioStudentId: null,
     selectedAssignmentId: null,
+    assignGradeFilter: "all",
+    assignSubjectFilter: "all",
+    expandedRecipients: {},
     // Student exam runner state
     activeAssignCode: null,
     studentSession: null, // { assignId, studentId, attemptNo, questions, answers, idx, remainingSec, totalSec, startedAt, tabSwitches, blurHandler, visHandler, timerId }
@@ -673,11 +676,74 @@
   }
 
   /* ======================== VIEW 2: ASSIGNMENTS ======================== */
+  function renderAssignedRecipientsStrip(assign, roster) {
+    if (!roster || !roster.length) {
+      return '<div class="lms-recip-strip"><span class="lms-recip-chip is-warn">⚠️ ' + esc(tr("Chưa có học sinh nào được gán")) + '</span></div>';
+    }
+    const isExpanded = !!(lmsState.expandedRecipients && lmsState.expandedRecipients[assign.id]);
+    const limit = roster.length > 5 && !isExpanded ? 3 : roster.length;
+    const shown = roster.slice(0, limit);
+    const hiddenCnt = roster.length - shown.length;
+
+    const chipsHtml = shown.map(function (st) {
+      const em = getStudentParentEmail(st);
+      const clsPart = st.className ? (' <span class="muted">(' + esc(st.className) + ')</span>') : '';
+      const emailPart = em
+        ? '<span class="lms-recip-email">📧 ' + esc(em) + '</span>'
+        : '<span class="lms-recip-warn">⚠️ ' + esc(tr("Chưa có email PH")) + '</span>';
+      return '<span class="lms-recip-chip' + (em ? '' : ' is-warn') + '">👤 <strong>' + esc(st.fullName) + '</strong>' + clsPart + ' · ' + emailPart + '</span>';
+    }).join("");
+
+    const toggleHtml = roster.length > 5
+      ? '<button type="button" class="lms-recip-toggle" data-lms="toggle-assign-recipients" data-id="' + esc(assign.id) + '">' +
+          (isExpanded
+            ? ('▲ ' + esc(tr("Thu gọn")))
+            : ('+' + hiddenCnt + ' ' + esc(tr("học sinh khác")) + ' (' + esc(tr("Xem danh sách")) + ')')) +
+        '</button>'
+      : '';
+
+    return '<div class="lms-recip-strip">' + chipsHtml + toggleHtml + '</div>';
+  }
+
   function renderAssignmentsView(root) {
     const assignments = loadAssignments().slice().sort(function (a, b) {
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
     const submissions = loadSubmissions();
+    const curr = U().CURRICULUM;
+
+    const enriched = assignments.map(function (a) {
+      const tax = curr ? curr.detectTaxonomy(a) : { gradeLevel: "unclassified", gradeLabel: "Chưa phân loại", subject: "" };
+      return { a: a, tax: tax };
+    });
+
+    const gradeCounts = {};
+    enriched.forEach(function (x) {
+      gradeCounts[x.tax.gradeLevel] = (gradeCounts[x.tax.gradeLevel] || 0) + 1;
+    });
+    const gradeOrder = curr ? curr.grades.map(function (g) { return g.id; }).concat(["unclassified"]) : ["unclassified"];
+    const activeGrades = gradeOrder.filter(function (gid) { return gradeCounts[gid] > 0; });
+    if (lmsState.assignGradeFilter !== "all" && !gradeCounts[lmsState.assignGradeFilter]) {
+      lmsState.assignGradeFilter = "all";
+      lmsState.assignSubjectFilter = "all";
+    }
+
+    const gradeFiltered = lmsState.assignGradeFilter === "all"
+      ? enriched
+      : enriched.filter(function (x) { return x.tax.gradeLevel === lmsState.assignGradeFilter; });
+
+    const subjCounts = {};
+    gradeFiltered.forEach(function (x) {
+      if (x.tax.subject) subjCounts[x.tax.subject] = (subjCounts[x.tax.subject] || 0) + 1;
+    });
+    const activeSubjects = Object.keys(subjCounts).sort();
+    if (lmsState.assignSubjectFilter !== "all" && !subjCounts[lmsState.assignSubjectFilter]) {
+      lmsState.assignSubjectFilter = "all";
+    }
+
+    const visible = lmsState.assignSubjectFilter === "all"
+      ? gradeFiltered
+      : gradeFiltered.filter(function (x) { return (x.tax.subject || "") === lmsState.assignSubjectFilter; });
 
     let h = renderStudioSubnav("assignments") +
       '<div class="lms-card">' +
@@ -692,13 +758,37 @@
           '</div>' +
         '</div>';
 
+    if (assignments.length > 0) {
+      h += '<div class="tax-filter-bar">' +
+        '<div class="tax-pill-row">' +
+          '<button type="button" class="tax-pill' + (lmsState.assignGradeFilter === "all" ? " active" : "") + '" data-lms="filter-assign-grade" data-val="all">' + esc(tr("Tất cả")) + ' <span class="tax-cnt">' + assignments.length + '</span></button>' +
+          activeGrades.map(function (gid) {
+            const lbl = curr ? curr.getGradeLabel(gid) : gid;
+            return '<button type="button" class="tax-pill' + (lmsState.assignGradeFilter === gid ? " active" : "") + '" data-lms="filter-assign-grade" data-val="' + esc(gid) + '">' + esc(lbl) + ' <span class="tax-cnt">' + gradeCounts[gid] + '</span></button>';
+          }).join("") +
+        '</div>' +
+        (activeSubjects.length > 0
+          ? '<div class="tax-pill-row tax-subj-row">' +
+              '<button type="button" class="tax-pill tax-pill-sm' + (lmsState.assignSubjectFilter === "all" ? " active" : "") + '" data-lms="filter-assign-subject" data-val="all">' + esc(tr("Mọi môn")) + '</button>' +
+              activeSubjects.map(function (s) {
+                return '<button type="button" class="tax-pill tax-pill-sm' + (lmsState.assignSubjectFilter === s ? " active" : "") + '" data-lms="filter-assign-subject" data-val="' + esc(s) + '">' + esc(s) + ' <span class="tax-cnt">' + subjCounts[s] + '</span></button>';
+              }).join("") +
+            '</div>'
+          : '') +
+      '</div>';
+    }
+
     if (assignments.length === 0) {
       h += '<div class="lms-empty">' +
         '<p>Chưa có bài tập nào được giao. Hãy chọn một đề từ Thư viện và giao cho lớp học của bạn.</p>' +
         '<button type="button" class="btn btn-primary btn-sm" data-lms="create-assignment" style="margin-top:10px">' + ICONS.plus + ' Giao bài tập đầu tiên</button>' +
       '</div>';
+    } else if (visible.length === 0) {
+      h += '<div class="lms-empty"><p>' + esc(tr("Không có bài giao nào khớp bộ lọc Khối / Môn học đang chọn.")) + '</p></div>';
     } else {
-      h += '<div class="lms-assign-list">' + assignments.map(function (a) {
+      h += '<div class="lms-assign-list">' + visible.map(function (entry) {
+        const a = entry.a;
+        const tax = entry.tax;
         const status = getAssignmentStatus(a);
         const roster = getAssignedStudentsFor(a);
         const submittedIds = new Set(submissions.filter(function (s) { return s.assignmentId === a.id; }).map(function (s) { return s.studentId; }));
@@ -712,19 +802,21 @@
           '<div class="lms-assign-main">' +
             '<div class="lms-assign-title-line">' +
               '<strong class="lms-assign-name">' + esc(a.title) + '</strong>' +
+              '<span class="badge tax-badge-grade">' + esc(tax.gradeLabel) + '</span>' +
+              (tax.subject ? '<span class="badge tax-badge-subj">' + esc(tax.subject) + '</span>' : '') +
               '<span class="' + statusCls + '">' + statusLabel + '</span>' +
               (a.isRemedial ? '<span class="lms-badge-info">Bài bổ trợ</span>' : '') +
               '<code class="lms-pin">' + esc(a.code) + '</code>' +
             '</div>' +
             '<div class="lms-assign-meta">' +
-              '<span>' + (a.targetMode === "class" ? ("Lớp " + esc(a.targetClass)) : (roster.length + " học sinh được chọn")) + '</span>' +
-              '<span>·</span>' +
+              (a.targetMode === "class" ? ('<span>Lớp ' + esc(a.targetClass) + ' (' + roster.length + ' HS)</span><span>·</span>') : '') +
               '<span>Hạn nộp: ' + esc(dl.full) + '</span>' +
               '<span>·</span>' +
               '<span>' + (a.maxAttempts === 0 ? "Không giới hạn lượt" : (a.maxAttempts + " lượt làm")) + '</span>' +
               '<span>·</span>' +
               '<span>' + (a.parentEmailEnabled ? "Email phụ huynh: Bật" : "Email phụ huynh: Tắt") + '</span>' +
             '</div>' +
+            renderAssignedRecipientsStrip(a, roster) +
             '<div class="lms-prog-wrap">' +
               '<div class="lms-prog-bar"><div class="lms-prog-fill" style="width:' + pct + '%"></div></div>' +
               '<span class="lms-prog-txt">' + doneCnt + '/' + roster.length + ' đã nộp (' + pct + '%)</span>' +
@@ -733,6 +825,7 @@
           '<div class="lms-assign-actions">' +
             '<button type="button" class="btn btn-outline btn-sm" data-lms="copy-assign-link" data-code="' + esc(a.code) + '">' + ICONS.link + ' Sao chép link</button>' +
             '<button type="button" class="btn btn-outline btn-sm" data-lms="open-student-entry" data-code="' + esc(a.code) + '">' + ICONS.user + ' Vào làm thử</button>' +
+            '<button type="button" class="btn btn-outline btn-sm" data-lms="edit-assignment" data-id="' + esc(a.id) + '">✏️ ' + esc(tr("Chỉnh sửa")) + '</button>' +
             '<button type="button" class="btn btn-outline btn-sm" data-lms="send-reminders" data-id="' + esc(a.id) + '">' + ICONS.bell + ' Nhắc hạn nộp</button>' +
             '<button type="button" class="btn btn-outline btn-sm" data-lms="export-worksheet-pdf" data-id="' + esc(a.id) + '">' + ICONS.printer + ' Phiếu A4 + QR</button>' +
             '<button type="button" class="btn btn-primary btn-sm" data-lms="open-gradebook" data-id="' + esc(a.id) + '">Sổ điểm</button>' +
@@ -1100,18 +1193,50 @@
   }
 
   function openAssignmentModal(preset) {
+    const p = preset || {};
+    const existing = p.editId ? loadAssignments().find(function (a) { return a.id === p.editId; }) : null;
+    const isEdit = !!existing;
     const quizzes = getAllAvailableQuizzes();
-    if (!quizzes.length) {
+    if (!quizzes.length && !isEdit) {
       U().showToast("H\u00e3y t\u1ea1o \u00edt nh\u1ea5t 1 b\u1ed9 \u0111\u1ec1 trong Th\u01b0 vi\u1ec7n tr\u01b0\u1edbc khi giao b\u00e0i.", "warning");
       return;
     }
+    if (isEdit && existing.quizSnapshot && !quizzes.some(function (q) { return q.id === existing.quizId; })) {
+      quizzes.unshift(Object.assign({ id: existing.quizId || ("snap_" + existing.id) }, existing.quizSnapshot));
+    }
+
     const students = loadStudents();
     const classes = Array.from(new Set(students.map(function (s) { return s.className || "Ch\u01b0a ph\u00e2n l\u1edbp"; }))).sort();
     const defaultDead = new Date(Date.now() + 2 * 86400000);
     defaultDead.setHours(21, 0, 0, 0);
-    const p = preset || {};
-    const selectedQuizId = p.quizId || quizzes[0].id;
-    const targetMode = (p.targetStudentIds || students.length === 0) ? "students" : "class";
+
+    const selectedQuizId = isEdit ? (existing.quizId || (quizzes[0] && quizzes[0].id) || "") : (p.quizId || (quizzes[0] && quizzes[0].id) || "");
+    const selQuizObj = quizzes.find(function (q) { return q.id === selectedQuizId; }) || quizzes[0];
+    const curr = U().CURRICULUM;
+    const baseTax = curr
+      ? curr.detectTaxonomy(isEdit ? existing : (selQuizObj || {}))
+      : { gradeLevel: "unclassified", subject: "" };
+    const initGrade = isEdit ? (existing.gradeLevel || baseTax.gradeLevel || "unclassified") : (p.gradeLevel || baseTax.gradeLevel || "unclassified");
+    const initSubject = isEdit ? (existing.subject || baseTax.subject || "") : (p.subject || baseTax.subject || "");
+
+    const targetMode = isEdit
+      ? (existing.targetMode || "students")
+      : ((p.targetStudentIds || students.length === 0) ? "students" : "class");
+    const initTargetClass = isEdit ? (existing.targetClass || "") : "";
+    const initTargetIds = isEdit ? (Array.isArray(existing.targetStudentIds) ? existing.targetStudentIds.slice() : []) : (p.targetStudentIds || []);
+    const existingSubsCount = isEdit
+      ? loadSubmissions().filter(function (s) { return s.assignmentId === existing.id; }).length
+      : 0;
+
+    const renderSubjectFieldInner = function (gradeId, curSubj) {
+      if (gradeId === "university") {
+        const uniList = curr ? curr.getSubjectsForGrade("university") : [];
+        return '<input type="text" id="lmsAsSubjectCustom" list="lmsUniSubjList" value="' + esc(curSubj) + '" placeholder="VD: Gi\u1ea3i t\u00edch 1, K\u0129 thu\u1eadt Robot, Ti\u1ebfng Nh\u1eadt N3..." maxlength="100">' +
+          '<datalist id="lmsUniSubjList">' + uniList.map(function (s) { return '<option value="' + esc(s) + '"></option>'; }).join("") + '</datalist>';
+      }
+      return '<select id="lmsAsSubject">' + (curr ? curr.renderSubjectOptionsHtml(gradeId, curSubj) : '') + '</select>' +
+        '<input type="text" id="lmsAsSubjectCustom" class="hidden" value="" placeholder="' + esc(tr("Nhập tên môn học mới...")) + '" maxlength="100" style="margin-top:6px">';
+    };
 
     const renderStudentChecks = function (stList, precheckedIds) {
       if (!stList.length) {
@@ -1119,7 +1244,22 @@
       }
       return stList.map(function (s) {
         const chk = precheckedIds && precheckedIds.indexOf(s.id) !== -1;
-        return '<label class="check-row"><input type="checkbox" name="lmsAsStPick" value="' + esc(s.id) + '"' + (chk ? " checked" : "") + '> ' + esc(s.fullName) + ' <span class="muted">(' + esc(s.className) + (s.parentEmail ? (' · ' + esc(s.parentEmail)) : '') + ')</span></label>';
+        const em = getStudentParentEmail(s);
+        return '<div class="lms-pick-row" data-st-row="' + esc(s.id) + '">' +
+          '<div class="lms-pick-main">' +
+            '<label class="check-row" style="margin:0;flex:1"><input type="checkbox" name="lmsAsStPick" value="' + esc(s.id) + '"' + (chk ? " checked" : "") + '> ' +
+              '<strong>' + esc(s.fullName) + '</strong> <span class="muted">(' + esc(s.className || "") + ')</span> · ' +
+              (em ? ('<span class="lms-recip-email">📧 ' + esc(em) + '</span>') : ('<span class="lms-recip-warn">⚠️ ' + esc(tr("Chưa có email PH")) + '</span>')) +
+            '</label>' +
+            '<button type="button" class="lms-mini-toggle" data-qedit-st="' + esc(s.id) + '">✏️ ' + esc(tr("Sửa nhanh")) + '</button>' +
+          '</div>' +
+          '<div class="lms-inline-st-edit hidden" id="lmsInlineEdit_' + esc(s.id) + '">' +
+            '<input type="text" class="lms-ie-name" value="' + esc(s.fullName) + '" placeholder="H\u1ecd t\u00ean" maxlength="100">' +
+            '<input type="text" class="lms-ie-class" value="' + esc(s.className || "") + '" placeholder="L\u1edbp" maxlength="40">' +
+            '<input type="email" class="lms-ie-email" value="' + esc(em) + '" placeholder="Email ph\u1ee5 huynh" maxlength="140">' +
+            '<button type="button" class="btn btn-primary btn-sm" data-qsave-st="' + esc(s.id) + '">L\u01b0u HS</button>' +
+          '</div>' +
+        '</div>';
       }).join("");
     };
 
@@ -1127,14 +1267,27 @@
     if (!host) return;
     host.innerHTML =
       '<div class="modal-overlay" id="lmsAssignModal" role="dialog" aria-modal="true"><div class="modal modal-lg">' +
-        '<h3>' + (p.isRemedial ? "Giao b\u00e0i t\u1eadp b\u1ed5 tr\u1ee3 (Remedial)" : "T\u1ea1o b\u00e0i giao m\u1edbi") + '</h3>' +
+        '<h3>' + (isEdit ? (esc(tr("Chỉnh sửa bài giao & Học sinh")) + ' <code class="lms-pin">' + esc(existing.code) + '</code>') : (p.isRemedial ? "Giao b\u00e0i t\u1eadp b\u1ed5 tr\u1ee3 (Remedial)" : "T\u1ea1o b\u00e0i giao m\u1edbi")) + '</h3>' +
         '<div class="lms-form-grid">' +
-          '<label class="field">Ch\u1ecdn b\u1ed9 \u0111\u1ec1<select id="lmsAsQuiz">' +
+          '<label class="field">' + (isEdit ? "B\u1ed9 \u0111\u1ec1 li\u00ean k\u1ebft (\u0110\u1ed5i \u0111\u1ec1 thi)" : "Ch\u1ecdn b\u1ed9 \u0111\u1ec1") + '<select id="lmsAsQuiz">' +
             quizzes.map(function (q) {
-              return '<option value="' + esc(q.id) + '"' + (q.id === selectedQuizId ? " selected" : "") + '>' + esc(q.title) + ' (' + q.questions.length + ' c\u00e2u)</option>';
+              return '<option value="' + esc(q.id) + '"' + (q.id === selectedQuizId ? " selected" : "") + '>' + esc(q.title) + ' (' + (q.questions ? q.questions.length : 0) + ' c\u00e2u)</option>';
             }).join("") +
           '</select></label>' +
-          '<label class="field">Ti\u00eau \u0111\u1ec1 b\u00e0i giao<input type="text" id="lmsAsTitle" value="' + esc(p.title || "") + '" placeholder="VD: B\u00e0i t\u1eadp tu\u1ea7n 5 - Ch\u01b0\u01a1ng 2" maxlength="120"></label>' +
+          '<label class="field">Ti\u00eau \u0111\u1ec1 b\u00e0i giao<input type="text" id="lmsAsTitle" value="' + esc(isEdit ? existing.title : (p.title || "")) + '" placeholder="VD: B\u00e0i t\u1eadp tu\u1ea7n 5 - Ch\u01b0\u01a1ng 2" maxlength="120"></label>' +
+        '</div>' +
+
+        (isEdit && existingSubsCount > 0
+          ? '<div id="lmsAsQuizSwitchWarn" class="hidden" style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);font-size:.82rem;color:#92400e">' +
+              '⚠️ B\u00e0i giao n\u00e0y \u0111\u00e3 c\u00f3 <strong>' + existingSubsCount + '</strong> b\u00e0i n\u1ed9p. \u0110\u1ed5i \u0111\u1ec1 thi s\u1ebd \u00e1p d\u1ee5ng cho c\u00e1c l\u01b0\u1ee3t l\u00e0m m\u1edbi v\u00e0 <strong>gi\u1eef nguy\u00ean to\u00e0n b\u1ed9 \u0111i\u1ec3m &amp; b\u00e0i n\u1ed9p c\u0169</strong>.' +
+            '</div>'
+          : '') +
+
+        '<div class="lms-form-grid" style="margin-top:8px">' +
+          '<label class="field">' + esc(tr("Khối / Cấp học")) + '<select id="lmsAsGrade">' +
+            (curr ? curr.renderGradeOptionsHtml(initGrade, true) : '<option value="unclassified">Ch\u01b0a ph\u00e2n lo\u1ea1i</option>') +
+          '</select></label>' +
+          '<label class="field">' + esc(tr("Môn học")) + '<div id="lmsAsSubjectHost">' + renderSubjectFieldInner(initGrade, initSubject) + '</div></label>' +
         '</div>' +
 
         '<div class="lms-form-grid" style="margin-top:8px">' +
@@ -1143,12 +1296,12 @@
             '<option value="students"' + (targetMode === "students" ? " selected" : "") + '>Ch\u1ecdn t\u1eebng h\u1ecdc sinh</option>' +
           '</select></label>' +
           '<label class="field" id="lmsAsClassWrap"' + (targetMode === "students" ? ' style="display:none"' : '') + '>Ch\u1ecdn l\u1edbp<select id="lmsAsClass">' +
-            (classes.length ? classes.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join("") : '<option value="">-- Ch\u01b0a c\u00f3 l\u1edbp --</option>') +
+            (classes.length ? classes.map(function (c) { return '<option value="' + esc(c) + '"' + (c === initTargetClass ? " selected" : "") + '>' + esc(c) + '</option>'; }).join("") : '<option value="">-- Ch\u01b0a c\u00f3 l\u1edbp --</option>') +
           '</select></label>' +
         '</div>' +
 
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap">' +
-          '<span class="muted" style="font-size:.78rem">Danh s\u00e1ch h\u1ecdc sinh (m\u1ed7i h\u1ecdc sinh c\u00f3 m\u00e3 PIN 4 s\u1ed1 ri\u00eang)</span>' +
+          '<span class="muted" style="font-size:.78rem">Danh s\u00e1ch h\u1ecdc sinh (b\u1ea5m <strong>S\u1eeda nhanh</strong> \u0111\u1ec3 s\u1eeda t\u00ean, l\u1edbp, email PH v\u00e0 \u0111\u1ed3ng b\u1ed9 danh b\u1ea1)</span>' +
           '<button type="button" class="btn btn-outline btn-sm" id="lmsQuickAddToggle">+ Th\u00eam h\u1ecdc sinh nhanh</button>' +
         '</div>' +
 
@@ -1165,44 +1318,127 @@
         '</div>' +
 
         '<div id="lmsAsStudentsWrap" class="lms-pick-box' + (targetMode === "students" ? "" : " hidden") + '">' +
-          renderStudentChecks(students, p.targetStudentIds || []) +
+          renderStudentChecks(students, initTargetIds) +
         '</div>' +
 
         '<div class="lms-form-grid" style="margin-top:8px">' +
-          '<label class="field">Thời gian mở đề (tùy chọn)<input type="datetime-local" id="lmsAsOpen"></label>' +
-          '<label class="field">Hạn nộp bài (bắt buộc)<input type="datetime-local" id="lmsAsDeadline" value="' + toLocalInputVal(defaultDead.toISOString()) + '"></label>' +
-          '<label class="field">Số lần làm bài tối đa<select id="lmsAsAttempts">' +
-            '<option value="1">Chỉ 1 lần duy nhất</option>' +
-            '<option value="2">Tối đa 2 lần</option>' +
-            '<option value="3">Tối đa 3 lần</option>' +
-            '<option value="0">Không giới hạn trước hạn nộp</option>' +
+          '<label class="field">Th\u1eddi gian m\u1edf \u0111\u1ec1 (t\u00f9y ch\u1ecdn)<input type="datetime-local" id="lmsAsOpen" value="' + esc(isEdit && existing.openAt ? toLocalInputVal(existing.openAt) : "") + '"></label>' +
+          '<label class="field">H\u1ea1n n\u1ed9p b\u00e0i (b\u1eaft bu\u1ed9c)<input type="datetime-local" id="lmsAsDeadline" value="' + esc(isEdit && existing.deadline ? toLocalInputVal(existing.deadline) : toLocalInputVal(defaultDead.toISOString())) + '"></label>' +
+          '<label class="field">S\u1ed1 l\u1ea7n l\u00e0m b\u00e0i t\u1ed1i \u0111a<select id="lmsAsAttempts">' +
+            '<option value="1"' + (isEdit && existing.maxAttempts === 1 ? " selected" : "") + '>Ch\u1ec9 1 l\u1ea7n duy nh\u1ea5t</option>' +
+            '<option value="2"' + (isEdit && existing.maxAttempts === 2 ? " selected" : "") + '>T\u1ed1i \u0111a 2 l\u1ea7n</option>' +
+            '<option value="3"' + (isEdit && existing.maxAttempts === 3 ? " selected" : "") + '>T\u1ed1i \u0111a 3 l\u1ea7n</option>' +
+            '<option value="0"' + (isEdit && existing.maxAttempts === 0 ? " selected" : "") + '>Kh\u00f4ng gi\u1edbi h\u1ea1n tr\u01b0\u1edbc h\u1ea1n n\u1ed9p</option>' +
           '</select></label>' +
-          '<label class="field">Quy tắc tính điểm<select id="lmsAsScorePolicy">' +
-            '<option value="highest">Lấy điểm cao nhất</option>' +
-            '<option value="first">Lấy điểm lần đầu tiên</option>' +
+          '<label class="field">Quy t\u1eafc t\u00ednh \u0111i\u1ec3m<select id="lmsAsScorePolicy">' +
+            '<option value="highest"' + (!isEdit || existing.scorePolicy !== "first" ? " selected" : "") + '>L\u1ea5y \u0111i\u1ec3m cao nh\u1ea5t</option>' +
+            '<option value="first"' + (isEdit && existing.scorePolicy === "first" ? " selected" : "") + '>L\u1ea5y \u0111i\u1ec3m l\u1ea7n \u0111\u1ea7u ti\u00ean</option>' +
           '</select></label>' +
-          '<label class="field">Hiển thị đáp án sau khi nộp<select id="lmsAsReveal">' +
-            '<option value="immediate">Hiển thị ngay sau khi nộp bài</option>' +
-            '<option value="after_deadline">Chỉ hiển thị sau khi hết hạn nộp của lớp</option>' +
+          '<label class="field">Hi\u1ec3n th\u1ecb \u0111\u00e1p \u00e1n sau khi n\u1ed9p<select id="lmsAsReveal">' +
+            '<option value="immediate"' + (!isEdit || existing.revealMode !== "after_deadline" ? " selected" : "") + '>Hi\u1ec3n th\u1ecb ngay sau khi n\u1ed9p b\u00e0i</option>' +
+            '<option value="after_deadline"' + (isEdit && existing.revealMode === "after_deadline" ? " selected" : "") + '>Ch\u1ec9 hi\u1ec3n th\u1ecb sau khi h\u1ebft h\u1ea1n n\u1ed9p c\u1ee7a l\u1edbp</option>' +
           '</select></label>' +
-          '<label class="field">Thời gian làm bài (phút, 0 = không giới hạn)<input type="number" id="lmsAsMinutes" min="0" max="300" value="30"></label>' +
+          '<label class="field">Th\u1eddi gian l\u00e0m b\u00e0i (ph\u00fat, 0 = kh\u00f4ng gi\u1edbi h\u1ea1n)<input type="number" id="lmsAsMinutes" min="0" max="300" value="' + esc(isEdit ? String(existing.durationMinutes || 0) : "30") + '"></label>' +
         '</div>' +
 
-        '<label class="field" style="margin-top:8px">Ghi chú của giáo viên (hướng dẫn, công thức, link tài liệu)<textarea id="lmsAsNote" rows="2" maxlength="600" placeholder="VD: Đọc kỹ đề trước khi chọn đáp án. Ôn lại công thức trang 42.">' + esc(p.note || "") + '</textarea></label>' +
+        '<label class="field" style="margin-top:8px">Ghi ch\u00fa c\u1ee7a gi\u00e1o vi\u00ean (h\u01b0\u1edbng d\u1eabn, c\u00f4ng th\u1ee9c, link t\u00e0i li\u1ec7u)<textarea id="lmsAsNote" rows="2" maxlength="600" placeholder="VD: \u0110\u1ecdc k\u1ef9 \u0111\u1ec1 tr\u01b0\u1edbc khi ch\u1ecdn \u0111\u00e1p \u00e1n. \u00d4n l\u1ea1i c\u00f4ng th\u1ee9c trang 42.">' + esc(isEdit ? (existing.teacherNote || "") : (p.note || "")) + '</textarea></label>' +
 
         '<div class="lms-checks-row">' +
-          '<label class="check-row"><input type="checkbox" id="lmsAsShuffleQ" checked> Đảo thứ tự câu hỏi riêng cho từng học sinh</label>' +
-          '<label class="check-row"><input type="checkbox" id="lmsAsShuffleO" checked> Đảo thứ tự đáp án (Zero-Drift)</label>' +
-          '<label class="check-row"><input type="checkbox" id="lmsAsParentEmail" checked> Tự động gửi email báo cáo kết quả cho phụ huynh</label>' +
+          '<label class="check-row"><input type="checkbox" id="lmsAsShuffleQ"' + (!isEdit || existing.shuffleQ ? " checked" : "") + '> \u0110\u1ea3o th\u1ee9 t\u1ef1 c\u00e2u h\u1ecfi ri\u00eang cho t\u1eebng h\u1ecdc sinh</label>' +
+          '<label class="check-row"><input type="checkbox" id="lmsAsShuffleO"' + (!isEdit || existing.shuffleO ? " checked" : "") + '> \u0110\u1ea3o th\u1ee9 t\u1ef1 \u0111\u00e1p \u00e1n (Zero-Drift)</label>' +
+          '<label class="check-row"><input type="checkbox" id="lmsAsParentEmail"' + (!isEdit || existing.parentEmailEnabled ? " checked" : "") + '> T\u1ef1 \u0111\u1ed9ng g\u1eedi email b\u00e1o c\u00e1o k\u1ebft qu\u1ea3 cho ph\u1ee5 huynh</label>' +
         '</div>' +
 
         '<div class="modal-actions">' +
-          '<button type="button" class="btn btn-outline" id="lmsAsCancel">Hủy</button>' +
-          '<button type="button" class="btn btn-primary" id="lmsAsSave">Tạo &amp; Giao bài</button>' +
+          '<button type="button" class="btn btn-outline" id="lmsAsCancel">H\u1ee7y</button>' +
+          '<button type="button" class="btn btn-primary" id="lmsAsSave">' + (isEdit ? esc(tr("Lưu thay đổi")) : "T\u1ea1o &amp; Giao b\u00e0i") + '</button>' +
         '</div>' +
       '</div></div>';
 
     if (typeof U().applyI18n === "function") U().applyI18n(host);
+
+    const bindSubjectEvents = function () {
+      const sel = U().$("lmsAsSubject");
+      const customInp = U().$("lmsAsSubjectCustom");
+      if (sel && customInp) {
+        sel.addEventListener("change", function () {
+          const isCustom = sel.value === "__custom__";
+          customInp.classList.toggle("hidden", !isCustom);
+          if (isCustom) customInp.focus();
+        });
+      }
+    };
+    bindSubjectEvents();
+
+    U().on("lmsAsGrade", "change", function (e) {
+      const hostEl = U().$("lmsAsSubjectHost");
+      if (hostEl) {
+        hostEl.innerHTML = renderSubjectFieldInner(e.target.value, "");
+        bindSubjectEvents();
+      }
+    });
+
+    U().on("lmsAsQuiz", "change", function (e) {
+      const warnEl = U().$("lmsAsQuizSwitchWarn");
+      if (warnEl && isEdit) {
+        warnEl.classList.toggle("hidden", e.target.value === existing.quizId);
+      }
+      if (!isEdit && curr) {
+        const pickedQ = quizzes.find(function (q) { return q.id === e.target.value; });
+        if (pickedQ) {
+          const tx = curr.detectTaxonomy(pickedQ);
+          const grEl = U().$("lmsAsGrade");
+          const sHost = U().$("lmsAsSubjectHost");
+          if (grEl && tx.gradeLevel) grEl.value = tx.gradeLevel;
+          if (sHost) {
+            sHost.innerHTML = renderSubjectFieldInner(tx.gradeLevel, tx.subject);
+            bindSubjectEvents();
+          }
+        }
+      }
+    });
+
+    // Inline Quick-Edit Student Info inside the modal (syncs back to master roster!)
+    const swEl = U().$("lmsAsStudentsWrap");
+    if (swEl) {
+      swEl.addEventListener("click", function (ev) {
+        const editBtn = ev.target.closest ? ev.target.closest("[data-qedit-st]") : null;
+        if (editBtn) {
+          const sid = editBtn.getAttribute("data-qedit-st");
+          const box = U().$("lmsInlineEdit_" + sid);
+          if (box) box.classList.toggle("hidden");
+          return;
+        }
+        const saveBtn = ev.target.closest ? ev.target.closest("[data-qsave-st]") : null;
+        if (saveBtn) {
+          const sid = saveBtn.getAttribute("data-qsave-st");
+          const box = U().$("lmsInlineEdit_" + sid);
+          if (!box) return;
+          const nm = (box.querySelector(".lms-ie-name") ? box.querySelector(".lms-ie-name").value : "").trim();
+          const cls = (box.querySelector(".lms-ie-class") ? box.querySelector(".lms-ie-class").value : "").trim() || "Ch\u01b0a ph\u00e2n l\u1edbp";
+          const em = (box.querySelector(".lms-ie-email") ? box.querySelector(".lms-ie-email").value : "").trim();
+          if (!nm) { U().showToast("Vui l\u00f2ng nh\u1eadp h\u1ecd v\u00e0 t\u00ean h\u1ecdc sinh.", "warning"); return; }
+          if (em && !isValidEmailList(em)) { U().showToast("\u0110\u1ecba ch\u1ec9 email ph\u1ee5 huynh kh\u00f4ng h\u1ee3p l\u1ec7.", "warning"); return; }
+          const allSt = loadStudents();
+          const idx = allSt.findIndex(function (x) { return x.id === sid; });
+          if (idx !== -1) {
+            allSt[idx] = Object.assign({}, allSt[idx], { fullName: nm, className: cls, parentEmail: em });
+            saveStudents(allSt);
+          }
+          const checkedIds = [];
+          host.querySelectorAll('input[name="lmsAsStPick"]:checked').forEach(function (cb) { checkedIds.push(cb.value); });
+          swEl.innerHTML = renderStudentChecks(allSt, checkedIds);
+          const clSel = U().$("lmsAsClass");
+          if (clSel) {
+            const curClsVal = clSel.value;
+            const nextClasses = Array.from(new Set(allSt.map(function (s) { return s.className || "Ch\u01b0a ph\u00e2n l\u1edbp"; }))).sort();
+            clSel.innerHTML = nextClasses.map(function (c) { return '<option value="' + esc(c) + '"' + (c === curClsVal ? " selected" : "") + '>' + esc(c) + '</option>'; }).join("");
+          }
+          U().showToast(tr("Đã cập nhật thông tin học sinh và đồng bộ danh bạ."), "success");
+        }
+      });
+    }
+
     U().on("lmsQuickAddToggle", "click", function () {
       const box = U().$("lmsQuickAddBox");
       if (box) box.classList.toggle("hidden");
@@ -1219,7 +1455,6 @@
       curList.push(newSt);
       saveStudents(curList);
 
-      // Preserve currently checked students + auto-check the new student
       const checkedIds = [];
       host.querySelectorAll('input[name="lmsAsStPick"]:checked').forEach(function (cb) { checkedIds.push(cb.value); });
       checkedIds.push(newSt.id);
@@ -1268,11 +1503,62 @@
         for (let i = 0; i < boxes.length; i++) targetStudentIds.push(boxes[i].value);
         if (!targetStudentIds.length) { U().showToast("Vui l\u00f2ng ch\u1ecdn \u00edt nh\u1ea5t 1 h\u1ecdc sinh.", "warning"); return; }
       }
+
+      const gradeLevel = (U().$("lmsAsGrade") && U().$("lmsAsGrade").value) || "unclassified";
+      let subject = "";
+      if (gradeLevel === "university") {
+        subject = (U().$("lmsAsSubjectCustom") && U().$("lmsAsSubjectCustom").value.trim()) || "";
+      } else {
+        const selSubj = U().$("lmsAsSubject") ? U().$("lmsAsSubject").value : "";
+        subject = selSubj === "__custom__"
+          ? ((U().$("lmsAsSubjectCustom") && U().$("lmsAsSubjectCustom").value.trim()) || "")
+          : selSubj.trim();
+      }
+      if (subject && curr) {
+        subject = curr.saveCustomSubject(gradeLevel, subject);
+      }
+
+      const list = loadAssignments();
+      if (isEdit) {
+        const idx = list.findIndex(function (a) { return a.id === existing.id; });
+        if (idx !== -1) {
+          const quizChanged = existing.quizId !== quizObj.id;
+          list[idx] = Object.assign({}, list[idx], {
+            quizId: quizObj.id,
+            title: title,
+            gradeLevel: gradeLevel,
+            subject: subject,
+            quizSnapshot: quizChanged ? JSON.parse(JSON.stringify(quizObj)) : list[idx].quizSnapshot,
+            targetMode: tMode,
+            targetClass: targetClass,
+            targetStudentIds: targetStudentIds,
+            openAt: openVal ? new Date(openVal).toISOString() : "",
+            deadline: new Date(deadlineVal).toISOString(),
+            maxAttempts: parseInt(U().$("lmsAsAttempts").value, 10) || 0,
+            scorePolicy: U().$("lmsAsScorePolicy").value || "highest",
+            revealMode: U().$("lmsAsReveal").value || "immediate",
+            durationMinutes: Math.max(0, parseInt(U().$("lmsAsMinutes").value, 10) || 0),
+            teacherNote: (U().$("lmsAsNote").value || "").trim(),
+            shuffleQ: !!U().$("lmsAsShuffleQ").checked,
+            shuffleO: !!U().$("lmsAsShuffleO").checked,
+            parentEmailEnabled: !!U().$("lmsAsParentEmail").checked,
+            updatedAt: new Date().toISOString()
+          });
+          saveAssignments(list);
+          host.innerHTML = "";
+          U().showToast(tr("Đã cập nhật bài giao thành công!"), "success");
+          refreshStudio();
+        }
+        return;
+      }
+
       const item = {
         id: "as_" + Date.now(),
         code: genAssignCode(),
         quizId: quizObj.id,
         title: title,
+        gradeLevel: gradeLevel,
+        subject: subject,
         quizSnapshot: JSON.parse(JSON.stringify(quizObj)),
         targetMode: tMode,
         targetClass: targetClass,
@@ -1291,7 +1577,6 @@
         isRemedial: !!p.isRemedial,
         createdAt: new Date().toISOString()
       };
-      const list = loadAssignments();
       list.unshift(item);
       saveAssignments(list);
       lmsState.selectedAssignmentId = item.id;
@@ -2771,6 +3056,23 @@
     }
     else if (act === "close-portfolio") { lmsState.portfolioStudentId = null; refreshStudio(); }
     else if (act === "create-assignment") openAssignmentModal(null);
+    else if (act === "edit-assignment") openAssignmentModal({ editId: b.getAttribute("data-id") });
+    else if (act === "filter-assign-grade") {
+      lmsState.assignGradeFilter = b.getAttribute("data-val") || "all";
+      lmsState.assignSubjectFilter = "all";
+      refreshStudio();
+    }
+    else if (act === "filter-assign-subject") {
+      lmsState.assignSubjectFilter = b.getAttribute("data-val") || "all";
+      refreshStudio();
+    }
+    else if (act === "toggle-assign-recipients") {
+      const aid = b.getAttribute("data-id");
+      if (aid) {
+        lmsState.expandedRecipients[aid] = !lmsState.expandedRecipients[aid];
+        refreshStudio();
+      }
+    }
     else if (act === "edit-feedback-rules") openFeedbackRulesModal();
     else if (act === "del-assignment") {
       const id = b.getAttribute("data-id");
@@ -2922,6 +3224,7 @@
     getStudentParentEmail: getStudentParentEmail,
     sendParentEmailBatch: sendParentEmailBatch,
     sendDeadlineReminders: sendDeadlineReminders,
-    sendStudentGradebookEmail: sendStudentGradebookEmail
+    sendStudentGradebookEmail: sendStudentGradebookEmail,
+    openAssignmentModal: openAssignmentModal
   };
 })();
