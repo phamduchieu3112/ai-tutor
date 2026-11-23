@@ -1356,6 +1356,15 @@
 }
 
 @media (max-width: 720px) {
+  .vs-root, .vs-container, .vs-card, .vs-dict-card, .vs-flashcard {
+    max-width: 100% !important;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .vs-root input, .vs-root textarea, .vs-root select { font-size: 16px !important; max-width: 100%; }
+  .vs-flashcard { width: 100% !important; min-height: 220px; }
+  .vs-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
   .vocab-studio-container .vs-grid,
   .vocab-studio-container .vs-deck-grid,
   .vocab-studio-container .vs-quiz-setup,
