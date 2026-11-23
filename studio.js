@@ -95,6 +95,8 @@
       id: "qz_" + Date.now(),
       title: "Quiz m\u1edbi",
       tag: "T\u1ed5ng h\u1ee3p",
+      isPublic: true,
+      shareCode: "",
       questions: []
     };
   }
@@ -102,13 +104,15 @@
   function openFromDeck(deck) {
     if (!deck) return;
     stopStudioTimer();
-    sState.quiz = {
-      id: "qz_deck_" + deck.id,
+    sState.quiz = Object.assign({}, deck, {
+      id: deck.id && String(deck.id).indexOf("qz_") === 0 ? deck.id : ("qz_deck_" + deck.id),
       deckId: deck.id,
       title: deck.title,
       tag: deck.tag || "T\u1ed5ng h\u1ee3p",
+      isPublic: typeof deck.isPublic === "boolean" ? deck.isPublic : true,
+      shareCode: deck.shareCode || "",
       questions: deck.questions.map(function (q, i) {
-        return {
+        return Object.assign({}, q, {
           id: q.id || ("sq_" + i),
           text: q.text,
           type: q.type === "multiple" ? "multiple" : "single",
@@ -117,9 +121,9 @@
           time: Number.isFinite(Number(q.time)) ? Number(q.time) : 30,
           image: q.image || "",
           explanation: q.explanation || ""
-        };
+        });
       })
-    };
+    });
     sState.screen = "editor";
     U().showTab("studio");
   }
@@ -130,6 +134,8 @@
       id: "qz_" + Date.now(),
       title: title || "Quiz t\u1eeb AI Converter",
       tag: tag || "T\u1ed5ng h\u1ee3p",
+      isPublic: true,
+      shareCode: "",
       questions: items.map(function (q, i) {
         return {
           id: "sq_" + Date.now() + "_" + i,
@@ -150,14 +156,16 @@
   function saveCurrentQuiz() {
     const qz = sState.quiz;
     if (!qz) return;
-    const tEl = U().$("stQuizTitle"), tagEl = U().$("stQuizTag");
+    const tEl = U().$("stQuizTitle"), tagEl = U().$("stQuizTag"), visEl = U().$("stQuizVis");
     if (tEl) qz.title = tEl.value.trim() || "Quiz kh\u00f4ng t\u00ean";
     if (tagEl) qz.tag = tagEl.value.trim() || "T\u1ed5ng h\u1ee3p";
+    if (visEl) qz.isPublic = visEl.value === "public";
+    else if (typeof qz.isPublic !== "boolean") qz.isPublic = true;
     if (qz.questions.length === 0) { U().showToast("H\u00e3y th\u00eam \u00edt nh\u1ea5t 1 c\u00e2u h\u1ecfi tr\u01b0\u1edbc khi l\u01b0u Quiz.", "warning"); return; }
     const list = loadQuizzes().filter(function (x) { return x && x.id !== qz.id; });
     list.unshift(Object.assign({}, qz, { updatedAt: new Date().toISOString() }));
     saveQuizzes(list);
-    U().showToast("\u0110\u00e3 l\u01b0u Quiz \"" + qz.title + "\" v\u00e0o Creator Studio!", "success");
+    U().showToast("\u0110\u00e3 l\u01b0u Quiz \"" + qz.title + "\" (" + (qz.isPublic ? "🌐 Public" : "🔒 Private") + ") v\u00e0o Creator Studio!", "success");
   }
 
   function saveQuizToDeckBank() {
@@ -240,11 +248,21 @@
       h += '<div class="empty-state">B\u1ea1n ch\u01b0a l\u01b0u Quiz n\u00e0o trong Creator Studio. H\u00e3y t\u1ea1o m\u1edbi ho\u1eb7c ch\u1ecdn t\u1eeb Kho \u0111\u1ec1 \u1edf tr\u00ean!</div>';
     } else {
       h += '<div class="list">' + quizzes.map(function (qz) {
-        return '<div class="deck-row"><div class="deck-title-line"><span class="deck-title">' + U().esc(qz.title) + '</span><span class="badge">' + U().esc(qz.tag || "T\u1ed5ng h\u1ee3p") + '</span></div>' +
+        const isPub = qz.isPublic !== false;
+        return '<div class="deck-row"><div class="deck-title-line"><span class="deck-title">' + U().esc(qz.title) + '</span>' +
+          '<span class="badge">' + U().esc(qz.tag || "T\u1ed5ng h\u1ee3p") + '</span>' +
+          '<span class="badge ' + (isPub ? "badge-ok" : "badge-warn") + '">' + (isPub ? "🌐 Public" : "🔒 Private") + '</span>' +
+          (qz.shareCode ? '<span class="badge">🔑 ' + U().esc(qz.shareCode) + '</span>' : '') +
+          '</div>' +
           '<div class="deck-sub"><span>' + (qz.questions ? qz.questions.length : 0) + ' c\u00e2u h\u1ecfi</span>' + (qz.updatedAt ? '<span>C\u1eadp nh\u1eadt: ' + U().esc(U().fmtDateTime(qz.updatedAt)) + '</span>' : "") + '</div>' +
           '<div class="deck-actions">' +
             '<button type="button" class="btn btn-emerald btn-sm" data-sact="play-saved" data-id="' + U().esc(qz.id) + '">▶ B\u1eaft \u0111\u1ea7u l\u00e0m b\u00e0i (Play)</button>' +
             '<button type="button" class="btn btn-primary btn-sm" data-sact="edit-saved" data-id="' + U().esc(qz.id) + '">Ch\u1ec9nh s\u1eeda</button>' +
+            '<select data-sact="card-vis" data-id="' + U().esc(qz.id) + '" aria-label="Quy\u1ec1n truy c\u1eadp Quiz" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.78rem;font-weight:700">' +
+              '<option value="public"' + (isPub ? " selected" : "") + '>🌐 Public</option>' +
+              '<option value="private"' + (!isPub ? " selected" : "") + '>🔒 Private</option>' +
+            '</select>' +
+            (!isPub ? '<button type="button" class="btn btn-emerald btn-sm" data-sact="switch-pub-copy" data-id="' + U().esc(qz.id) + '">🌐 Switch to Public &amp; Copy Link</button>' : '') +
             '<button type="button" class="btn btn-outline btn-sm" data-sact="share-saved" data-id="' + U().esc(qz.id) + '">🔗 Chia s\u1ebb</button>' +
             '<button type="button" class="btn btn-outline btn-sm" data-sact="pdf-saved" data-id="' + U().esc(qz.id) + '">🖨️ Xu\u1ea5t PDF</button>' +
             '<button type="button" class="btn btn-outline btn-sm" data-sact="del-saved" data-id="' + U().esc(qz.id) + '">X\u00f3a</button>' +
@@ -271,7 +289,11 @@
     let h = '<div class="studio-header">' +
       '<button type="button" class="btn btn-outline btn-sm" data-sact="back-home">← Danh s\u00e1ch</button>' +
       '<input type="text" id="stQuizTitle" value="' + U().esc(qz.title) + '" placeholder="T\u00ean Quiz..." style="flex:1;min-width:180px;padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-weight:700">' +
-      '<input type="text" id="stQuizTag" value="' + U().esc(qz.tag) + '" placeholder="M\u00f4n h\u1ecdc / Tag" style="width:150px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">' +
+      '<input type="text" id="stQuizTag" value="' + U().esc(qz.tag) + '" placeholder="M\u00f4n h\u1ecdc / Tag" style="width:140px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text)">' +
+      '<select id="stQuizVis" aria-label="Quy\u1ec1n truy c\u1eadp Quiz" style="padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.82rem;font-weight:700">' +
+        '<option value="public"' + (qz.isPublic !== false ? " selected" : "") + '>🌐 Public</option>' +
+        '<option value="private"' + (qz.isPublic === false ? " selected" : "") + '>🔒 Private</option>' +
+      '</select>' +
       '<div style="display:flex;align-items:center;gap:6px">' +
         timeSelectHTML(30, 'id="stBatchTime" aria-label="Th\u1eddi gian h\u00e0ng lo\u1ea1t"') +
         '<button type="button" class="btn btn-outline btn-sm" data-sact="batch-time">\u0110\u1eb7t th\u1eddi gian h\u00e0ng lo\u1ea1t</button>' +
@@ -931,6 +953,33 @@
       const i = Number(b.getAttribute("data-idx"));
       if (sState.quiz) { sState.quiz.questions.splice(i, 1); render(); }
     }
+    else if (act === "switch-pub-copy") {
+      const id = b.getAttribute("data-id");
+      const list = loadQuizzes();
+      const qz = list.find(function (x) { return x && x.id === id; });
+      if (!qz) return;
+      b.disabled = true;
+      (async function () {
+        try {
+          if (qz.shareCode && window.UETCloud && typeof window.UETCloud.updateQuizVisibility === "function") {
+            await window.UETCloud.updateQuizVisibility(qz.shareCode, true, qz.id);
+            const url = (window.location.origin || "") + "/quiz?code=" + encodeURIComponent(qz.shareCode);
+            U().copyText(url, "\u0111\u01b0\u1eddng d\u1eabn chia s\u1ebb");
+            U().showToast("\u0110\u00e3 chuy\u1ec3n sang 🌐 Public v\u00e0 sao ch\u00e9p Link!", "success");
+            render();
+          } else {
+            qz.isPublic = true;
+            saveQuizzes(list);
+            if (window.UETCloud) await window.UETCloud.openShareModal(qz);
+            render();
+          }
+        } catch (err) {
+          U().showToast(err.message || "Kh\u00f4ng th\u1ec3 chuy\u1ec3n sang Public.", "error");
+        } finally {
+          b.disabled = false;
+        }
+      })();
+    }
     else if (act === "start-play") startPlaySession();
     else if (act === "pick-opt") {
       const pl = sState.play; if (!pl || pl.locked) return;
@@ -963,6 +1012,44 @@
     if (t.getAttribute("data-sact") === "q-time") {
       const q = sState.quiz && sState.quiz.questions[Number(t.getAttribute("data-idx"))];
       if (q) q.time = parseInt(t.value, 10) || 0;
+    }
+    else if (t.id === "stQuizVis" && sState.quiz) {
+      const wantPublic = t.value === "public";
+      const prev = sState.quiz.isPublic !== false;
+      if (sState.quiz.shareCode && window.UETCloud && typeof window.UETCloud.updateQuizVisibility === "function") {
+        t.disabled = true;
+        window.UETCloud.updateQuizVisibility(sState.quiz.shareCode, wantPublic, sState.quiz.id)
+          .then(function () {
+            sState.quiz.isPublic = wantPublic;
+            U().showToast("\u0110\u00e3 c\u1eadp nh\u1eadt: " + (wantPublic ? "🌐 Public" : "🔒 Private"), "success");
+          })
+          .catch(function (err) {
+            t.value = prev ? "public" : "private";
+            U().showToast(err.message || "C\u1eadp nh\u1eadt tr\u1ea1ng th\u00e1i th\u1ea5t b\u1ea1i.", "error");
+          })
+          .finally(function () { t.disabled = false; });
+      } else {
+        sState.quiz.isPublic = wantPublic;
+      }
+    }
+    else if (t.getAttribute("data-sact") === "card-vis") {
+      const id = t.getAttribute("data-id");
+      const list = loadQuizzes();
+      const qz = list.find(function (x) { return x && x.id === id; });
+      if (!qz) return;
+      const wantPublic = t.value === "public";
+      const prev = qz.isPublic !== false;
+      t.disabled = true;
+      (window.UETCloud && typeof window.UETCloud.updateQuizVisibility === "function"
+        ? window.UETCloud.updateQuizVisibility(qz.shareCode || "", wantPublic, qz.id)
+        : Promise.resolve().then(function () { qz.isPublic = wantPublic; saveQuizzes(list); })
+      ).then(function () {
+        U().showToast("\u0110\u00e3 c\u1eadp nh\u1eadt \"" + qz.title + "\": " + (wantPublic ? "🌐 Public" : "🔒 Private"), "success");
+        render();
+      }).catch(function (err) {
+        t.value = prev ? "public" : "private";
+        U().showToast(err.message || "C\u1eadp nh\u1eadt tr\u1ea1ng th\u00e1i th\u1ea5t b\u1ea1i.", "error");
+      }).finally(function () { t.disabled = false; });
     }
     else if (t.id === "lbPerSession") { sState.lobby.perSession = Math.max(1, parseInt(t.value, 10) || 50); sState.lobby.sessionIdx = 1; render(); }
     else if (t.id === "lbSessionIdx") { sState.lobby.sessionIdx = Math.max(1, parseInt(t.value, 10) || 1); render(); }

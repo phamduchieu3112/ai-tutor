@@ -918,37 +918,102 @@ module.exports = async function apiHandler(req, res) {
       });
     }
 
-    /* ---------- Public Share Link / Short Code API ---------- */
+    /* ---------- Public/Private Share Link & Quiz Persistence API ---------- */
     if (p === "/api/shares" && method === "POST") {
       const body = await readBody(req);
       if (!body || !body.deck || !Array.isArray(body.deck.questions) || body.deck.questions.length === 0) {
-        return sendJson(res, 400, { error: "B\u1ed9 \u0111\u1ec1 chia s\u1ebb kh\u00f4ng h\u1ee3p l\u1ec7." });
+        return sendJson(res, 400, { error: "B\u1ed9 \u0111\u1ec1 chia s\u1ebb kh\u00f4ng h\u1ee3p l\u1ec7.", code: "INVALID_PAYLOAD" });
       }
-      let code = String(body.code || "").trim().toUpperCase();
-      if (!/^AIT-\d{4,6}$/.test(code)) {
+      const caller = getCallerEmail(req) || "guest";
+      let code = String(body.code || body.deck.shareCode || "").trim().toUpperCase();
+      if (!/^AIT-[A-Z0-9]{4,8}$/.test(code)) {
         code = "AIT-" + Math.floor(1000 + Math.random() * 9000);
         for (let tries = 0; tries < 8; tries++) {
           const exists = await storage.getShareByCode(code);
           if (!exists) break;
           code = "AIT-" + Math.floor(1000 + Math.random() * 9000);
         }
+      } else {
+        // Ownership check if overwriting an existing share code
+        const existing = await storage.getShareByCode(code);
+        if (existing && existing.createdBy && existing.createdBy !== "guest" && caller !== ADMIN_EMAIL && existing.createdBy.toLowerCase() !== caller.toLowerCase()) {
+          return sendJson(res, 403, { error: "Kh\u00f4ng c\u00f3 quy\u1ec1n ghi \u0111\u00e8 m\u00e3 \u0111\u1ec1 c\u1ee7a ng\u01b0\u1eddi kh\u00e1c.", code: "FORBIDDEN" });
+        }
       }
+      const isPublic = typeof body.isPublic === "boolean"
+        ? body.isPublic
+        : (typeof body.deck.isPublic === "boolean" ? body.deck.isPublic : true);
+      // Preserve all unknown legacy fields while normalizing safe optional ones
+      const sanitizedDeck = Object.assign({}, body.deck, {
+        id: String(body.deck.id || ("qz_" + Date.now())),
+        title: String(body.deck.title || "Quiz kh\u00f4ng t\u00ean").trim().slice(0, 300),
+        tag: String(body.deck.tag || "T\u1ed5ng h\u1ee3p").trim().slice(0, 120),
+        isPublic: isPublic,
+        shareCode: code,
+        questions: body.deck.questions
+      });
+      const nowIso = new Date().toISOString();
       const entry = {
         code: code,
-        deck: body.deck,
-        createdBy: getCallerEmail(req) || "guest",
-        createdAt: new Date().toISOString()
+        isPublic: isPublic,
+        deck: sanitizedDeck,
+        createdBy: caller,
+        createdAt: nowIso,
+        updatedAt: nowIso
       };
-      await storage.saveShareByCode(code, entry);
-      return sendJson(res, 201, { ok: true, code: code });
+      try {
+        const saved = await storage.saveShareByCode(code, entry);
+        return sendJson(res, 201, {
+          ok: true,
+          code: code,
+          isPublic: isPublic,
+          updatedAt: nowIso,
+          driver: saved.driver
+        });
+      } catch (saveErr) {
+        return sendJson(res, 500, { error: "Kh\u00f4ng th\u1ec3 l\u01b0u b\u1ed9 \u0111\u1ec1 l\u00ean c\u01a1 s\u1edf d\u1eef li\u1ec7u: " + (saveErr.message || "DB error"), code: "DB_SAVE_FAILED" });
+      }
     }
 
-    const shareGet = p.match(/^\/api\/shares\/([^/]+)$/);
-    if (shareGet && method === "GET") {
-      const code = decodeURIComponent(shareGet[1]).trim().toUpperCase();
+    const shareMatch = p.match(/^\/api\/shares\/([^/]+)$/);
+    if (shareMatch && method === "GET") {
+      const code = decodeURIComponent(shareMatch[1]).trim().toUpperCase();
       const entry = await storage.getShareByCode(code);
-      if (!entry) return sendJson(res, 404, { error: "Kh\u00f4ng t\u00ecm th\u1ea5y m\u00e3 \u0111\u1ec1 " + code });
-      return sendJson(res, 200, { ok: true, share: entry });
+      if (!entry) return sendJson(res, 404, { error: "Quiz Not Found", code: "QUIZ_NOT_FOUND" });
+      const isPublic = entry.isPublic !== false && (!entry.deck || entry.deck.isPublic !== false);
+      const caller = getCallerEmail(req) || "";
+      const isOwner = !!(caller && entry.createdBy && (caller.toLowerCase() === String(entry.createdBy).toLowerCase() || caller.toLowerCase() === ADMIN_EMAIL));
+      if (!isPublic && !isOwner) {
+        return sendJson(res, 403, { error: "This Quiz is Private", code: "QUIZ_PRIVATE" });
+      }
+      return sendJson(res, 200, { ok: true, share: entry, isPublic: isPublic, isOwner: isOwner });
+    }
+
+    if (shareMatch && method === "PATCH") {
+      const code = decodeURIComponent(shareMatch[1]).trim().toUpperCase();
+      const entry = await storage.getShareByCode(code);
+      if (!entry) return sendJson(res, 404, { error: "Quiz Not Found", code: "QUIZ_NOT_FOUND" });
+      const caller = getCallerEmail(req) || "";
+      const isOwner = !!(caller && (!entry.createdBy || entry.createdBy === "guest" || caller.toLowerCase() === String(entry.createdBy).toLowerCase() || caller.toLowerCase() === ADMIN_EMAIL));
+      if (!isOwner) {
+        return sendJson(res, 403, { error: "Ch\u1ec9 ch\u1ee7 s\u1edf h\u1eefu m\u1edbi c\u00f3 quy\u1ec1n thay \u0111\u1ed5i quy\u1ec1n truy c\u1eadp Quiz.", code: "FORBIDDEN" });
+      }
+      const body = await readBody(req);
+      if (typeof (body && body.isPublic) !== "boolean") {
+        return sendJson(res, 400, { error: "Thi\u1ebfu tr\u01b0\u1eddng isPublic (boolean).", code: "INVALID_PAYLOAD" });
+      }
+      const nowIso = new Date().toISOString();
+      const updated = Object.assign({}, entry, {
+        isPublic: body.isPublic,
+        updatedAt: nowIso,
+        deck: Object.assign({}, entry.deck || {}, { isPublic: body.isPublic, shareCode: code })
+      });
+      try {
+        await storage.saveShareByCode(code, updated);
+        return sendJson(res, 200, { ok: true, code: code, isPublic: body.isPublic, updatedAt: nowIso });
+      } catch (err) {
+        return sendJson(res, 500, { error: "Kh\u00f4ng th\u1ec3 c\u1eadp nh\u1eadt tr\u1ea1ng th\u00e1i Quiz.", code: "DB_SAVE_FAILED" });
+      }
     }
 
     /* ---------- Cloud User Data Sync API ---------- */
@@ -963,6 +1028,12 @@ module.exports = async function apiHandler(req, res) {
       if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
       const body = await readBody(req);
       const prev = await storage.getCloudUser(caller);
+      // Stale backup overwrite protection
+      const prevTs = prev && prev.updatedAt ? Date.parse(prev.updatedAt) : 0;
+      const incTs = body && (body.updatedAt || body.exportedAt) ? Date.parse(body.updatedAt || body.exportedAt) : Date.now();
+      if (prev && prevTs && incTs && incTs < prevTs && !body.forceReplace) {
+        return sendJson(res, 409, { error: "Stale backup rejected to protect newer cloud data.", code: "STALE_BACKUP", cloudUpdatedAt: prev.updatedAt });
+      }
       const next = Object.assign({}, prev || {}, body, { updatedAt: new Date().toISOString() });
       await storage.saveCloudUser(caller, next);
       return sendJson(res, 200, { ok: true, updatedAt: next.updatedAt });

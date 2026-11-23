@@ -160,10 +160,26 @@ const CLOUD_CONFIG = {
       U().saveJSON(U().KEYS.history, curHist.slice(-200));
 
       const curQz = U().loadArr(U().KEYS.quizzes);
-      const qSeen = {};
-      curQz.forEach(function (q) { if (q && q.id) qSeen[q.id] = true; });
+      const qById = {};
+      curQz.forEach(function (q, idx) { if (q && q.id) qById[q.id] = idx; });
       (Array.isArray(obj.studio_quizzes) ? obj.studio_quizzes : []).forEach(function (q) {
-        if (q && q.id && !qSeen[q.id]) { curQz.push(q); qSeen[q.id] = true; }
+        if (!q || !q.id) return;
+        const normalizedQ = Object.assign({}, q, {
+          isPublic: typeof q.isPublic === "boolean" ? q.isPublic : true,
+          shareCode: q.shareCode || ""
+        });
+        if (qById[q.id] === undefined) {
+          qById[q.id] = curQz.length;
+          curQz.push(normalizedQ);
+        } else {
+          // Stale backup protection: only update if incoming record is newer
+          const curItem = curQz[qById[q.id]];
+          const curTs = curItem && curItem.updatedAt ? Date.parse(curItem.updatedAt) : 0;
+          const incTs = normalizedQ.updatedAt ? Date.parse(normalizedQ.updatedAt) : 0;
+          if (incTs > curTs) {
+            curQz[qById[q.id]] = Object.assign({}, curItem, normalizedQ);
+          }
+        }
       });
       U().saveJSON(U().KEYS.quizzes, curQz);
 
@@ -615,36 +631,144 @@ const CLOUD_CONFIG = {
     } catch (e) { return null; }
   }
 
+  function sanitizeQuizPayloadForSave(deck, code, isPublic) {
+    // Preserve all unknown legacy fields while normalizing safe optional fields
+    return Object.assign({}, deck, {
+      id: String(deck.id || ("qz_" + Date.now())),
+      title: String(deck.title || "Quiz kh\u00f4ng t\u00ean").trim().slice(0, 300),
+      tag: String(deck.tag || "T\u1ed5ng h\u1ee3p").trim().slice(0, 120),
+      isPublic: isPublic !== false,
+      shareCode: code || deck.shareCode || "",
+      questions: (Array.isArray(deck.questions) ? deck.questions : []).map(function (q, i) {
+        return Object.assign({}, q, {
+          id: q.id || ("sq_" + i),
+          text: String(q.text || "").trim(),
+          type: q.type === "multiple" || q.type === "Checkbox" ? "multiple" : "single",
+          options: Array.isArray(q.options) ? q.options.map(function (o) { return String(o == null ? "" : o); }) : [],
+          correct: Array.isArray(q.correct) ? q.correct.slice() : [],
+          time: Number.isFinite(Number(q.time)) ? Number(q.time) : 30,
+          image: String(q.image || "").trim(),
+          explanation: String(q.explanation || "").trim()
+        });
+      })
+    });
+  }
+
+  function syncLocalQuizVisibility(quizId, shareCode, isPublic) {
+    try {
+      const list = U().loadArr(U().KEYS.quizzes);
+      let changed = false;
+      list.forEach(function (item) {
+        if (item && ((quizId && item.id === quizId) || (shareCode && item.shareCode === shareCode))) {
+          item.isPublic = isPublic;
+          if (shareCode) item.shareCode = shareCode;
+          item.updatedAt = new Date().toISOString();
+          changed = true;
+        }
+      });
+      if (changed) U().saveJSON(U().KEYS.quizzes, list);
+      const localShares = U().loadObj(SHARES_KEY);
+      if (shareCode && localShares[shareCode]) {
+        localShares[shareCode].isPublic = isPublic;
+        if (localShares[shareCode].deck) localShares[shareCode].deck.isPublic = isPublic;
+        U().saveJSON(SHARES_KEY, localShares);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  async function updateQuizVisibility(code, isPublic, quizId) {
+    const cleanCode = String(code || "").trim().toUpperCase();
+    if (!cleanCode) {
+      syncLocalQuizVisibility(quizId, "", isPublic);
+      return { ok: true, isPublic: isPublic };
+    }
+    const u = U().state.user;
+    const hdr = { "Content-Type": "application/json" };
+    if (u && u.email) hdr["X-User-Email"] = u.email;
+    if (u && u.credential) hdr["Authorization"] = "Bearer " + u.credential;
+
+    if (U().state.backendOnline) {
+      const res = await fetch("/api/shares/" + encodeURIComponent(cleanCode), {
+        method: "PATCH",
+        headers: hdr,
+        body: JSON.stringify({ isPublic: !!isPublic })
+      });
+      const j = await res.json().catch(function () { return {}; });
+      if (!res.ok) {
+        throw new Error(j.error || ("Kh\u00f4ng th\u1ec3 c\u1eadp nh\u1eadt quy\u1ec1n truy c\u1eadp (HTTP " + res.status + ")"));
+      }
+      syncLocalQuizVisibility(quizId, cleanCode, !!isPublic);
+      return { ok: true, code: cleanCode, isPublic: !!isPublic, updatedAt: j.updatedAt };
+    }
+    syncLocalQuizVisibility(quizId, cleanCode, !!isPublic);
+    return { ok: true, code: cleanCode, isPublic: !!isPublic, offline: true };
+  }
+
+  function showSharePersistErrorModal(deck, errMsg) {
+    const host = U().$("extraModals");
+    if (!host) return;
+    host.innerHTML =
+      '<div class="modal-overlay" id="shareErrModal" role="alertdialog" aria-modal="true"><div class="modal modal-sm">' +
+        '<h3>⚠️ Kh\u00f4ng th\u1ec3 l\u01b0u &amp; t\u1ea1o li\u00ean k\u1ebft chia s\u1ebb</h3>' +
+        '<p class="muted" style="font-size:.86rem">' + U().esc(errMsg || "L\u1ed7i k\u1ebft n\u1ed1i m\u00e1y ch\u1ee7.") + '</p>' +
+        '<p class="muted" style="font-size:.8rem">D\u1eef li\u1ec7u Quiz c\u1ee7a b\u1ea1n v\u1eabn \u0111\u01b0\u1ee3c b\u1ea3o to\u00e0n an to\u00e0n tr\u00ean tr\u00ecnh duy\u1ec7t. H\u1ec7 th\u1ed1ng kh\u00f4ng t\u1ea1o link gi\u1ea3 khi ch\u01b0a x\u00e1c nh\u1eadn l\u01b0u th\u00e0nh c\u00f4ng.</p>' +
+        '<div class="modal-actions">' +
+          '<button type="button" class="btn btn-outline" id="shareErrClose">\u0110\u00f3ng</button>' +
+          '<button type="button" class="btn btn-primary" id="shareErrRetry">🔄 Th\u1eed l\u1ea1i</button>' +
+        '</div>' +
+      '</div></div>';
+    U().on("shareErrClose", "click", function () { host.innerHTML = ""; });
+    U().on("shareErrRetry", "click", function () { host.innerHTML = ""; openShareModal(deck); });
+  }
+
   async function openShareModal(deck) {
     if (!deck || !Array.isArray(deck.questions) || deck.questions.length === 0) {
       U().showToast("B\u1ed9 \u0111\u1ec1 ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi \u0111\u1ec3 chia s\u1ebb.", "warning");
       return;
     }
-    let code = "AIT-" + Math.floor(1000 + Math.random() * 9000);
     const localShares = U().loadObj(SHARES_KEY);
-    // Reuse existing code for same deck if already shared
-    const existingCode = Object.keys(localShares).find(function (k) { return localShares[k] && localShares[k].deck && localShares[k].deck.id === deck.id; });
-    if (existingCode) code = existingCode;
+    const existingCode = deck.shareCode || Object.keys(localShares).find(function (k) {
+      return localShares[k] && localShares[k].deck && localShares[k].deck.id === deck.id;
+    });
+    let code = existingCode || ("AIT-" + Math.floor(1000 + Math.random() * 9000));
+    let isPublic = typeof deck.isPublic === "boolean" ? deck.isPublic : true;
+    const sanitized = sanitizeQuizPayloadForSave(deck, code, isPublic);
 
+    // Mandatory persistence step BEFORE generating Share URL
     if (U().state.backendOnline) {
       try {
+        const u = U().state.user;
+        const hdr = { "Content-Type": "application/json", "X-User-Email": u ? u.email : "" };
+        if (u && u.credential) hdr["Authorization"] = "Bearer " + u.credential;
         const res = await fetch("/api/shares", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-User-Email": U().state.user ? U().state.user.email : "" },
-          body: JSON.stringify({ code: code, deck: { id: deck.id, title: deck.title, tag: deck.tag, questions: deck.questions } })
+          headers: hdr,
+          body: JSON.stringify({ code: code, isPublic: isPublic, deck: sanitized })
         });
-        if (res.ok) {
-          const j = await res.json();
-          if (j && j.code) code = j.code;
+        const j = await res.json().catch(function () { return {}; });
+        if (!res.ok || !j.ok) {
+          showSharePersistErrorModal(deck, j.error || ("M\u00e1y ch\u1ee7 t\u1eeb ch\u1ed1i l\u01b0u Quiz (HTTP " + res.status + ")."));
+          return;
         }
-      } catch (e) { /* fallback local */ }
+        if (j.code) code = j.code;
+        if (typeof j.isPublic === "boolean") isPublic = j.isPublic;
+      } catch (netErr) {
+        showSharePersistErrorModal(deck, "Kh\u00f4ng th\u1ec3 k\u1ebft n\u1ed1i m\u00e1y ch\u1ee7 \u0111\u1ec3 x\u00e1c nh\u1eadn l\u01b0u Quiz: " + (netErr.message || "Network Error"));
+        return;
+      }
     }
-    localShares[code] = { code: code, deck: { id: deck.id, title: deck.title, tag: deck.tag, questions: deck.questions }, createdAt: new Date().toISOString() };
+
+    sanitized.shareCode = code;
+    sanitized.isPublic = isPublic;
+    deck.shareCode = code;
+    deck.isPublic = isPublic;
+    localShares[code] = { code: code, isPublic: isPublic, deck: sanitized, createdAt: new Date().toISOString() };
     U().saveJSON(SHARES_KEY, localShares);
+    syncLocalQuizVisibility(deck.id, code, isPublic);
 
     const origin = window.location.origin && window.location.origin !== "null" ? window.location.origin : "";
-    const compressed = encodeSharedDeck(deck);
-    const includeHash = compressed && compressed.length < 14000;
+    const compressed = encodeSharedDeck(sanitized);
+    const includeHash = isPublic && compressed && compressed.length < 14000;
     const shareUrl = origin + "/quiz?code=" + encodeURIComponent(code) + (includeHash ? ("#d=" + compressed) : "");
     const qrTarget = origin + "/quiz?code=" + encodeURIComponent(code) + (includeHash && compressed.length < 1500 ? ("#d=" + compressed) : "");
     const qrImgUrl = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=" + encodeURIComponent(qrTarget);
@@ -653,8 +777,18 @@ const CLOUD_CONFIG = {
     if (!host) return;
     host.innerHTML =
       '<div class="modal-overlay" id="shareModal" role="dialog" aria-modal="true"><div class="modal modal-lg">' +
-        '<h3>🔗 Chia s\u1ebb b\u1ed9 \u0111\u1ec1: ' + U().esc(deck.title) + '</h3>' +
-        '<p class="muted" style="margin-top:0;font-size:.84rem">H\u1ecdc sinh m\u1edf Link, qu\u00e9t m\u00e3 QR ho\u1eb7c nh\u1eadp M\u00e3 \u0111\u1ec1 \u1edf trang ch\u1ee7 s\u1ebd v\u00e0o th\u1eb3ng <strong>Quiz Lobby</strong> l\u00e0m b\u00e0i ngay (kh\u00f4ng c\u1ea7n import Excel).</p>' +
+        '<h3>🔗 Chia s\u1ebb &amp; Xu\u1ea5t b\u1ea3n Quiz: ' + U().esc(sanitized.title) + '</h3>' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 12px;border-radius:10px;background:var(--bg2);border:1px solid var(--border);margin-bottom:12px">' +
+          '<div style="font-size:.84rem"><strong>Quy\u1ec1n truy c\u1eadp (Visibility):</strong> <span id="shareVisBadge" class="badge ' + (isPublic ? "badge-ok" : "badge-warn") + '">' + (isPublic ? "🌐 Public" : "🔒 Private") + '</span></div>' +
+          '<select id="shareVisSelect" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:.82rem;font-weight:700">' +
+            '<option value="public"' + (isPublic ? " selected" : "") + '>🌐 Public (M\u1ecdi ng\u01b0\u1eddi c\u00f3 link \u0111\u1ec1u l\u00e0m \u0111\u01b0\u1ee3c)</option>' +
+            '<option value="private"' + (!isPublic ? " selected" : "") + '>🔒 Private (Ch\u1ec9 m\u00ecnh b\u1ea1n xem \u0111\u01b0\u1ee3c)</option>' +
+          '</select>' +
+        '</div>' +
+        '<div id="sharePrivateNotice" class="pending-banner' + (isPublic ? " hidden" : "") + '" style="margin-bottom:12px;display:' + (isPublic ? "none" : "flex") + ';align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">' +
+          '<span>🔒 Quiz n\u00e0y \u0111ang \u1edf ch\u1ebf \u0111\u1ed9 <strong>Private</strong>. Ng\u01b0\u1eddi kh\u00e1c m\u1edf link s\u1ebd th\u1ea5y th\u00f4ng b\u00e1o ri\u00eang t\u01b0.</span>' +
+          '<button type="button" class="btn btn-emerald btn-sm" id="shareSwitchPublicCopy">🌐 Switch to Public &amp; Copy Link</button>' +
+        '</div>' +
         '<div class="checkout-grid">' +
           '<div class="qr-box" style="flex-direction:column;gap:8px">' +
             '<img id="shareQrImg" src="' + U().esc(qrImgUrl) + '" alt="M\u00e3 QR chia s\u1ebb \u0111\u1ec1" crossorigin="anonymous">' +
@@ -664,10 +798,10 @@ const CLOUD_CONFIG = {
             '<div class="field"><span>M\u00e3 \u0111\u1ec1 ng\u1eafn</span>' +
               '<div class="voucher-row"><input type="text" id="shareCodeOut" value="' + U().esc(code) + '" readonly style="font-weight:800;font-size:1.05rem;letter-spacing:.08em"><button type="button" class="btn btn-primary btn-sm" id="shareCopyCode">Sao ch\u00e9p M\u00e3 \u0111\u1ec1</button></div>' +
             '</div>' +
-            '<div class="field"><span>\u0110\u01b0\u1eddng d\u1eabn tr\u1ef1c ti\u1ebfp (ho\u1ea1t \u0111\u1ed9ng c\u1ea3 tab \u1ea9n danh)</span>' +
+            '<div class="field"><span>\u0110\u01b0\u1eddng d\u1eabn tr\u1ef1c ti\u1ebfp</span>' +
               '<div class="voucher-row"><input type="text" id="shareUrlOut" value="' + U().esc(shareUrl) + '" readonly><button type="button" class="btn btn-emerald btn-sm" id="shareCopyUrl">Sao ch\u00e9p Link</button></div>' +
             '</div>' +
-            '<p class="muted" style="font-size:.78rem;margin:10px 0 0">B\u1ed9 \u0111\u1ec1 g\u1ed3m <strong>' + deck.questions.length + ' c\u00e2u h\u1ecfi</strong>. ' + (includeHash ? "D\u1eef li\u1ec7u \u0111\u00e3 \u0111\u01b0\u1ee3c \u0111\u00f3ng g\u00f3i k\u00e8m Link \u0111\u1ec3 m\u1edf tr\u1ef1c ti\u1ebfp tr\u00ean m\u1ecdi tr\u00ecnh duy\u1ec7t." : "B\u1ed9 \u0111\u1ec1 dung l\u01b0\u1ee3ng l\u1edbn \u0111\u01b0\u1ee3c l\u01b0u qua m\u00e3 \u0111\u1ec1 " + U().esc(code) + " tr\u00ean m\u00e1y ch\u1ee7.") + '</p>' +
+            '<p class="muted" style="font-size:.78rem;margin:10px 0 0">B\u1ed9 \u0111\u1ec1 g\u1ed3m <strong>' + sanitized.questions.length + ' c\u00e2u h\u1ecfi</strong> \u0111\u00e3 x\u00e1c nh\u1eadn l\u01b0u th\u00e0nh c\u00f4ng.</p>' +
           '</div>' +
         '</div>' +
         '<div class="modal-actions"><button type="button" class="btn btn-primary" id="shareCloseBtn">\u0110\u00f3ng</button></div>' +
@@ -677,6 +811,50 @@ const CLOUD_CONFIG = {
     U().on("shareCloseBtn", "click", function () { host.innerHTML = ""; });
     U().on("shareCopyCode", "click", function () { U().copyText(code, "m\u00e3 \u0111\u1ec1 " + code); });
     U().on("shareCopyUrl", "click", function () { U().copyText(shareUrl, "\u0111\u01b0\u1eddng d\u1eabn chia s\u1ebb"); });
+    U().on("shareVisSelect", "change", async function (ev) {
+      const wantPublic = ev.target.value === "public";
+      ev.target.disabled = true;
+      try {
+        await updateQuizVisibility(code, wantPublic, deck.id);
+        isPublic = wantPublic;
+        deck.isPublic = wantPublic;
+        const badge = U().$("shareVisBadge");
+        if (badge) {
+          badge.textContent = wantPublic ? "🌐 Public" : "🔒 Private";
+          badge.className = "badge " + (wantPublic ? "badge-ok" : "badge-warn");
+        }
+        const notice = U().$("sharePrivateNotice");
+        if (notice) notice.style.display = wantPublic ? "none" : "flex";
+        U().showToast("\u0110\u00e3 c\u1eadp nh\u1eadt tr\u1ea1ng th\u00e1i Quiz: " + (wantPublic ? "🌐 Public" : "🔒 Private"), "success");
+        if (window.UETStudio && typeof window.UETStudio.render === "function") window.UETStudio.render();
+      } catch (err) {
+        ev.target.value = isPublic ? "public" : "private";
+        U().showToast(err.message || "C\u1eadp nh\u1eadt tr\u1ea1ng th\u00e1i th\u1ea5t b\u1ea1i.", "error");
+      } finally {
+        ev.target.disabled = false;
+      }
+    });
+    U().on("shareSwitchPublicCopy", "click", async function (ev) {
+      ev.target.disabled = true;
+      try {
+        await updateQuizVisibility(code, true, deck.id);
+        isPublic = true;
+        deck.isPublic = true;
+        const sel = U().$("shareVisSelect");
+        if (sel) sel.value = "public";
+        const badge = U().$("shareVisBadge");
+        if (badge) { badge.textContent = "🌐 Public"; badge.className = "badge badge-ok"; }
+        const notice = U().$("sharePrivateNotice");
+        if (notice) notice.style.display = "none";
+        U().copyText(shareUrl, "\u0111\u01b0\u1eddng d\u1eabn chia s\u1ebb");
+        U().showToast("\u0110\u00e3 chuy\u1ec3n sang 🌐 Public v\u00e0 sao ch\u00e9p Link!", "success");
+        if (window.UETStudio && typeof window.UETStudio.render === "function") window.UETStudio.render();
+      } catch (err) {
+        U().showToast(err.message || "Kh\u00f4ng th\u1ec3 chuy\u1ec3n sang Public.", "error");
+      } finally {
+        ev.target.disabled = false;
+      }
+    });
     U().on("shareDownQrBtn", "click", async function () {
       try {
         const resp = await fetch(qrImgUrl);
@@ -689,38 +867,102 @@ const CLOUD_CONFIG = {
     });
   }
 
+  function renderQuizLoadError(stateCode, detailMsg, retryCode) {
+    const titles = {
+      QUIZ_NOT_FOUND: "🔍 Quiz Not Found",
+      QUIZ_PRIVATE: "🔒 This Quiz is Private",
+      NETWORK_ERROR: "📡 Network Error – Retry",
+      UNABLE_TO_LOAD: "⚠️ Unable to Load Quiz"
+    };
+    const descs = {
+      QUIZ_NOT_FOUND: "Kh\u00f4ng t\u00ecm th\u1ea5y Quiz v\u1edbi m\u00e3 n\u00e0y. Vui l\u00f2ng ki\u1ec3m tra l\u1ea1i \u0111\u01b0\u1eddng d\u1eabn ho\u1eb7c m\u00e3 chia s\u1ebb.",
+      QUIZ_PRIVATE: "Quiz n\u00e0y \u0111ang \u0111\u01b0\u1ee3c \u0111\u1eb7t \u1edf ch\u1ebf \u0111\u1ed9 Ri\u00eang t\u01b0 (Private). H\u00e3y \u0111\u0103ng nh\u1eadp b\u1eb1ng t\u00e0i kho\u1ea3n ch\u1ee7 s\u1edf h\u1eefu ho\u1eb7c nh\u1edd t\u00e1c gi\u1ea3 chuy\u1ec3n sang Public.",
+      NETWORK_ERROR: "Kh\u00f4ng th\u1ec3 k\u1ebft n\u1ed1i m\u00e1y ch\u1ee7 \u0111\u1ec3 t\u1ea3i Quiz. Vui l\u00f2ng ki\u1ec3m tra m\u1ea1ng v\u00e0 th\u1eed l\u1ea1i.",
+      UNABLE_TO_LOAD: "D\u1eef li\u1ec7u Quiz kh\u00f4ng h\u1ee3p l\u1ec7 ho\u1eb7c kh\u00f4ng th\u1ec3 gi\u1ea3i m\u00e3."
+    };
+    const title = titles[stateCode] || titles.UNABLE_TO_LOAD;
+    const desc = detailMsg || descs[stateCode] || descs.UNABLE_TO_LOAD;
+    if (!U().state.user && typeof U().enterGuestShareMode === "function") {
+      U().enterGuestShareMode();
+    }
+    if (typeof U().showTab === "function") U().showTab("studio");
+    const root = U().$("studioRoot");
+    if (root) {
+      root.innerHTML =
+        '<div class="panel" style="max-width:560px;margin:28px auto;text-align:center;padding:28px 22px">' +
+          '<h2 style="margin:0 0 8px">' + U().esc(title) + '</h2>' +
+          '<p class="muted" style="margin:0 0 18px;font-size:.9rem;line-height:1.6">' + U().esc(desc) + '</p>' +
+          '<div class="deck-actions" style="justify-content:center">' +
+            (stateCode === "NETWORK_ERROR" ? '<button type="button" class="btn btn-primary" id="quizErrRetryBtn">🔄 Th\u1eed l\u1ea1i (Retry)</button>' : '') +
+            '<button type="button" class="btn btn-outline" id="quizErrHomeBtn">🏠 V\u1ec1 trang ch\u1ee7</button>' +
+          '</div>' +
+        '</div>';
+      U().on("quizErrRetryBtn", "click", function () { resolveAndOpenShare(retryCode || ""); });
+      U().on("quizErrHomeBtn", "click", function () { U().showTab("dashboard"); });
+    }
+    U().showToast(title, stateCode === "QUIZ_PRIVATE" ? "warning" : "error");
+  }
+
   async function resolveAndOpenShare(inputCodeOrEmpty) {
     let code = String(inputCodeOrEmpty || "").trim().toUpperCase();
     let hashData = "";
     if (!code) {
       const params = new URLSearchParams(window.location.search);
-      code = (params.get("code") || params.get("share") || "").trim().toUpperCase();
+      code = (params.get("quiz") || params.get("code") || params.get("share") || "").trim().toUpperCase();
+      if (!code) {
+        const pathMatch = String(window.location.pathname || "").match(/^\/quiz\/([^/?#]+)/i);
+        if (pathMatch) code = decodeURIComponent(pathMatch[1]).trim().toUpperCase();
+      }
       const m = String(window.location.hash || "").match(/d=([^&]+)/);
       if (m) hashData = m[1];
     }
     if (!code && !hashData) return false;
 
     let deck = null;
+    let errorKind = "";
     if (code) {
-      // 1. Try local server /api/shares/:code
+      // 1. Try server/Supabase /api/shares/:code with auth headers if signed in
       try {
-        const res = await fetch("/api/shares/" + encodeURIComponent(code));
+        const u = U().state.user;
+        const hdr = {};
+        if (u && u.email) hdr["X-User-Email"] = u.email;
+        if (u && u.credential) hdr["Authorization"] = "Bearer " + u.credential;
+        const res = await fetch("/api/shares/" + encodeURIComponent(code), { headers: hdr });
         if (res.ok) {
           const j = await res.json();
           if (j && j.share && j.share.deck) deck = j.share.deck;
+        } else if (res.status === 403) {
+          renderQuizLoadError("QUIZ_PRIVATE", "", code);
+          return false;
+        } else if (res.status === 404) {
+          errorKind = "QUIZ_NOT_FOUND";
+        } else if (res.status >= 500) {
+          errorKind = "NETWORK_ERROR";
         }
-      } catch (e) { /* ignore */ }
-      // 2. Try localStorage
-      if (!deck) {
+      } catch (e) {
+        errorKind = "NETWORK_ERROR";
+      }
+      // 2. Try localStorage cache
+      if (!deck && errorKind !== "QUIZ_PRIVATE") {
         const localShares = U().loadObj(SHARES_KEY);
-        if (localShares[code] && localShares[code].deck) deck = localShares[code].deck;
+        if (localShares[code] && localShares[code].deck) {
+          const entry = localShares[code];
+          if (entry.isPublic === false) {
+            const u = U().state.user;
+            if (!u) {
+              renderQuizLoadError("QUIZ_PRIVATE", "", code);
+              return false;
+            }
+          }
+          deck = entry.deck;
+        }
       }
     }
     // 3. Fallback compressed URL payload (works in incognito tabs without server!)
     if (!deck && hashData) deck = decodeSharedDeck(hashData);
 
     if (!deck || !Array.isArray(deck.questions) || deck.questions.length === 0) {
-      U().showToast("Kh\u00f4ng t\u00ecm th\u1ea5y b\u1ed9 \u0111\u1ec1 v\u1edbi m\u00e3 " + (code || "\u0111\u00e3 nh\u1eadp") + ".", "error");
+      renderQuizLoadError(errorKind || (hashData ? "UNABLE_TO_LOAD" : "QUIZ_NOT_FOUND"), "", code);
       return false;
     }
 
@@ -733,6 +975,7 @@ const CLOUD_CONFIG = {
       U().showToast("\u0110\u00e3 m\u1edf b\u1ed9 \u0111\u1ec1 \"" + deck.title + "\" (" + deck.questions.length + " c\u00e2u). S\u1eb5n s\u00e0ng l\u00e0m b\u00e0i!", "success");
       return true;
     }
+    renderQuizLoadError("UNABLE_TO_LOAD", "", code);
     return false;
   }
 
@@ -829,6 +1072,8 @@ const CLOUD_CONFIG = {
     restoreFromGoogleDrive: restoreFromGoogleDrive,
     exportJsonBackup: exportJsonBackup,
     openShareModal: openShareModal,
+    updateQuizVisibility: updateQuizVisibility,
+    sanitizeQuizPayloadForSave: sanitizeQuizPayloadForSave,
     resolveAndOpenShare: resolveAndOpenShare,
     openPdfModal: openPdfModal,
     encodeSharedDeck: encodeSharedDeck,

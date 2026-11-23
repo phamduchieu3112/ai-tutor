@@ -341,7 +341,8 @@ function buildOpenAICompatibleBody(rawModel, reqBody, maxTokensCap, streamFlag) 
     temperature: temp,
     max_tokens: cappedMaxTokens
   };
-  if (schema && rawModel.indexOf("reasoner") === -1) {
+  const wantsJson = !!(schema || (reqBody && reqBody.generationConfig && reqBody.generationConfig.responseMimeType === "application/json"));
+  if (wantsJson && rawModel.indexOf("reasoner") === -1) {
     body.response_format = { type: "json_object" };
   }
   if (streamFlag) body.stream = true;
@@ -602,6 +603,8 @@ async function handleAiProxy(req, res) {
           respHeaders["Content-Type"] = "text/event-stream; charset=utf-8";
           respHeaders["Connection"] = "keep-alive";
           respHeaders["X-Accel-Buffering"] = "no";
+          respHeaders["X-AI-Provider"] = mInfo.provider;
+          respHeaders["X-AI-Model"] = mInfo.id;
           res.writeHead(200, respHeaders);
           let reader = null;
           try {

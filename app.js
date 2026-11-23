@@ -6362,11 +6362,11 @@ function init() {
     document.title = "\u0110\u0103ng nh\u1eadp | AI Tutor";
   }
 
-  // Check if opened via Share Link (/quiz?code=... or ?share=... or #d=...) — works even in Incognito!
+  // Check if opened via Share Link (/quiz?code=..., /quiz/<CODE>, ?quiz=..., ?share=..., or #d=...) — works even in Incognito!
   setTimeout(function () {
     const qs = window.location.search || "";
     const pth = (window.location.pathname || "").toLowerCase();
-    if (window.UETCloud && (pth === "/quiz" || qs.indexOf("share=") !== -1 || qs.indexOf("code=") !== -1 || window.location.hash.indexOf("d=") !== -1)) {
+    if (window.UETCloud && (pth === "/quiz" || pth.indexOf("/quiz/") === 0 || qs.indexOf("quiz=") !== -1 || qs.indexOf("share=") !== -1 || qs.indexOf("code=") !== -1 || window.location.hash.indexOf("d=") !== -1)) {
       window.UETCloud.resolveAndOpenShare("");
     }
   }, 150);

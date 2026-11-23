@@ -4,6 +4,131 @@
 (function () {
   "use strict";
 
+  /* Single reusable Master Prompt constant (V3.3 Section 2.4)
+     Used identically for both LLM systemInstruction and Manual Fallback Modal. */
+  const CONVERTER_MASTER_PROMPT = [
+    "# ROLE",
+    "",
+    "You are a High-Precision Educational Content Digitizer. Convert 100% of the input document into structured Markdown (`.md`) for automated frontend parsing.",
+    "",
+    "# CORE RULES",
+    "",
+    "## 1. Accuracy & Completeness",
+    "",
+    "- Extract every question, instruction, table, and passage verbatim.",
+    "- Never summarize, truncate with `...`, or fabricate content.",
+    "- Follow multi-column order: left-to-right, top-to-bottom.",
+    "- Merge split questions and passages across page breaks.",
+    "- Remove OCR noise, watermarks, ads, page numbers, and repeating headers/footers without deleting real content.",
+    "- Fix only obvious OCR errors; preserve intentional grammar/spelling errors in Error Identification exercises.",
+    "- Mark illegible content as `[CHECK: uncertain_text]`.",
+    "",
+    "## 2. Instructions & Shared Context",
+    "",
+    "- Every question group starts with `:::instruction` containing its exact instruction.",
+    "- If no explicit instruction exists, infer a concise `[Yêu cầu: ...]` only when unambiguous.",
+    "- Put shared Reading passages, Cloze texts, Literature excerpts, tables, and transcripts in `:::context`.",
+    "- Assign unique IDs such as `CTX_1` and correct question ranges.",
+    "- Place context before its first question.",
+    "- Tag every child question with `[context: CTX_1]`.",
+    "- Format Cloze blanks as `**(1) _____**`.",
+    "",
+    "## 3. Multi-Subject Formatting",
+    "",
+    "- Math/Science: use LaTeX (`$...$` inline, `$$...$$` block).",
+    "- Languages: preserve underlined text using `<u>text</u>` and bold using `**text**`.",
+    "- Preserve Furigana/Pinyin when present.",
+    "- Use Markdown tables and fenced code blocks.",
+    "- Describe diagrams as `[IMAGE: concise visual description]`.",
+    "",
+    "Supported types:",
+    "",
+    "`MCQ`, `TF_GROUP`, `SHORT_ANSWER`, `ORDERING`, `ESSAY`.",
+    "",
+    "## 4. Answers & Document Modes",
+    "",
+    "- Map answer keys and explanations directly from the source.",
+    "- If no answer key exists, leave it empty unless `[AUTO_SOLVE=TRUE]`.",
+    "- Never invent answer keys.",
+    "- Split multi-exam files using `# ĐỀ SỐ X`; reset numbering to `Câu 1`.",
+    "- For notes without questions, use structured headings, bullets, and LaTeX; set `mode: \"STUDY_NOTE\"`.",
+    "- For empty, corrupt, or non-educational input, output only:",
+    "",
+    "`ERROR_INVALID_CONTENT: <concise reason>`",
+    "",
+    "## 5. Output Discipline",
+    "",
+    "- Output pure Markdown only.",
+    "- No greeting, introduction, commentary, or conclusion.",
+    "- Do not repeat the title unnecessarily.",
+    "",
+    "## 6. OUTPUT TEMPLATE – STRICT PARSER CONTRACT",
+    "",
+    "Replace all placeholders with actual extracted content. Never output the placeholders themselves.",
+    "",
+    "---",
+    "title: \"<Document/Exam Title>\"",
+    "subject: \"<Subject>\"",
+    "mode: \"<EXAM | STUDY_NOTE>\"",
+    "total_questions: <Number of questions, 0 if STUDY_NOTE>",
+    "duration_minutes: <Estimated or stated duration>",
+    "---",
+    "",
+    "## <Section Name if applicable>",
+    "",
+    ":::instruction",
+    "**<Verbatim instruction for the question group>**",
+    ":::",
+    "",
+    ":::context [id=\"CTX_1\" questions=\"1-5\"]",
+    "<100% verbatim shared reading passage / data table / transcript>",
+    ":::",
+    "",
+    "### Câu 1 `[type: MCQ]` `[context: CTX_1]` `[level: Nhận biết|Thông hiểu|Vận dụng|Vận dụng cao]` `[tag: #Topic]`",
+    "",
+    "<Question stem>",
+    "",
+    "- **A.** <Option A>",
+    "- **B.** <Option B>",
+    "- **C.** <Option C>",
+    "- **D.** <Option D>",
+    "",
+    "> **Đáp án:** <Answer key if present in source>",
+    "",
+    "### Câu 2 `[type: TF_GROUP]` `[level: Thông hiểu]` `[tag: #Topic]`",
+    "",
+    "<Main question stem>",
+    "",
+    "- **a)** <Statement a>",
+    "- **b)** <Statement b>",
+    "- **c)** <Statement c>",
+    "- **d)** <Statement d>",
+    "",
+    "> **Đáp án:** <a: Đ/S | b: Đ/S | c: Đ/S | d: Đ/S>",
+    "",
+    "### Câu 3 `[type: SHORT_ANSWER]` `[level: Vận dụng]` `[tag: #Topic]`",
+    "",
+    "<Short answer / sentence transformation prompt>",
+    "",
+    "> **Đáp án:** <Concise answer>",
+    "",
+    "### Câu 4 `[type: ORDERING]` `[level: Vận dụng]` `[tag: #Topic]`",
+    "",
+    "<Ordering prompt and items>",
+    "",
+    "> **Đáp án:** <Correct order if present in source>",
+    "",
+    "### Câu 5 `[type: ESSAY]` `[level: Vận dụng cao]` `[tag: #Topic]`",
+    "",
+    "<Essay prompt>",
+    "",
+    "> **Đáp án:** <Answer if present in source>"
+  ].join("\n");
+
+  if (typeof window !== "undefined" && window.AIDigitizer) {
+    window.AIDigitizer.MASTER_SYSTEM_PROMPT = CONVERTER_MASTER_PROMPT;
+  }
+
   const SAMPLE_ROWS = [
     ["T\u00ednh gi\u1edbi h\u1ea1n $L = \\lim_{x \\to 0} \\frac{\\sin 3x}{x}$:", "Multiple Choice", "1", "3", "$\\frac{1}{3}$", "0", "", "2", 30, "", "\u00c1p d\u1ee5ng $\\lim_{u \\to 0} \\frac{\\sin u}{u} = 1$, ta c\u00f3 $L = 3$."],
     ["Choose the word whose underlined part differs from the other three in pronunciation:", "Multiple Choice", "biom<u>a</u>ss", "a<u>c</u>tivity", "effi<u>c</u>ient", "<u>a</u>lthough", "", "1", 30, "", "Ph\u1ea7n g\u1ea1ch ch\u00e2n \u1edf <b>biomass</b> ph\u00e1t \u00e2m kh\u00e1c c\u00e1c ph\u01b0\u01a1ng \u00e1n c\u00f2n l\u1ea1i."],
@@ -11,13 +136,24 @@
   ];
 
   const cState = {
-    viewMode: "table",      // table | split
+    viewMode: "digitizer",  // digitizer | table | split
     files: [],              // unified queue: { id, file, name, size, kind, ext, url, width, height }
     images: [],             // image items synced from files (used by Split-Screen Review)
     activeImgIdx: 0,
     imgZoom: 100,
     pasteText: "",          // optional quick-paste text/markdown
-    questions: [],          // { id, text, type, options[5], correct[], time, image, explanation, verified, suspect, checkNote }
+    questions: [],          // { id, number, qType, text, type, options[5], correct[], tfStatements[], tfAnswers{}, answerText, contextId, instruction, section, level, tag, time, image, explanation, verified, suspect, checkNote }
+    docMeta: { title: "", subject: "", mode: "EXAM", total_questions: 0, duration_minutes: 45 },
+    contexts: {},           // id -> { id, questions, content }
+    pinnedContextId: "",
+    studyNoteMarkdown: "",
+    rawMarkdown: "",
+    streamingTail: "",
+    chunkStates: [],        // [{ index, label, status: 'pending'|'streaming'|'done'|'error', error, chunk, markdown, isVision, b64List }]
+    userAnswers: {},        // q.id -> { mcq: idx, tf: {a:'T'|'F',...}, short: '', essay: '', showGuide: false }
+    explainCache: {},       // hash -> explanation string (persisted in localStorage)
+    explainingId: "",
+    ttftMs: 0,
     filter: "all",          // all | unverified | suspect | missing
     search: "",
     page: 1,
@@ -29,7 +165,7 @@
     splitSize: 0,
     keepLatex: true,
     keepHtml: true,
-    autoSolve: true,
+    autoSolve: false,       // Default FALSE: extract only (~65% token savings, 3x faster)
     autoExport: false,
     appendMode: false,
     keepPrefix: false,
@@ -57,6 +193,19 @@
     adminSysError: "",
     adminSysEncReady: false
   };
+
+  const EXPLAIN_CACHE_KEY = "uet_master_ai_explain_cache_v1";
+  function D() { return (typeof window !== "undefined" && window.AIDigitizer) ? window.AIDigitizer : null; }
+  function loadExplainCache() {
+    try {
+      const raw = localStorage.getItem(EXPLAIN_CACHE_KEY);
+      if (raw) cState.explainCache = JSON.parse(raw) || {};
+    } catch (e) { cState.explainCache = {}; }
+  }
+  function saveExplainCache() {
+    try { localStorage.setItem(EXPLAIN_CACHE_KEY, JSON.stringify(cState.explainCache)); } catch (e) { /* */ }
+  }
+  loadExplainCache();
 
   const API_POOL_KEY = "uet_master_api_pool";
   const PERSONAL_KEYS_V2 = "uet_master_personal_keys_v2";
@@ -1327,7 +1476,7 @@
     await ensurePdfJs();
     const buf = await readFileAsArrayBuffer(file);
     const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
-    const pages = [];
+    const rawPageLines = [];
     for (let p = 1; p <= pdf.numPages; p++) {
       const page = await pdf.getPage(p);
       const tc = await page.getTextContent();
@@ -1352,10 +1501,36 @@
         }
       });
       if (curLine.trim()) lines.push(curLine.trim());
-      if (lines.length) pages.push(lines.join("\n"));
+      rawPageLines.push(lines);
     }
-    const text = pages.join("\n\n").trim();
-    return { text: text, pageCount: pdf.numPages, isScanned: text.replace(/\s+/g, "").length < 40 };
+    // Strip repeated Header / Footer / Watermark across pages via frequency analysis
+    const cleanedPages = (D() && typeof D().stripRepeatedHeadersFooters === "function")
+      ? D().stripRepeatedHeadersFooters(rawPageLines)
+      : rawPageLines.map(function (ls) { return ls.join("\n"); });
+    const text = cleanedPages.join("\n\n").trim();
+    const isScanned = text.replace(/\s+/g, "").length < 40;
+    // If scanned PDF, also render pages to optimized JPEG images for Vision streaming (up to 12 pages)
+    let pageImages = [];
+    if (isScanned) {
+      const maxRenderPages = Math.min(pdf.numPages, 12);
+      for (let p = 1; p <= maxRenderPages; p++) {
+        try {
+          const page = await pdf.getPage(p);
+          const vp1 = page.getViewport({ scale: 1 });
+          const targetScale = Math.min(2.0, 1500 / Math.max(vp1.width, vp1.height, 1));
+          const vp = page.getViewport({ scale: Math.max(1.2, targetScale) });
+          const cv = document.createElement("canvas");
+          cv.width = Math.round(vp.width);
+          cv.height = Math.round(vp.height);
+          const ctx = cv.getContext("2d");
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, cv.width, cv.height);
+          await page.render({ canvasContext: ctx, viewport: vp }).promise;
+          pageImages.push({ mimeType: "image/jpeg", data: cv.toDataURL("image/jpeg", 0.84).split(",")[1] || "", page: p });
+        } catch (e) { /* fallback to raw PDF */ }
+      }
+    }
+    return { text: text, pages: cleanedPages, pageCount: pdf.numPages, isScanned: isScanned, pageImages: pageImages };
   }
 
   function prepareImageBase64(file) {
@@ -1715,7 +1890,304 @@
     throw new Error(statusHint);
   }
 
+  /* ======================== STREAMING MARKDOWN DIGITIZER CALLER ======================== */
+  async function readSseTextStream(res, providerHint, onDelta, signal) {
+    if (!res.body || typeof res.body.getReader !== "function") {
+      const fallbackText = await res.text().catch(function () { return ""; });
+      if (fallbackText && onDelta) onDelta(fallbackText);
+      return fallbackText;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let sseBuf = "";
+    let fullText = "";
+    try {
+      while (true) {
+        if (signal && signal.aborted) {
+          try { await reader.cancel(); } catch (e) { /* */ }
+          throw new DOMException("Aborted", "AbortError");
+        }
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        sseBuf += decoder.decode(chunk.value, { stream: true });
+        const lines = sseBuf.split(/\r?\n/);
+        sseBuf = lines.pop() || "";
+        for (let i = 0; i < lines.length; i++) {
+          const delta = D() ? D().extractDeltaFromSseLine(lines[i], providerHint) : "";
+          if (delta) {
+            fullText += delta;
+            if (onDelta) onDelta(delta);
+          }
+        }
+      }
+      if (sseBuf.trim()) {
+        const lastDelta = D() ? D().extractDeltaFromSseLine(sseBuf, providerHint) : "";
+        if (lastDelta) {
+          fullText += lastDelta;
+          if (onDelta) onDelta(lastDelta);
+        }
+      }
+    } finally {
+      try { reader.releaseLock(); } catch (e) { /* */ }
+    }
+    return fullText;
+  }
+
+  async function streamMarkdownAI(apiKey, model, payload, signal, onDelta) {
+    const startTs = Date.now();
+    let firstTokenRecorded = false;
+    const wrappedOnDelta = function (delta) {
+      if (!firstTokenRecorded && delta) {
+        firstTokenRecorded = true;
+        cState.ttftMs = Date.now() - startTs;
+      }
+      if (onDelta) onDelta(delta);
+    };
+
+    const personalItems = parseKeyPoolItems(apiKey, model);
+    if (personalItems.length === 0) {
+      const idToken = getUserIdToken();
+      if (!idToken) {
+        throw new Error("Vui l\u00f2ng \u0111\u0103ng nh\u1eadp Google \u0111\u1ec3 s\u1eed d\u1ee5ng System AI mi\u1ec5n ph\u00ed ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n.");
+      }
+      const reqBodyObj = {
+        model: model || "gemini-3.5-flash-lite",
+        contents: payload.contents,
+        systemInstruction: payload.systemInstruction,
+        generationConfig: Object.assign({ temperature: 0.1, maxOutputTokens: 8192 }, payload.generationConfig || {}),
+        stream: true
+      };
+      const res = await fetch("/api/ai/proxy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + idToken },
+        body: JSON.stringify(reqBodyObj),
+        signal: signal
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(function () { return {}; });
+        const msg = (errBody && errBody.error && errBody.error.message) || errBody.error || ("HTTP " + res.status);
+        throw new Error(formatFriendlyGeminiError(msg));
+      }
+      const provHint = res.headers.get("X-AI-Provider") || "";
+      const ct = String(res.headers.get("content-type") || "").toLowerCase();
+      if (ct.indexOf("text/event-stream") !== -1) {
+        return await readSseTextStream(res, provHint, wrappedOnDelta, signal);
+      }
+      const data = await res.json();
+      const txt = (data && data.text) || "";
+      if (txt) wrappedOnDelta(txt);
+      return txt;
+    }
+
+    const plan = buildExecutionPlan(apiKey, model, payload);
+    if (plan.length === 0) {
+      throw new Error("Kh\u00f4ng t\u00ecm th\u1ea5y Model AI t\u01b0\u01a1ng th\u00edch trong danh s\u00e1ch Key c\u00e1 nh\u00e2n.");
+    }
+    const providerMap = getProviderMap();
+    let lastErrorMsg = "";
+    for (let i = 0; i < plan.length; i++) {
+      if (signal && signal.aborted) throw new DOMException("Aborted", "AbortError");
+      const cand = plan[i];
+      const isGemini = cand.provider === "gemini";
+      const pInfo = providerMap[cand.provider] || FALLBACK_PROVIDER_INFO[cand.provider];
+      const url = isGemini
+        ? ("https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(cand.rawModel) + ":streamGenerateContent?alt=sse")
+        : pInfo.endpoint;
+      const headers = { "Content-Type": "application/json" };
+      if (isGemini) {
+        headers["x-goog-api-key"] = cand.apiKey;
+      } else {
+        headers["Authorization"] = "Bearer " + cand.apiKey;
+        if (cand.provider === "openrouter" && typeof location !== "undefined") {
+          headers["HTTP-Referer"] = location.origin;
+          headers["X-Title"] = "AI Tutor";
+        }
+      }
+      let reqBodyObj;
+      if (isGemini) {
+        reqBodyObj = {
+          systemInstruction: payload.systemInstruction,
+          contents: payload.contents,
+          generationConfig: Object.assign({ temperature: 0.1, maxOutputTokens: 8192 }, payload.generationConfig || {})
+        };
+      } else {
+        reqBodyObj = convertGeminiPayloadToOpenAI(cand.rawModel, payload);
+        delete reqBodyObj.response_format;
+        // Strip JSON-only schema hint injected by convertGeminiPayloadToOpenAI when streaming Markdown
+        if (reqBodyObj.messages && reqBodyObj.messages[0] && reqBodyObj.messages[0].role === "system") {
+          reqBodyObj.messages[0].content = (payload.systemInstruction && payload.systemInstruction.parts && payload.systemInstruction.parts[0] && payload.systemInstruction.parts[0].text) || "";
+        }
+        reqBodyObj.stream = true;
+      }
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify(reqBodyObj),
+          signal: signal
+        });
+        if (res.ok) {
+          return await readSseTextStream(res, cand.provider, wrappedOnDelta, signal);
+        }
+        const errBody = await res.json().catch(function () { return {}; });
+        lastErrorMsg = (errBody && errBody.error && errBody.error.message) || ("HTTP " + res.status);
+      } catch (e) {
+        if (e && e.name === "AbortError") throw e;
+        lastErrorMsg = (e && e.message) || "Network error";
+      }
+    }
+    throw new Error(formatFriendlyGeminiError(lastErrorMsg || "Kh\u00f4ng th\u1ec3 k\u1ebft n\u1ed1i AI."));
+  }
+
+  function mergeChunkDocsToState(baseQuestions, isComplete) {
+    if (!D()) return;
+    const parser = D().createIncrementalParser();
+    const combinedMd = cState.chunkStates
+      .map(function (st) { return st.markdown || ""; })
+      .filter(Boolean)
+      .join("\n\n");
+    cState.rawMarkdown = combinedMd;
+    const parsedDoc = isComplete ? parser.parseFull(combinedMd) : parser.append(combinedMd);
+    if (parsedDoc.error) {
+      U().showToast(parsedDoc.error, "error");
+    }
+    if (parsedDoc.meta && (parsedDoc.meta.title || parsedDoc.meta.mode === "STUDY_NOTE")) {
+      cState.docMeta = parsedDoc.meta;
+    }
+    cState.contexts = parsedDoc.contexts || {};
+    cState.studyNoteMarkdown = parsedDoc.studyNoteMarkdown || "";
+    cState.streamingTail = isComplete ? "" : (parsedDoc.streamingTail || "");
+
+    // Preserve cached explanations & user edits
+    const nextQs = parsedDoc.questions.map(function (q) {
+      const cacheKey = makeExplainCacheKey(q);
+      if (!q.explanation && cState.explainCache[cacheKey]) {
+        q.explanation = cState.explainCache[cacheKey];
+      }
+      return q;
+    });
+    if (nextQs.length > 0 || isComplete) {
+      cState.questions = baseQuestions.concat(nextQs);
+    }
+    if (!cState.pinnedContextId) {
+      const firstCtx = Object.keys(cState.contexts)[0];
+      if (firstCtx) cState.pinnedContextId = firstCtx;
+    }
+  }
+
+  function makeExplainCacheKey(q) {
+    const raw = String((q && q.text) || "").trim().slice(0, 140) + "|" + ((q && q.options) || []).filter(Boolean).join("|").slice(0, 120);
+    let hash = 0;
+    for (let i = 0; i < raw.length; i++) {
+      hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0;
+    }
+    return "exp_" + Math.abs(hash).toString(36);
+  }
+
+  async function explainSingleQuestionOnDemand(idx) {
+    const q = cState.questions[idx];
+    if (!q) return;
+    const cacheKey = makeExplainCacheKey(q);
+    if (cState.explainCache[cacheKey]) {
+      q.explanation = cState.explainCache[cacheKey];
+      renderConverter();
+      U().showToast("\u0110\u00e3 t\u1ea3i l\u1eddi gi\u1ea3i t\u1eeb b\u1ed9 nh\u1edb \u0111\u1ec7m (0 token).", "info");
+      return;
+    }
+    const apiKey = requireApiKey();
+    if (!apiKey) return;
+    cState.explainingId = q.id;
+    renderConverter();
+    try {
+      const ctxObj = q.contextId && cState.contexts[q.contextId] ? cState.contexts[q.contextId] : null;
+      let userPrompt = "Gi\u1ea3i th\u00edch chi ti\u1ebft, ch\u00ednh x\u00e1c v\u00e0 ng\u1eafn g\u1ecdn b\u1eb1ng ti\u1ebfng Vi\u1ec7t (d\u00f9ng LaTeX $...$ n\u1ebfu c\u00f3 c\u00f4ng th\u1ee9c) cho c\u00e2u h\u1ecfi sau:\n\n";
+      if (q.instruction) userPrompt += "[Y\u00eau c\u1ea7u \u0111\u1ec1 b\u00e0i]: " + q.instruction + "\n\n";
+      if (ctxObj) userPrompt += "[Ng\u1eef li\u1ec7u chung " + ctxObj.id + "]:\n" + ctxObj.content + "\n\n";
+      userPrompt += "[C\u00e2u h\u1ecfi (" + (q.qType || "MCQ") + ")]: " + q.text + "\n";
+      if ((q.qType || "MCQ") === "MCQ") {
+        q.options.forEach(function (o, k) { if (o) userPrompt += U().LETTERS.charAt(k) + ". " + o + "\n"; });
+      } else if (q.qType === "TF_GROUP") {
+        (q.tfStatements || []).forEach(function (st) { userPrompt += st.key + ") " + st.text + "\n"; });
+      }
+      if (q.answerText) userPrompt += "[\u0110\u00e1p \u00e1n g\u1ed1c]: " + q.answerText + "\n";
+
+      let streamedExp = "";
+      let lastPaint = 0;
+      await streamMarkdownAI(apiKey, getApiModel(), {
+        systemInstruction: { parts: [{ text: "B\u1ea1n l\u00e0 gia s\u01b0 AI xu\u1ea5t s\u1eafc. Gi\u1ea3i th\u00edch r\u00f5 r\u00e0ng v\u00ec sao \u0111\u00e1p \u00e1n \u0111\u00fang (n\u00eau \u0111\u00e1p \u00e1n \u0111\u00fang \u1edf d\u00f2ng \u0111\u1ea7u), kh\u00f4ng ch\u00e0o h\u1ecfi d\u00e0i d\u00f2ng." }] },
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        generationConfig: { temperature: 0.15, maxOutputTokens: 1200 }
+      }, undefined, function (delta) {
+        streamedExp += delta;
+        q.explanation = streamedExp.trim();
+        const now = Date.now();
+        if (now - lastPaint > 120) {
+          lastPaint = now;
+          renderConverter();
+        }
+      });
+      q.explanation = streamedExp.trim();
+      if (q.explanation) {
+        cState.explainCache[cacheKey] = q.explanation;
+        saveExplainCache();
+      }
+      U().showToast("\u0110\u00e3 t\u1ea1o & l\u01b0u cache l\u1eddi gi\u1ea3i chi ti\u1ebft!", "success");
+    } catch (err) {
+      U().showToast("L\u1ed7i AI Gi\u1ea3i th\u00edch: " + formatFriendlyGeminiError(err && err.message), "error");
+    } finally {
+      cState.explainingId = "";
+      renderConverter();
+    }
+  }
+
+  async function retryFailedChunk(chunkIdx) {
+    const st = cState.chunkStates[chunkIdx];
+    if (!st || cState.busy) return;
+    const apiKey = requireApiKey();
+    if (!apiKey) return;
+    cState.busy = true;
+    cState.abortCtrl = new AbortController();
+    const signal = cState.abortCtrl.signal;
+    st.status = "streaming";
+    st.error = "";
+    st.markdown = "";
+    renderConverter();
+    try {
+      const masterSys = D() ? D().MASTER_SYSTEM_PROMPT : ocrPrompt(cState.subject, cState.keepPrefix);
+      const userParts = st.isVision
+        ? [{ text: (cState.autoSolve ? "[AUTO_SOLVE=TRUE] " : "[AUTO_SOLVE=FALSE] ") + "S\u1ed1 h\u00f3a 100% n\u1ed9i dung t\u1eeb \u1ea3nh sau sang Markdown chu\u1ea9n c\u1ea5u tr\u00fac:" }].concat(
+            (st.b64List || []).map(function (b64) { return { inlineData: { mimeType: b64.mimeType, data: b64.data } }; })
+          )
+        : [{ text: D().buildChunkUserPrompt(st.chunk, { autoSolve: cState.autoSolve, subject: cState.subject }) }];
+      let lastRender = 0;
+      await streamMarkdownAI(apiKey, getApiModel(), {
+        systemInstruction: { parts: [{ text: masterSys }] },
+        contents: [{ role: "user", parts: userParts }],
+        generationConfig: { temperature: 0.05, maxOutputTokens: 8192 }
+      }, signal, function (delta) {
+        st.markdown += delta;
+        const now = Date.now();
+        if (now - lastRender > 150) {
+          lastRender = now;
+          mergeChunkDocsToState([], false);
+          renderConverter();
+        }
+      });
+      st.status = "done";
+      mergeChunkDocsToState([], true);
+      U().showToast("\u0110\u00e3 th\u1eed l\u1ea1i th\u00e0nh c\u00f4ng " + st.label + "!", "success");
+    } catch (err) {
+      st.status = "error";
+      st.error = formatFriendlyGeminiError(err && err.message);
+      U().showToast("Th\u1eed l\u1ea1i th\u1ea5t b\u1ea1i: " + st.error, "error");
+    } finally {
+      cState.busy = false;
+      renderConverter();
+    }
+  }
+
   function ocrPrompt(subject, keepPrefix) {
+    if (D() && D().MASTER_SYSTEM_PROMPT) return D().MASTER_SYSTEM_PROMPT;
     const guides = {
       math: "CHUY\u00caN TO\u00c1N/L\u00dd/H\u00d3A: B\u1ecdc m\u1ecdi c\u00f4ng th\u1ee9c trong LaTeX $...$ ho\u1eb7c $$...$$ (\\frac, \\sqrt[n]{}, x^{}, u_{}, \\int, \\lim, \\begin{cases}, \\vec, \\widehat, \\mathbb{R}). Kh\u00f4ng r\u00fat g\u1ecdn hay bi\u1ebfn ph\u00e2n s\u1ed1 th\u00e0nh x+1/x-2.",
       english: "CHUY\u00caN TI\u1ebeNG ANH: B\u1eaft bu\u1ed9c b\u1ecdc k\u00fd t\u1ef1/c\u1ee5m t\u1eeb b\u1ecb G\u1ea0CH CH\u00c2N b\u1eb1ng <u>...</u> (vd: biom<u>a</u>ss), in \u0111\u1eadm <b>...</b>, in nghi\u00eang <i>...</i>, gi\u1eef nguy\u00ean d\u1ea5u tr\u1ecdng \u00e2m (ˈ, ˌ), IPA v\u00e0 ch\u1ed7 tr\u1ed1ng ________.",
@@ -1949,7 +2421,7 @@
     return out;
   }
 
-  /* ======================== UNIFIED SMART PROCESSING PIPELINE ======================== */
+  /* ======================== UNIFIED SMART PROCESSING PIPELINE (STREAMING + PARALLEL CHUNKING) ======================== */
   async function runSmartUploadPipeline() {
     const pasted = (cState.pasteText || "").trim();
     if (cState.files.length === 0 && !pasted) {
@@ -1966,302 +2438,272 @@
     const signal = cState.abortCtrl.signal;
     const model = getApiModel();
     const baseQuestions = cState.appendMode ? cState.questions.slice() : [];
-    const collected = [];
     const summaries = [];
-    let aiSolvedList = [];
     let stopped = false;
 
-    const commitProgressive = function () {
-      if (collected.length > 0) {
-        cState.questions = baseQuestions.concat(collected);
-      }
-    };
+    if (!cState.appendMode) {
+      cState.contexts = {};
+      cState.pinnedContextId = "";
+      cState.studyNoteMarkdown = "";
+      cState.rawMarkdown = "";
+      cState.streamingTail = "";
+      cState.userAnswers = {};
+      cState.docMeta = { title: "", subject: "", mode: "EXAM", total_questions: 0, duration_minutes: 45 };
+    }
+    cState.chunkStates = [];
+    cState.ttftMs = 0;
+    cState.viewMode = "digitizer";
 
     try {
       setPipelineSteps("active", "pending", "pending");
-      cState.progressLabel = "\u0110ang tr\u00edch xu\u1ea5t n\u1ed9i dung...";
+      cState.progressLabel = "\u0110ang ti\u1ec1n x\u1eed l\u00fd & tr\u00edch xu\u1ea5t t\u00e0i li\u1ec7u...";
       cState.progressPct = 5;
       renderConverter();
 
-      // ---------- CASE C: EXCEL (.xlsx/.xls/.csv) ----------
+      // ---------- 1. EXCEL (.xlsx/.xls/.csv) DIRECT IMPORT ----------
+      const excelCollected = [];
       for (let ei = 0; ei < excelItems.length; ei++) {
         if (signal.aborted) { stopped = true; break; }
         try {
           const exQs = await parseExcelFileAsync(excelItems[ei].file);
           if (exQs.length > 0) {
-            collected.push.apply(collected, exQs);
-            commitProgressive();
+            excelCollected.push.apply(excelCollected, exQs);
             summaries.push("Excel (" + excelItems[ei].name + "): " + exQs.length + " c\u00e2u");
-          } else {
-            U().showToast("T\u1ec7p Excel \"" + excelItems[ei].name + "\" kh\u00f4ng c\u00f3 c\u00e2u h\u1ecfi h\u1ee3p l\u1ec7.", "warning");
           }
         } catch (exErr) {
           U().showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc t\u1ec7p Excel \"" + excelItems[ei].name + "\": " + (exErr.message || "T\u1ec7p l\u1ed7i"), "error");
         }
       }
+      if (excelCollected.length > 0) {
+        cState.questions = baseQuestions.concat(excelCollected);
+      }
 
-      // ---------- CASE A: IMAGES (.png/.jpg/.jpeg/.webp/...) -> AI VISION / OCR (2-Image Smart Batching) ----------
+      // ---------- 2. PREPARE STREAMING CHUNK QUEUE (VISION + DIGITAL DOCUMENTS) ----------
+      const tasks = [];
+
+      // 2A. Images -> Vision batches (2 images per chunk for high accuracy & low latency)
       if (!stopped && imageItems.length > 0) {
+        const IMG_BATCH = 2;
+        for (let i = 0; i < imageItems.length; i += IMG_BATCH) {
+          if (signal.aborted) { stopped = true; break; }
+          const slice = imageItems.slice(i, i + IMG_BATCH);
+          const b64List = [];
+          for (let bi = 0; bi < slice.length; bi++) {
+            b64List.push(await prepareImageBase64(slice[bi].file));
+          }
+          tasks.push({
+            index: tasks.length,
+            label: "\u1ea2nh " + (i + 1) + (slice.length > 1 ? ("–" + (i + slice.length)) : "") + "/" + imageItems.length,
+            isVision: true,
+            b64List: b64List,
+            chunk: null,
+            status: "pending",
+            error: "",
+            markdown: ""
+          });
+        }
+      }
+
+      // 2B. Digital Documents (PDF with header/footer strip, DOCX, DOC, MD, TXT) & Pasted Text
+      const allTextPages = [];
+      for (let di = 0; di < docItems.length; di++) {
+        if (signal.aborted) { stopped = true; break; }
+        const item = docItems[di];
+        cState.progressLabel = "\u0110ang \u0111\u1ecdc & l\u1ecdc header/footer t\u1eeb " + item.name + "...";
+        cState.progressPct = Math.round(10 + (di / Math.max(1, docItems.length)) * 15);
+        renderConverter();
+        try {
+          if (item.kind === "text") {
+            const rawMd = await readFileAsText(item.file);
+            // If user already uploaded a Digitizer-formatted Markdown file, parse directly (0 token!)
+            if (/^---\s*\n[\s\S]*?mode\s*:/i.test(rawMd.trim()) && (/^###\s*C\u00e2u\s*\d+/m.test(rawMd) || /mode\s*:\s*["']?STUDY_NOTE/i.test(rawMd))) {
+              tasks.push({
+                index: tasks.length,
+                label: item.name + " (Markdown chu\u1ea9n)",
+                isPreDigitized: true,
+                status: "done",
+                error: "",
+                markdown: rawMd
+              });
+            } else {
+              allTextPages.push(rawMd);
+            }
+          } else if (item.kind === "docx") {
+            allTextPages.push(await extractDocxText(item.file));
+          } else if (item.kind === "doc") {
+            allTextPages.push(await extractLegacyDocText(item.file));
+          } else if (item.kind === "pdf") {
+            const pdfRes = await extractPdfText(item.file);
+            if (pdfRes.isScanned && pdfRes.pageImages && pdfRes.pageImages.length > 0) {
+              const IMG_BATCH = 2;
+              for (let pi = 0; pi < pdfRes.pageImages.length; pi += IMG_BATCH) {
+                const slice = pdfRes.pageImages.slice(pi, pi + IMG_BATCH);
+                tasks.push({
+                  index: tasks.length,
+                  label: item.name + " (Trang scan " + (pi + 1) + (slice.length > 1 ? ("–" + (pi + slice.length)) : "") + ")",
+                  isVision: true,
+                  b64List: slice,
+                  chunk: null,
+                  status: "pending",
+                  error: "",
+                  markdown: ""
+                });
+              }
+            } else if (pdfRes.isScanned) {
+              const pdfB64 = await readFileAsBase64(item.file);
+              tasks.push({
+                index: tasks.length,
+                label: item.name + " (PDF Vision)",
+                isVision: true,
+                b64List: [{ mimeType: "application/pdf", data: pdfB64 }],
+                chunk: null,
+                status: "pending",
+                error: "",
+                markdown: ""
+              });
+            } else if (Array.isArray(pdfRes.pages) && pdfRes.pages.length > 0) {
+              pdfRes.pages.forEach(function (pg) { if (pg && pg.trim()) allTextPages.push(pg); });
+            } else if (pdfRes.text) {
+              allTextPages.push(pdfRes.text);
+            }
+          }
+        } catch (docErr) {
+          U().showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc t\u1ec7p \"" + item.name + "\": " + (docErr.message || "T\u1ec7p l\u1ed7i"), "error");
+        }
+      }
+
+      if (!stopped && pasted) {
+        if (/^---\s*\n[\s\S]*?mode\s*:/i.test(pasted) && (/^###\s*C\u00e2u\s*\d+/m.test(pasted) || /mode\s*:\s*["']?STUDY_NOTE/i.test(pasted))) {
+          tasks.push({
+            index: tasks.length,
+            label: "Markdown chu\u1ea9n \u0111\u00e3 d\u00e1n",
+            isPreDigitized: true,
+            status: "done",
+            error: "",
+            markdown: pasted
+          });
+        } else {
+          allTextPages.push(pasted);
+        }
+      }
+
+      if (allTextPages.length > 0 && D()) {
+        const smartChunks = D().buildSmartChunks(allTextPages, { maxSinglePages: 4, maxSingleWords: 3500, pagesPerChunk: 3, overlapChars: 150 });
+        smartChunks.forEach(function (ch) {
+          tasks.push({
+            index: tasks.length,
+            label: smartChunks.length > 1 ? ("Ph\u1ea7n " + (ch.index + 1) + "/" + ch.total + " (Trang " + ch.pageStart + "–" + ch.pageEnd + ")") : "To\u00e0n b\u1ed9 t\u00e0i li\u1ec7u",
+            isVision: false,
+            b64List: null,
+            chunk: ch,
+            status: "pending",
+            error: "",
+            markdown: ""
+          });
+        });
+      }
+
+      cState.chunkStates = tasks;
+
+      // ---------- 3. EXECUTE STREAMING DIGITIZER WITH CONCURRENCY = 3 ----------
+      const aiTasks = tasks.filter(function (t) { return !t.isPreDigitized; });
+      if (tasks.some(function (t) { return t.isPreDigitized; })) {
+        mergeChunkDocsToState(baseQuestions.concat(excelCollected), aiTasks.length === 0);
+      }
+
+      if (!stopped && aiTasks.length > 0) {
         const apiKey = requireApiKey();
         if (!apiKey) {
           cState.busy = false; cState.progressLabel = ""; cState.steps = []; renderConverter();
           return;
         }
-        setPipelineSteps("active", "pending", "pending", "AI Vision & ki\u1ec3m tra ch\u00e9o...");
-        const imgExtracted = [];
-        const IMG_BATCH = 2;
-        for (let i = 0; i < imageItems.length; i += IMG_BATCH) {
-          if (signal.aborted) { stopped = true; break; }
-          const batchSlice = imageItems.slice(i, i + IMG_BATCH);
-          const batchNames = batchSlice.map(function (x) { return x.name; }).join(", ");
-          cState.progressLabel = "AI Vision \u0111ang \u0111\u1ecdc \u1ea3nh " + (i + 1) + (batchSlice.length > 1 ? ("–" + (i + batchSlice.length)) : "") + "/" + imageItems.length + ": " + batchNames;
-          cState.progressPct = Math.round(10 + (i / imageItems.length) * 50);
+        setPipelineSteps("done", "done", "active", "AI Digitizer \u0111ang streaming (song song t\u1ed1i \u0111a 3 lu\u1ed3ng)...");
+        cState.progressLabel = "AI \u0111ang s\u1ed1 h\u00f3a & hi\u1ec3n th\u1ecb th\u1eddi gian th\u1ef1c (" + aiTasks.length + " ph\u1ea7n)...";
+        cState.progressPct = 30;
+        renderConverter();
+
+        const masterSys = CONVERTER_MASTER_PROMPT;
+        let doneCount = 0;
+        let lastRenderTs = 0;
+
+        await D().runWithConcurrency(aiTasks, 3, async function (task) {
+          if (signal.aborted) return;
+          task.status = "streaming";
           renderConverter();
           try {
-            const b64List = [];
-            for (let bi = 0; bi < batchSlice.length; bi++) {
-              b64List.push(await prepareImageBase64(batchSlice[bi].file));
-            }
-            const userParts = [
-              { text: "Tr\u00edch xu\u1ea5t to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi tr\u1eafc nghi\u1ec7m t\u1eeb " + (b64List.length > 1 ? (b64List.length + " \u1ea3nh \u0111\u1ec1 thi n\u00e0y theo \u0111\u00fang th\u1ee9 t\u1ef1") : "\u1ea3nh n\u00e0y") + ", s\u1eeda l\u1ed7i \u0111\u1ecbnh d\u1ea1ng, gi\u1ea3i nh\u1eefng c\u00e2u ch\u01b0a c\u00f3 \u0111\u00e1p \u00e1n v\u00e0 t\u1ef1 ki\u1ec3m tra \u0111\u1ed9 t\u1ef1 tin (confidence)." }
-            ];
-            b64List.forEach(function (b64) {
-              userParts.push({ inlineData: { mimeType: b64.mimeType, data: b64.data } });
-            });
-            const res = await callGemini(apiKey, model, {
-              systemInstruction: { parts: [{ text: ocrPrompt(cState.subject, cState.keepPrefix) }] },
+            const userParts = task.isVision
+              ? [{ text: (cState.autoSolve ? "[AUTO_SOLVE=TRUE] " : "[AUTO_SOLVE=FALSE] ") + (cState.subject !== "auto" ? ("[SUBJECT=" + cState.subject + "] ") : "") + "Chuy\u1ec3n \u0111\u1ed5i 100% n\u1ed9i dung t\u1eeb \u1ea3nh/\u0111\u1ec1 thi n\u00e0y sang Markdown chu\u1ea9n c\u1ea5u tr\u00fac:" }].concat(
+                  (task.b64List || []).map(function (b64) { return { inlineData: { mimeType: b64.mimeType, data: b64.data } }; })
+                )
+              : [{ text: D().buildChunkUserPrompt(task.chunk, { autoSolve: cState.autoSolve, subject: cState.subject }) }];
+
+            await streamMarkdownAI(apiKey, model, {
+              systemInstruction: { parts: [{ text: masterSys }] },
               contents: [{ role: "user", parts: userParts }],
-              generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: QUESTION_LIST_SCHEMA }
-            }, signal);
-            const qs = Array.isArray(res && res.questions) ? res.questions.map(toConvItem).filter(Boolean) : [];
-            imgExtracted.push.apply(imgExtracted, qs);
-            collected.push.apply(collected, qs);
-            aiSolvedList.push.apply(aiSolvedList, qs);
-            commitProgressive();
-          } catch (imErr) {
-            if (imErr && imErr.name === "AbortError") throw imErr;
-            // If a 2-image batch failed, try each image in the slice individually before reporting error
-            if (batchSlice.length > 1) {
-              for (let si = 0; si < batchSlice.length; si++) {
-                if (signal.aborted) { stopped = true; break; }
-                const singleIm = batchSlice[si];
-                try {
-                  const b64Single = await prepareImageBase64(singleIm.file);
-                  const resSingle = await callGemini(apiKey, model, {
-                    systemInstruction: { parts: [{ text: ocrPrompt(cState.subject, cState.keepPrefix) }] },
-                    contents: [{ role: "user", parts: [{ text: "Tr\u00edch xu\u1ea5t to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi tr\u1eafc nghi\u1ec7m t\u1eeb \u1ea3nh n\u00e0y, s\u1eeda l\u1ed7i \u0111\u1ecbnh d\u1ea1ng v\u00e0 gi\u1ea3i nh\u1eefng c\u00e2u ch\u01b0a c\u00f3 \u0111\u00e1p \u00e1n." }, { inlineData: { mimeType: b64Single.mimeType, data: b64Single.data } }] }],
-                    generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: QUESTION_LIST_SCHEMA }
-                  }, signal);
-                  const qsSingle = Array.isArray(resSingle && resSingle.questions) ? resSingle.questions.map(toConvItem).filter(Boolean) : [];
-                  imgExtracted.push.apply(imgExtracted, qsSingle);
-                  collected.push.apply(collected, qsSingle);
-                  aiSolvedList.push.apply(aiSolvedList, qsSingle);
-                  commitProgressive();
-                } catch (singleErr) {
-                  if (singleErr && singleErr.name === "AbortError") throw singleErr;
-                  U().showToast("L\u1ed7i \u0111\u1ecdc \u1ea3nh \"" + singleIm.name + "\": " + formatFriendlyGeminiError(singleErr.message), "error");
-                }
+              generationConfig: { temperature: 0.05, maxOutputTokens: 8192 }
+            }, signal, function (delta) {
+              task.markdown += delta;
+              const now = Date.now();
+              if (now - lastRenderTs > 140) {
+                lastRenderTs = now;
+                mergeChunkDocsToState(baseQuestions.concat(excelCollected), false);
+                renderConverter();
               }
-            } else {
-              U().showToast("L\u1ed7i \u0111\u1ecdc \u1ea3nh \"" + batchSlice[0].name + "\": " + formatFriendlyGeminiError(imErr.message), "error");
+            });
+            task.status = "done";
+          } catch (chunkErr) {
+            if (chunkErr && chunkErr.name === "AbortError") {
+              task.status = "error";
+              task.error = "\u0110\u00e3 d\u1eebng b\u1edfi ng\u01b0\u1eddi d\u00f9ng";
+              throw chunkErr;
             }
-          }
-        }
-        if (imgExtracted.length > 0) {
-          summaries.push("\u1ea2nh AI Vision: " + imgExtracted.length + " c\u00e2u");
-        }
-      }
-
-      // ---------- CASE B: DOCUMENTS (.md, .txt, .pdf, .doc, .docx) + OPTIONAL PASTED TEXT ----------
-      const docSources = [];
-      for (let di = 0; di < docItems.length; di++) {
-        if (signal.aborted) { stopped = true; break; }
-        const item = docItems[di];
-        cState.progressLabel = "\u0110ang tr\u00edch xu\u1ea5t n\u1ed9i dung t\u1eeb " + item.name + "...";
-        cState.progressPct = Math.round(15 + (di / Math.max(1, docItems.length)) * 20);
-        renderConverter();
-
-        try {
-          if (item.kind === "text") {
-            docSources.push({ name: item.name, text: await readFileAsText(item.file), scannedPdfFile: null });
-          } else if (item.kind === "docx") {
-            docSources.push({ name: item.name, text: await extractDocxText(item.file), scannedPdfFile: null });
-          } else if (item.kind === "doc") {
-            docSources.push({ name: item.name, text: await extractLegacyDocText(item.file), scannedPdfFile: null });
-          } else if (item.kind === "pdf") {
-            const pdfRes = await extractPdfText(item.file);
-            if (pdfRes.isScanned) {
-              docSources.push({ name: item.name, text: "", scannedPdfFile: item.file });
-            } else {
-              docSources.push({ name: item.name, text: pdfRes.text, scannedPdfFile: null });
-            }
-          }
-        } catch (docErr) {
-          U().showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc t\u1ec7p \"" + item.name + "\": " + (docErr.message || "T\u1ec7p b\u1ecb h\u1ecfng ho\u1eb7c kh\u00f4ng h\u1ee3p l\u1ec7"), "error");
-        }
-      }
-      if (!stopped && pasted) {
-        docSources.push({ name: "V\u0103n b\u1ea3n \u0111\u00e3 d\u00e1n", text: pasted, scannedPdfFile: null });
-      }
-
-      // Step 2: Check Answer Keys & Route Step 2A vs Step 2B
-      if (!stopped && docSources.length > 0) {
-        setPipelineSteps("done", "active", "pending");
-        cState.progressLabel = "\u0110ang ki\u1ec3m tra c\u1ea5u tr\u00fac c\u00e2u h\u1ecfi & \u0111\u00e1p \u00e1n...";
-        cState.progressPct = 45;
-        renderConverter();
-
-        for (let si = 0; si < docSources.length; si++) {
-          if (signal.aborted) { stopped = true; break; }
-          const src = docSources[si];
-
-          // Scanned PDF -> route to Gemini PDF Vision directly
-          if (src.scannedPdfFile) {
-            const apiKey = requireApiKey();
-            if (!apiKey) {
-              U().showToast("T\u1ec7p PDF \"" + src.name + "\" l\u00e0 b\u1ea3n scan h\u00ecnh \u1ea3nh n\u00ean c\u1ea7n Gemini API Key \u0111\u1ec3 \u0111\u1ecdc.", "warning");
-              continue;
-            }
-            setPipelineSteps("done", "done", "active", "PDF scan → AI Vision \u0111ang \u0111\u1ecdc & gi\u1ea3i...");
-            cState.progressLabel = "PDF d\u1ea1ng \u1ea3nh scan — AI \u0111ang \u0111\u1ecdc " + src.name + "...";
-            cState.progressPct = 55;
+            task.status = "error";
+            task.error = formatFriendlyGeminiError(chunkErr && chunkErr.message);
+          } finally {
+            doneCount++;
+            cState.progressPct = Math.round(30 + (doneCount / Math.max(1, aiTasks.length)) * 68);
+            mergeChunkDocsToState(baseQuestions.concat(excelCollected), false);
             renderConverter();
-            const pdfB64 = await readFileAsBase64(src.scannedPdfFile);
-            const res = await callGemini(apiKey, model, {
-              systemInstruction: { parts: [{ text: ocrPrompt(cState.subject, cState.keepPrefix) }] },
-              contents: [{ role: "user", parts: [{ text: "Tr\u00edch xu\u1ea5t to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi tr\u1eafc nghi\u1ec7m t\u1eeb t\u1ec7p PDF n\u00e0y, gi\u1ea3i c\u00e1c c\u00e2u thi\u1ebfu \u0111\u00e1p \u00e1n v\u00e0 tr\u1ea3 v\u1ec1 JSON chu\u1ea9n." }, { inlineData: { mimeType: "application/pdf", data: pdfB64 } }] }],
-              generationConfig: { temperature: 0.1, responseMimeType: "application/json", responseSchema: QUESTION_LIST_SCHEMA }
-            }, signal);
-            const qs = Array.isArray(res && res.questions) ? res.questions.map(toConvItem).filter(Boolean) : [];
-            if (qs.length > 0) {
-              collected.push.apply(collected, qs);
-              aiSolvedList.push.apply(aiSolvedList, qs);
-              commitProgressive();
-              summaries.push(src.name + " (PDF scan → AI): " + qs.length + " c\u00e2u");
-            }
-            continue;
           }
-
-          const cleanText = String(src.text || "").trim();
-          if (!cleanText) {
-            U().showToast("T\u1ec7p \"" + src.name + "\" tr\u1ed1ng ho\u1eb7c kh\u00f4ng c\u00f3 n\u1ed9i dung v\u0103n b\u1ea3n.", "warning");
-            continue;
-          }
-
-          const parsed = parseMarkdown(cleanText);
-          const headerMatches = (cleanText.match(/(?:^|\n)\s*(?:\*\*|__)?(?:C\u00e2u|Question|B\u00e0i)\s*\d+\b/gi) || []).length;
-          const isPartiallyBroken = headerMatches >= 4 && parsed.length < Math.ceil(headerMatches * 0.5);
-          const missingCount = parsed.filter(function (q) { return q.correct.length === 0; }).length;
-
-          if (!isPartiallyBroken && parsed.length > 0 && missingCount === 0) {
-            // STEP 2A: Valid Answer Keys Present -> Direct conversion, ZERO redundant AI calls!
-            collected.push.apply(collected, parsed);
-            commitProgressive();
-            summaries.push(src.name + ": " + parsed.length + " c\u00e2u (\u0111\u1ee7 \u0111\u00e1p \u00e1n – chuy\u1ec3n \u0111\u1ed5i tr\u1ef1c ti\u1ebfp)");
-          } else if (!isPartiallyBroken && parsed.length > 0 && missingCount > 0) {
-            // STEP 2B-1: Structured questions parsed, but missing some/all answers -> AI Solver + Self-Check
-            collected.push.apply(collected, parsed);
-            commitProgressive();
-            const missingQs = parsed.filter(function (q) { return q.correct.length === 0; });
-            const apiKey = getApiKey();
-            if (apiKey) {
-              setPipelineSteps("done", "done", "active", "AI \u0111ang gi\u1ea3i " + missingCount + " c\u00e2u thi\u1ebfu \u0111\u00e1p \u00e1n & ki\u1ec3m tra ch\u00e9o...");
-              try {
-                await solveQuestionsArray(missingQs, apiKey, model, signal, 50, 82);
-                aiSolvedList.push.apply(aiSolvedList, missingQs);
-                commitProgressive();
-                summaries.push(src.name + ": " + parsed.length + " c\u00e2u (AI gi\u1ea3i " + missingCount + " c\u00e2u)");
-              } catch (solveErr) {
-                if (solveErr && solveErr.name === "AbortError") throw solveErr;
-                U().showToast("L\u1ed7i khi gi\u1ea3i \u0111\u00e1p \u00e1n: " + formatFriendlyGeminiError(solveErr.message), "warning");
-              }
-            } else {
-              summaries.push(src.name + ": " + parsed.length + " c\u00e2u (thi\u1ebfu " + missingCount + " \u0110/A – c\u1ea7n API Key \u0111\u1ec3 AI t\u1ef1 gi\u1ea3i)");
-              U().showToast("\u0110\u00e3 tr\u00edch xu\u1ea5t " + parsed.length + " c\u00e2u t\u1eeb \"" + src.name + "\" nh\u01b0ng c\u00f2n " + missingCount + " c\u00e2u thi\u1ebfu \u0111\u00e1p \u00e1n. H\u00e3y c\u00e0i Gemini API Key \u0111\u1ec3 AI t\u1ef1 gi\u1ea3i & ki\u1ec3m tra ch\u00e9o.", "warning", {
-                label: "C\u00e0i \u0111\u1eb7t API",
-                onClick: function () { U().showTab("api"); }
-              });
-            }
-          } else {
-            // STEP 2B-2: Unstructured or broken formatting -> AI extracts, solves & double-checks
-            const apiKey = requireApiKey();
-            if (!apiKey) {
-              if (parsed.length > 0) {
-                collected.push.apply(collected, parsed);
-                commitProgressive();
-                summaries.push(src.name + ": " + parsed.length + " c\u00e2u (\u0111\u1ecbnh d\u1ea1ng l\u1ed9n x\u1ed9n – c\u1ea7n API Key \u0111\u1ec3 AI chu\u1ea9n h\u00f3a \u0111\u1ee7)");
-              } else {
-                U().showToast("T\u1ec7p \"" + src.name + "\" ch\u01b0a \u0111\u00fang \u0111\u1ecbnh d\u1ea1ng tr\u1eafc nghi\u1ec7m chu\u1ea9n n\u00ean c\u1ea7n Gemini API Key \u0111\u1ec3 AI ph\u00e2n t\u00edch & gi\u1ea3i.", "warning");
-              }
-              continue;
-            }
-            setPipelineSteps("done", "done", "active", "\u0110\u1ecbnh d\u1ea1ng t\u1ef1 do → AI \u0111ang \u0111\u1ecdc, gi\u1ea3i & ki\u1ec3m tra ch\u00e9o...");
-            const aiQs = await extractAndSolveTextWithAI(cleanText, apiKey, model, signal, 50, 82);
-            if (aiQs.length > 0) {
-              collected.push.apply(collected, aiQs);
-              aiSolvedList.push.apply(aiSolvedList, aiQs);
-              commitProgressive();
-              summaries.push(src.name + " (AI c\u1ea5u tr\u00fac & gi\u1ea3i): " + aiQs.length + " c\u00e2u");
-            }
-          }
-        }
+        }, signal);
       }
 
-      // ---------- STEP 3: ENSURE MISSING ANSWERS SOLVED + SMART VERIFICATION ----------
-      if (!stopped && collected.length > 0) {
-        commitProgressive();
-        const apiKey = getApiKey();
-        const stillMissing = collected.filter(function (q) { return q.correct.length === 0; });
-        if (stillMissing.length > 0 && cState.autoSolve && apiKey) {
-          setPipelineSteps("done", "done", "active", "AI \u0111ang gi\u1ea3i \u0111\u00e1p \u00e1n c\u00f2n thi\u1ebfu...");
-          try {
-            await solveQuestionsArray(stillMissing, apiKey, model, signal, 78, 92);
-            stillMissing.forEach(function (q) { if (aiSolvedList.indexOf(q) === -1) aiSolvedList.push(q); });
-            commitProgressive();
-          } catch (stErr) {
-            if (stErr && stErr.name === "AbortError") throw stErr;
-            U().showToast("L\u1ed7i khi gi\u1ea3i \u0111\u00e1p \u00e1n: " + formatFriendlyGeminiError(stErr.message), "warning");
-          }
-        }
+      mergeChunkDocsToState(baseQuestions.concat(excelCollected), true);
+      const errChunks = cState.chunkStates.filter(function (s) { return s.status === "error"; }).length;
+      setPipelineSteps("done", "done", errChunks > 0 ? "active" : "done",
+        errChunks > 0
+          ? ("Ho\u00e0n t\u1ea5t m\u1ed9t ph\u1ea7n (" + errChunks + " ph\u1ea7n l\u1ed7i — b\u1ea5m Th\u1eed l\u1ea1i ph\u1ea7n n\u00e0y)")
+          : ("S\u1ed1 h\u00f3a xong" + (cState.ttftMs ? (" • TTFT " + (cState.ttftMs / 1000).toFixed(2) + "s") : "")));
+      cState.progressPct = 100;
+      cState.lastSummary = (cState.docMeta.mode === "STUDY_NOTE" ? "T\u00e0i li\u1ec7u ghi ch\u00fa (STUDY_NOTE)" : (cState.questions.length + " c\u00e2u h\u1ecfi")) +
+        (Object.keys(cState.contexts).length ? (" • " + Object.keys(cState.contexts).length + " ng\u1eef li\u1ec7u chung") : "") +
+        (cState.ttftMs ? (" • TTFT " + (cState.ttftMs / 1000).toFixed(2) + "s") : "");
 
-        // Only run a 2nd-pass Double-Check on questions that were NOT already self-checked in single-pass
-        const needsSecondPass = aiSolvedList.filter(function (q) { return !q._selfChecked && q.correct.length > 0; });
-        if (needsSecondPass.length > 0 && apiKey && !signal.aborted) {
-          setPipelineSteps("done", "done", "active", "AI \u0111ang ki\u1ec3m tra ch\u00e9o \u0111\u1ed9 ch\u00ednh x\u00e1c \u0111\u00e1p \u00e1n...");
-          try {
-            await doubleCheckQuestionsArray(needsSecondPass, apiKey, model, signal, 90, 99);
-          } catch (dcErr) {
-            if (dcErr && dcErr.name === "AbortError") throw dcErr;
-            // Non-fatal: keep all extracted & solved questions intact!
-          }
-        }
-
-        const flagged = aiSolvedList.filter(function (q) { return q.suspect; }).length;
-        if (aiSolvedList.length > 0) {
-          setPipelineSteps("done", "done", "done", flagged > 0 ? ("AI \u0111\u00e3 gi\u1ea3i & ki\u1ec3m tra ch\u00e9o (" + flagged + " c\u00e2u c\u1ea7n xem k\u1ef9)") : "AI \u0111\u00e3 gi\u1ea3i & ki\u1ec3m tra ch\u00e9o 100% kh\u1edbp!");
-        } else {
-          setPipelineSteps("done", "done", "skip", "\u0110\u00e3 \u0111\u1ee7 \u0111\u00e1p \u00e1n h\u1ee3p l\u1ec7 – b\u1ecf qua b\u01b0\u1edbc AI gi\u1ea3i");
-        }
-
-        commitProgressive();
-        cState.page = 1;
-        cState.progressPct = 100;
-        cState.lastSummary = summaries.join(" • ");
-        const suspectTotal = cState.questions.filter(function (q) { return q.suspect; }).length;
+      if (cState.questions.length > 0 || cState.docMeta.mode === "STUDY_NOTE") {
         U().showToast(
-          "Ho\u00e0n t\u1ea5t! \u0110\u00e3 x\u1eed l\u00fd " + collected.length + " c\u00e2u h\u1ecfi" + (suspectTotal > 0 ? (" (" + suspectTotal + " c\u00e2u AI \u0111\u00e1nh d\u1ea5u c\u1ea7n xem l\u1ea1i)") : "") + ".",
-          suspectTotal > 0 ? "warning" : "success"
+          cState.docMeta.mode === "STUDY_NOTE"
+            ? "Ho\u00e0n t\u1ea5t! \u0110\u00e3 s\u1ed1 h\u00f3a t\u00e0i li\u1ec7u h\u1ecdc t\u1eadp (STUDY_NOTE)."
+            : ("Ho\u00e0n t\u1ea5t! \u0110\u00e3 s\u1ed1 h\u00f3a " + cState.questions.length + " c\u00e2u h\u1ecfi" + (errChunks ? (" (" + errChunks + " ph\u1ea7n b\u1ecb gi\u00e1n \u0111o\u1ea1n)") : "") + "."),
+          errChunks > 0 ? "warning" : "success"
         );
         if (cState.autoExport && cState.questions.length > 0) doExport("xlsx", true);
       } else if (!stopped) {
-        U().showToast("Kh\u00f4ng t\u00ecm th\u1ea5y c\u00e2u h\u1ecfi h\u1ee3p l\u1ec7 n\u00e0o trong t\u1ec7p \u0111\u00e3 t\u1ea3i l\u00ean.", "warning");
+        const firstErr = cState.chunkStates.find(function (s) { return s.status === "error"; });
+        const reason = firstErr ? firstErr.error : "Kh\u00f4ng t\u00ecm th\u1ea5y n\u1ed9i dung h\u1ecdc li\u1ec7u h\u1ee3p l\u1ec7 ho\u1eb7c l\u1ed7i ph\u00e2n t\u00edch Markdown.";
+        U().showToast(reason, "warning");
+        if (firstErr) openManualFallbackModal(reason);
       }
     } catch (e) {
-      commitProgressive();
-      if (e && e.name === "AbortError") U().showToast("\u0110\u00e3 d\u1eebng qu\u00e1 tr\u00ecnh x\u1eed l\u00fd. C\u00e1c c\u00e2u \u0111\u00e3 tr\u00edch xu\u1ea5t \u0111\u01b0\u1ee3c gi\u1eef l\u1ea1i.", "warning");
-      else U().showToast("L\u1ed7i x\u1eed l\u00fd t\u1ec7p: " + formatFriendlyGeminiError(e && e.message), "error");
+      mergeChunkDocsToState(baseQuestions.concat(excelCollected), true);
+      if (e && e.name === "AbortError") U().showToast("\u0110\u00e3 d\u1eebng chuy\u1ec3n \u0111\u1ed5i. C\u00e1c c\u00e2u \u0111\u00e3 hi\u1ec3n th\u1ecb \u0111\u01b0\u1ee3c gi\u1eef nguy\u00ean.", "warning");
+      else {
+        const msg = formatFriendlyGeminiError(e && e.message);
+        U().showToast("L\u1ed7i x\u1eed l\u00fd t\u1ec7p: " + msg, "error");
+        openManualFallbackModal(msg);
+      }
     } finally {
       cState.busy = false;
+      cState.streamingTail = "";
       cState.progressLabel = "";
       renderConverter();
     }
@@ -2462,14 +2904,95 @@
     let valid = 0, missingAns = 0, errors = 0;
     const validItems = [];
     cState.questions.forEach(function (q) {
-      const nonEmptyOpts = q.options.map(function (o) { return String(o || "").trim(); }).filter(Boolean);
-      const cleanCorr = q.correct.filter(function (c) { return c >= 0 && c < nonEmptyOpts.length; });
-      if (!q.text.trim() || nonEmptyOpts.length < 2) { errors++; return; }
+      const qt = q.qType || "MCQ";
+      if (!q.text || !q.text.trim()) { errors++; return; }
+      if (qt === "TF_GROUP") {
+        const tfItems = Array.isArray(q.tfStatements) ? q.tfStatements : (Array.isArray(q.tfItems) ? q.tfItems : []);
+        if (tfItems.length === 0) { errors++; return; }
+        const hasAns = q.tfAnswers && Object.keys(q.tfAnswers).length > 0;
+        if (!hasAns) { missingAns++; return; }
+        valid++;
+        validItems.push(Object.assign({}, q));
+        return;
+      }
+      if (qt === "SHORT_ANSWER" || qt === "ORDERING") {
+        if (!(q.answerText || "").trim()) { missingAns++; return; }
+        valid++;
+        validItems.push(Object.assign({}, q));
+        return;
+      }
+      if (qt === "ESSAY") {
+        valid++;
+        validItems.push(Object.assign({}, q));
+        return;
+      }
+      const nonEmptyOpts = (q.options || []).map(function (o) { return String(o || "").trim(); }).filter(Boolean);
+      const cleanCorr = (q.correct || []).filter(function (c) { return c >= 0 && c < nonEmptyOpts.length; });
+      if (nonEmptyOpts.length < 2) { errors++; return; }
       if (cleanCorr.length === 0) { missingAns++; return; }
       valid++;
       validItems.push(Object.assign({}, q, { options: nonEmptyOpts, correct: cleanCorr }));
     });
     return { total: cState.questions.length, valid: valid, missingAns: missingAns, errors: errors, validItems: validItems };
+  }
+
+  function doExportMarkdown() {
+    let md = (cState.rawMarkdown || "").trim();
+    if (!md && D()) {
+      md = D().exportToMarkdown({
+        meta: cState.docMeta,
+        contexts: cState.contexts,
+        questions: cState.questions,
+        studyNoteMarkdown: cState.studyNoteMarkdown
+      });
+    }
+    if (!md) {
+      U().showToast("Ch\u01b0a c\u00f3 n\u1ed9i dung Markdown \u0111\u1ec3 t\u1ea3i xu\u1ed1ng.", "warning");
+      return;
+    }
+    const fname = "AI_Tutor_Digitized_" + dateStamp() + ".md";
+    U().downloadBlob(new Blob([md], { type: "text/markdown;charset=utf-8;" }), fname);
+    U().showToast("\u0110\u00e3 t\u1ea3i xu\u1ed1ng " + fname + "!", "success");
+  }
+
+  async function doSaveToLibraryAndDrive() {
+    if (cState.docMeta.mode === "STUDY_NOTE") {
+      doExportMarkdown();
+      if (window.UETCloud && typeof window.UETCloud.backupToGoogleDrive === "function") {
+        try { await window.UETCloud.backupToGoogleDrive(); } catch (e) {}
+      }
+      return;
+    }
+    const v = validateAll();
+    if (v.valid > 0) {
+      const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || cState.docMeta.title || ("B\u1ed9 \u0111\u1ec1 AI Converter " + dateStamp());
+      const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || cState.docMeta.subject || "T\u1ed5ng h\u1ee3p";
+      const mergeId = U().$("convMergeTarget") ? U().$("convMergeTarget").value : "";
+      const normalized = v.validItems.filter(function (q) { return (q.qType || "MCQ") === "MCQ"; }).map(function (q, i) {
+        return {
+          id: "q_" + Date.now() + "_" + i,
+          text: formatCell(q.text),
+          type: q.correct.length > 1 || q.type === "Checkbox" ? "multiple" : "single",
+          options: q.options.map(formatCell),
+          correct: q.correct,
+          time: parseInt(q.time, 10) > 0 ? parseInt(q.time, 10) : cState.defaultTime,
+          image: q.image || "",
+          explanation: formatCell(q.explanation)
+        };
+      });
+      if (normalized.length > 0) {
+        U().addOrMergeDeck({ mode: mergeId ? "merge" : "new", title: title, tag: tag, targetDeckId: mergeId, questions: normalized });
+      }
+    }
+    if (window.UETCloud && typeof window.UETCloud.backupToGoogleDrive === "function") {
+      try {
+        await window.UETCloud.backupToGoogleDrive();
+      } catch (e) {
+        U().showToast("\u0110\u00e3 l\u01b0u v\u00e0o th\u01b0 vi\u1ec7n m\u00e1y. C\u00f3 th\u1ec3 k\u1ebft n\u1ed1i Google Drive trong m\u1ee5c Sao l\u01b0u.", "info");
+      }
+    } else {
+      U().showToast("\u0110\u00e3 l\u01b0u v\u00e0o th\u01b0 vi\u1ec7n AI Tutor!", "success");
+    }
   }
 
   function formatCell(s) {
@@ -2665,13 +3188,17 @@
       '<textarea id="convPasteText" rows="3" style="width:100%" placeholder="D\u00e1n c\u00e2u h\u1ecfi tr\u1eafc nghi\u1ec7m ho\u1eb7c Markdown t\u1ea1i \u0111\u00e2y (n\u1ebfu thi\u1ebfu \u0111\u00e1p \u00e1n AI s\u1ebd t\u1ef1 gi\u1ea3i)...">' + U().esc(cState.pasteText) + '</textarea>' +
     '</details>';
 
-    h += '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAutoSolve"' + (cState.autoSolve ? " checked" : "") + '> T\u1ef1 \u0111\u1ed9ng gi\u1ea3i &amp; ki\u1ec3m tra ch\u00e9o n\u1ebfu thi\u1ebfu \u0111\u00e1p \u00e1n</label>' +
+    h += '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAutoSolve"' + (cState.autoSolve ? " checked" : "") + '> <strong>T\u1ef1 \u0111\u1ed9ng gi\u1ea3i chi ti\u1ebft</strong> <span class="muted">(T\u1eaft = nhanh g\u1ea5p 3x, ti\u1ebft ki\u1ec7m ~65% token)</span></label>' +
       '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAutoExport"' + (cState.autoExport ? " checked" : "") + '> T\u1ef1 \u0111\u1ed9ng t\u1ea3i Excel sau khi xong</label>' +
       '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAppend"' + (cState.appendMode ? " checked" : "") + '> N\u1ed1i th\u00eam v\u00e0o danh s\u00e1ch hi\u1ec7n c\u00f3</label>' +
       '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cKeepPref"' + (cState.keepPrefix ? " checked" : "") + '> Gi\u1eef ti\u1ec1n t\u1ed1 s\u1ed1 c\u00e2u (C\u00e2u 1.)</label>' +
       '<div class="deck-actions" style="margin-top:8px">' +
-        '<button type="button" class="btn btn-primary" id="convSmartRunBtn" style="flex:1" data-cact="run-smart"' + (canRunSmart ? "" : " disabled") + '>' + (cState.busy ? '<span class="spinner"></span>\u0110ang x\u1eed l\u00fd th\u00f4ng minh...' : '✨ B\u1eaft \u0111\u1ea7u chuy\u1ec3n \u0111\u1ed5i th\u00f4ng minh') + '</button>' +
-        (cState.busy ? '<button type="button" class="btn btn-danger btn-sm" data-cact="stop-ai">D\u1eebng</button>' : "") +
+        '<button type="button" class="btn btn-primary" id="convSmartRunBtn" style="flex:1" data-cact="run-smart"' + (canRunSmart ? "" : " disabled") + '>' + (cState.busy ? '<span class="spinner"></span>\u0110ang s\u1ed1 h\u00f3a th\u1eddi gian th\u1ef1c...' : '✨ B\u1eaft \u0111\u1ea7u chuy\u1ec3n \u0111\u1ed5i th\u00f4ng minh') + '</button>' +
+        (cState.busy ? '<button type="button" class="btn btn-danger btn-sm" data-cact="stop-ai">⏹ D\u1eebng chuy\u1ec3n \u0111\u1ed5i</button>' : "") +
+      '</div>' +
+      '<div class="deck-actions" style="margin-top:6px">' +
+        '<button type="button" class="btn btn-outline btn-sm" style="flex:1" data-cact="open-fallback">🌐 Convert via External AI / Prompt</button>' +
+        '<label class="btn btn-outline btn-sm file-btn" style="flex:1;justify-content:center">📄 Nh\u1eadp nhanh .md<input type="file" id="convDirectMdInput" accept=".md,.txt,text/markdown,text/plain" hidden></label>' +
       '</div>';
 
     if (cState.progressLabel || cState.steps.length > 0) {
@@ -2723,6 +3250,10 @@
       '<div class="deck-actions">' +
         '<button type="button" class="btn btn-emerald btn-sm" style="flex:1" data-cact="exp-xlsx"' + (cState.questions.length === 0 ? " disabled" : "") + '>Xu\u1ea5t .xlsx</button>' +
         '<button type="button" class="btn btn-outline btn-sm" style="flex:1" data-cact="exp-csv"' + (cState.questions.length === 0 ? " disabled" : "") + '>Xu\u1ea5t CSV</button>' +
+      '</div>' +
+      '<div class="deck-actions" style="margin-top:6px">' +
+        '<button type="button" class="btn btn-primary btn-sm" style="flex:1" data-cact="exp-md"' + (cState.questions.length === 0 && !cState.rawMarkdown && !cState.studyNoteMarkdown ? " disabled" : "") + '>⬇ T\u1ea3i xu\u1ed1ng file .md</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" style="flex:1" data-cact="save-drive"' + (cState.questions.length === 0 && !cState.studyNoteMarkdown ? " disabled" : "") + '>☁️ L\u01b0u th\u01b0 vi\u1ec7n / Drive</button>' +
       '</div></section></div>';
 
     // 1-Click Import into Kho \u0111\u1ec1 AI Tutor
@@ -2754,11 +3285,12 @@
       '</div></div>' +
       '<div class="deck-actions">' +
         '<div class="seg">' +
+          '<button type="button" class="seg-btn' + (cState.viewMode === "digitizer" ? " active" : "") + '" data-cact="vmode" data-val="digitizer">⚡ Digitizer (Split-Screen)</button>' +
           '<button type="button" class="seg-btn' + (cState.viewMode === "table" ? " active" : "") + '" data-cact="vmode" data-val="table">B\u1ea3ng nhanh</button>' +
-          '<button type="button" class="seg-btn' + (cState.viewMode === "split" ? " active" : "") + '" data-cact="vmode" data-val="split">' + (U().can("splitReview") ? "" : "🔒 ") + '\u0110\u1ed1i chi\u1ebfu song song (Split-Screen)</button>' +
+          '<button type="button" class="seg-btn' + (cState.viewMode === "split" ? " active" : "") + '" data-cact="vmode" data-val="split">' + (U().can("splitReview") ? "" : "🔒 ") + '\u0110\u1ed1i chi\u1ebfu \u1ea3nh g\u1ed1c</button>' +
         '</div>' +
         '<button type="button" class="btn btn-outline btn-sm" data-cact="verify-all"' + (v.total === 0 ? " disabled" : "") + '>✓ Duy\u1ec7t t\u1ea5t c\u1ea3</button>' +
-        '<button type="button" class="btn btn-outline btn-sm" data-cact="clear-all"' + (v.total === 0 ? " disabled" : "") + '>X\u00f3a b\u1ea3ng</button>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-cact="clear-all"' + (v.total === 0 && !cState.studyNoteMarkdown ? " disabled" : "") + '>X\u00f3a b\u1ea3ng</button>' +
       '</div></div>';
 
     h += '<div class="filter-bar">' +
@@ -2774,13 +3306,21 @@
       const q = item.q;
       if (cState.filter === "unverified" && q.verified) return false;
       if (cState.filter === "suspect" && !q.suspect) return false;
-      if (cState.filter === "missing" && q.correct.length > 0) return false;
+      if (cState.filter === "missing") {
+        const qt = q.qType || "MCQ";
+        if (qt === "MCQ" && q.correct.length > 0) return false;
+        if (qt === "TF_GROUP" && q.tfAnswers && Object.keys(q.tfAnswers).length > 0) return false;
+        if ((qt === "SHORT_ANSWER" || qt === "ORDERING") && (q.answerText || "").trim()) return false;
+        if (qt === "ESSAY") return false;
+      }
       const kw = cState.search.trim().toLowerCase();
       if (!kw) return true;
       return String(item.idx + 1) === kw || q.text.toLowerCase().indexOf(kw) !== -1 || q.options.some(function (o) { return o.toLowerCase().indexOf(kw) !== -1; });
     });
 
-    if (filtered.length === 0) {
+    if (cState.viewMode === "digitizer" && (filtered.length > 0 || cState.docMeta.mode === "STUDY_NOTE" || cState.chunkStates.length > 0 || (cState.busy && cState.streamingTail))) {
+      h += renderDigitizerWorkspace(filtered);
+    } else if (filtered.length === 0) {
       h += '<div class="empty-state">Ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi n\u00e0o. H\u00e3y t\u1ea3i t\u1ec7p \u1ea2nh, PDF, Word, Markdown/Text ho\u1eb7c Excel \u1edf Kh\u1ed1i 1 \u0111\u1ec3 b\u1eaft \u0111\u1ea7u.</div>';
     } else if (cState.viewMode === "split") {
       // Split-Screen Review Mode
@@ -2876,6 +3416,496 @@
       });
     }
     if (typeof U().applyI18n === "function") U().applyI18n(root);
+    setupContextScrollObserver(root);
+  }
+
+  /* ======================== RICH MARKDOWN + DIGITIZER SMART SPLIT-SCREEN ======================== */
+  function renderMarkdownRich(raw) {
+    const text = String(raw == null ? "" : raw).replace(/\r\n/g, "\n");
+    if (!text.trim()) return "";
+    // Split fenced code blocks first so we don't mangle code
+    const parts = text.split(/(```[\s\S]*?```)/g);
+    return parts.map(function (part) {
+      if (part.indexOf("```") === 0 && part.slice(-3) === "```") {
+        const inner = part.slice(3, -3);
+        const nl = inner.indexOf("\n");
+        const lang = nl > -1 ? inner.slice(0, nl).trim() : "";
+        const code = nl > -1 ? inner.slice(nl + 1) : inner;
+        return '<pre class="digitizer-code">' + (lang ? '<span class="digitizer-code-lang">' + U().esc(lang) + '</span>' : '') + '<code>' + U().esc(code) + '</code></pre>';
+      }
+      const lines = part.split("\n");
+      let out = "", i = 0;
+      while (i < lines.length) {
+        const ln = lines[i];
+        // Markdown table detection
+        if (/^\s*\|.+\|\s*$/.test(ln) && i + 1 < lines.length && /^\s*\|[\s:\-|]+\|\s*$/.test(lines[i + 1])) {
+          const headCells = ln.trim().replace(/^\||\|$/g, "").split("|").map(function (c) { return c.trim(); });
+          i += 2;
+          const bodyRows = [];
+          while (i < lines.length && /^\s*\|.+\|\s*$/.test(lines[i])) {
+            bodyRows.push(lines[i].trim().replace(/^\||\|$/g, "").split("|").map(function (c) { return c.trim(); }));
+            i++;
+          }
+          out += '<div class="table-scroll"><table class="digitizer-md-table"><thead><tr>' +
+            headCells.map(function (c) { return '<th>' + U().renderRich(c) + '</th>'; }).join("") +
+            '</tr></thead><tbody>' +
+            bodyRows.map(function (r) {
+              return '<tr>' + r.map(function (c) { return '<td>' + U().renderRich(c) + '</td>'; }).join("") + '</tr>';
+            }).join("") +
+            '</tbody></table></div>';
+          continue;
+        }
+        // Headings (for STUDY_NOTE or context titles)
+        const hMatch = ln.match(/^(#{1,4})\s+(.+)$/);
+        if (hMatch) {
+          const lvl = Math.min(4, Math.max(2, hMatch[1].length));
+          const hid = "sn_" + hMatch[2].toLowerCase().replace(/[^a-z0-9\u00c0-\u024f]+/g, "_").slice(0, 40) + "_" + i;
+          out += '<h' + lvl + ' id="' + hid + '" class="digitizer-md-h">' + U().renderRich(hMatch[2]) + '</h' + lvl + '>';
+          i++;
+          continue;
+        }
+        if (/^>\s*/.test(ln)) {
+          out += '<blockquote class="digitizer-quote">' + U().renderRich(ln.replace(/^>\s*/, "")) + '</blockquote>';
+          i++;
+          continue;
+        }
+        if (ln.trim()) {
+          out += '<p class="digitizer-p">' + U().renderRich(ln) + '</p>';
+        }
+        i++;
+      }
+      return out;
+    }).join("");
+  }
+
+  function renderStudyNoteView() {
+    const raw = (cState.studyNoteMarkdown || cState.rawMarkdown || "").replace(/^---[\s\S]*?---\s*/m, "");
+    const toc = [];
+    raw.split("\n").forEach(function (ln, idx) {
+      const m = ln.match(/^(#{1,3})\s+(.+)$/);
+      if (m) {
+        const hid = "sn_" + m[2].toLowerCase().replace(/[^a-z0-9\u00c0-\u024f]+/g, "_").slice(0, 40) + "_" + idx;
+        toc.push({ level: m[1].length, text: m[2].trim(), id: hid });
+      }
+    });
+    return '<div class="study-note-view">' +
+      (toc.length > 0 ? (
+        '<aside class="study-toc"><h4>📑 M\u1ee5c l\u1ee5c t\u1ef1 \u0111\u1ed9ng</h4><ul>' +
+        toc.map(function (t) {
+          return '<li class="toc-l' + t.level + '"><a href="#' + U().esc(t.id) + '">' + U().esc(t.text) + '</a></li>';
+        }).join("") + '</ul></aside>'
+      ) : "") +
+      '<article class="study-note-body rich-text">' + renderMarkdownRich(raw) + '</article>' +
+    '</div>';
+  }
+
+  function renderDigitizerWorkspace(filtered) {
+    let out = "";
+
+    // 1. Chunk Status & Error Retry Bar
+    if (cState.chunkStates && cState.chunkStates.length > 0) {
+      const failedChunks = cState.chunkStates.filter(function (c) { return c.status === "error"; });
+      out += '<div class="chunk-status-bar">' +
+        cState.chunkStates.map(function (c) {
+          const ico = c.status === "done" ? "✅" : (c.status === "streaming" ? "⚡" : (c.status === "error" ? "⚠️" : "○"));
+          return '<span class="chunk-pill is-' + c.status + '">' + ico + ' ' + U().esc(c.label) + '</span>';
+        }).join("") +
+        (cState.ttftMs ? '<span class="chunk-pill is-done">⏱ TTFT ' + (cState.ttftMs / 1000).toFixed(2) + 's</span>' : '') +
+      '</div>';
+      if (failedChunks.length > 0) {
+        out += '<div class="chunk-error-list">' + failedChunks.map(function (fc) {
+          return '<div class="chunk-error-bar"><div><strong>⚠️ ' + U().esc(fc.label) + ':</strong> ' + U().esc(fc.error || "B\u1ecb gi\u00e1n \u0111o\u1ea1n k\u1ebft n\u1ed1i") + '</div>' +
+            '<button type="button" class="btn btn-primary btn-sm" data-cact="retry-chunk" data-chunk-idx="' + fc.index + '"' + (cState.busy ? " disabled" : "") + '>🔄 Th\u1eed l\u1ea1i ph\u1ea7n n\u00e0y</button></div>';
+        }).join("") + '</div>';
+      }
+    }
+
+    // 1B. Deterministic QA Audit Banner (V3.3 Section 2.6)
+    if (D() && typeof D().runDeterministicQA === "function" && (cState.questions.length > 0 || cState.docMeta.mode === "STUDY_NOTE") && !cState.busy) {
+      const qa = D().runDeterministicQA({ meta: cState.docMeta, contexts: cState.contexts, questions: cState.questions }, cState.chunkStates);
+      if (qa.issues.length > 0) {
+        out += '<details class="digitizer-qa-box' + (qa.errors > 0 ? " has-errors" : "") + '" style="margin-bottom:12px;padding:10px 14px;border-radius:12px;border:1px solid ' + (qa.errors > 0 ? "#f87171" : "var(--border)") + ';background:var(--bg2)">' +
+          '<summary style="cursor:pointer;font-weight:700;font-size:.84rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+            '<span>' + (qa.errors > 0 ? "🛡️ QA Ki\u1ec3m \u0111\u1ecbnh: " + qa.errors + " l\u1ed7i, " + qa.warnings + " c\u1ea3nh b\u00e1o c\u1ea7n duy\u1ec7t" : "🛡️ QA Ki\u1ec3m \u0111\u1ecbnh: " + qa.warnings + " l\u01b0u \u00fd c\u1ea7n xem l\u1ea1i") + '</span>' +
+            (qa.uncertainCount > 0 ? '<span class="badge badge-warn">[CHECK]: ' + qa.uncertainCount + '</span>' : '') +
+          '</summary>' +
+          '<ul style="margin:8px 0 0 18px;padding:0;font-size:.8rem;display:flex;flex-direction:column;gap:4px">' +
+            qa.issues.slice(0, 25).map(function (iss) {
+              return '<li style="color:' + (iss.severity === "error" ? "#dc2626" : "var(--text)") + '"><strong>[' + U().esc(iss.code) + ']</strong> ' + U().esc(iss.message) + '</li>';
+            }).join("") +
+          '</ul>' +
+        '</details>';
+      } else {
+        out += '<div class="badge badge-ok" style="margin-bottom:10px;display:inline-flex">✅ QA Ki\u1ec3m \u0111\u1ecbnh t\u1ef1 \u0111\u1ed9ng: \u0110\u1ea1t chu\u1ea9n 100% (0 l\u1ed7i, 0 c\u1ea3nh b\u00e1o)</div>';
+      }
+    }
+
+    // 2. STUDY_NOTE Mode
+    if (cState.docMeta && cState.docMeta.mode === "STUDY_NOTE") {
+      return out + renderStudyNoteView();
+    }
+
+    // 3. EXAM Mode: Smart Context Pinning Split-Screen
+    const ctxIds = Object.keys(cState.contexts || {});
+    const hasContexts = ctxIds.length > 0;
+    const pinnedId = (cState.pinnedContextId && cState.contexts[cState.pinnedContextId]) ? cState.pinnedContextId : (ctxIds[0] || "");
+    const pinnedCtx = pinnedId ? cState.contexts[pinnedId] : null;
+
+    out += '<div class="digitizer-split' + (hasContexts ? " has-context" : "") + '">';
+
+    if (hasContexts) {
+      out += '<aside class="digitizer-context-pane" id="digitizerCtxPane">' +
+        '<div class="digitizer-ctx-head"><strong>📌 Ng\u1eef li\u1ec7u chung (Smart Context Pinning)</strong>' +
+          '<div class="digitizer-ctx-tabs">' +
+          ctxIds.map(function (cid) {
+            const cObj = cState.contexts[cid];
+            const active = cid === pinnedId ? " active" : "";
+            return '<button type="button" class="digitizer-ctx-tab' + active + '" data-cact="pin-ctx" data-ctx="' + U().esc(cid) + '">' +
+              U().esc(cid) + (cObj && cObj.questions ? (' (' + U().esc(cObj.questions) + ')') : '') + '</button>';
+          }).join("") +
+          '</div>' +
+        '</div>' +
+        '<div class="digitizer-ctx-body rich-text" id="digitizerCtxBody">' +
+          (pinnedCtx ? renderMarkdownRich(pinnedCtx.content) : '') +
+        '</div>' +
+      '</aside>';
+    }
+
+    out += '<div class="digitizer-questions-pane">';
+    let lastInstr = "";
+    filtered.forEach(function (item) {
+      const q = item.q;
+      const idx = item.idx;
+      const qt = q.qType || "MCQ";
+
+      // Instruction banner above question groups
+      if (q.instruction && q.instruction !== lastInstr) {
+        lastInstr = q.instruction;
+        out += '<div class="digitizer-instr-banner"><span class="digitizer-instr-tag">📋 Y\u00eau c\u1ea7u nh\u00f3m c\u00e2u</span><div class="rich-text">' + renderMarkdownRich(q.instruction) + '</div></div>';
+      }
+
+      const typeLabel = qt === "TF_GROUP" ? "\u0110\u00fang / Sai (2025)" :
+        (qt === "SHORT_ANSWER" ? "Tr\u1ea3 l\u1eddi ng\u1eafn" :
+        (qt === "ORDERING" ? "S\u1eafp x\u1ebfp th\u1ee9 t\u1ef1" :
+        (qt === "ESSAY" ? "T\u1ef1 lu\u1eadn" : "Tr\u1eafc nghi\u1ec7m (MCQ)")));
+
+      const cacheKey = makeExplainCacheKey(q);
+      const cachedExp = cState.explainCache && cState.explainCache[cacheKey];
+      const shownExp = q.explanation || cachedExp || "";
+      const isExplaining = cState.explainingId === idx;
+      const ua = cState.userAnswers[idx] || {};
+
+      out += '<article class="digitizer-q-card' + (q.contextId && q.contextId === pinnedId ? " ctx-linked" : "") + '" data-q-idx="' + idx + '"' + (q.contextId ? (' data-ctx="' + U().esc(q.contextId) + '"') : '') + '>' +
+        '<div class="digitizer-q-head">' +
+          '<div class="digitizer-q-meta">' +
+            '<strong>C\u00e2u ' + (q.number || (idx + 1)) + '</strong>' +
+            '<span class="badge">' + typeLabel + '</span>' +
+            (q.contextId ? '<button type="button" class="badge badge-ok" style="cursor:pointer;border:none" data-cact="pin-ctx" data-ctx="' + U().esc(q.contextId) + '">📌 ' + U().esc(q.contextId) + '</button>' : '') +
+            (q.level ? '<span class="badge">' + U().esc(q.level) + '</span>' : '') +
+            (q.tag ? '<span class="badge">' + U().esc(q.tag) + '</span>' : '') +
+          '</div>' +
+          '<div class="digitizer-q-actions">' +
+            '<button type="button" class="btn btn-primary btn-sm" data-cact="ai-explain" data-idx="' + idx + '"' + (isExplaining ? " disabled" : "") + '>' +
+              (isExplaining ? '<span class="spinner"></span>\u0110ang gi\u1ea3i...' : (cachedExp ? '🤖 AI Gi\u1ea3i th\u00edch ✓' : '🤖 AI Gi\u1ea3i th\u00edch')) +
+            '</button>' +
+            '<button type="button" class="btn btn-outline btn-sm" data-cact="quick-vocab" data-idx="' + idx + '" title="L\u01b0u t\u1eeb v\u1ef1ng v\u00e0o Vocab Studio">📖 +T\u1eeb v\u1ef1ng</button>' +
+            '<button type="button" class="btn btn-outline btn-sm" data-cact="edit-inline" data-idx="' + idx + '">S\u1eeda</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="digitizer-q-text rich-text">' + renderMarkdownRich(q.text) + '</div>';
+
+      // Interactive body by question type
+      if (qt === "MCQ") {
+        const chosen = typeof ua.mcq === "number" ? ua.mcq : -1;
+        out += '<div class="digitizer-mcq-grid">' +
+          (q.options || []).map(function (o, k) {
+            if (!o) return "";
+            const isKey = (q.correct || []).indexOf(k) !== -1;
+            const isPicked = chosen === k;
+            let cls = "digitizer-opt-btn";
+            if (isPicked) cls += isKey || q.correct.length === 0 ? " is-correct" : " is-wrong";
+            else if (chosen !== -1 && isKey) cls += " is-correct";
+            else if (chosen === -1 && isKey) cls += " is-key";
+            return '<button type="button" class="' + cls + '" data-cact="ans-mcq" data-idx="' + idx + '" data-opt="' + k + '">' +
+              '<span class="opt-letter">' + U().LETTERS.charAt(k) + '</span>' +
+              '<span class="rich-text">' + U().renderRich(o) + '</span>' +
+            '</button>';
+          }).join("") + '</div>';
+      } else if (qt === "TF_GROUP") {
+        const tfUser = ua.tf || {};
+        const tfItems = Array.isArray(q.tfStatements) ? q.tfStatements : (Array.isArray(q.tfItems) ? q.tfItems : []);
+        const hasKey = q.tfAnswers && Object.keys(q.tfAnswers).length > 0;
+        const scoreInfo = (hasKey && Object.keys(tfUser).length > 0 && D()) ? D().scoreTfGroup2025(tfUser, q.tfAnswers) : null;
+        out += '<div class="tf-grid-wrap"><table class="tf-grid"><thead><tr><th>M\u1ec7nh \u0111\u1ec1</th><th style="width:76px;text-align:center">\u0110\u00fang</th><th style="width:76px;text-align:center">Sai</th></tr></thead><tbody>' +
+          tfItems.map(function (it) {
+            const uVal = tfUser[it.key];
+            const kVal = q.tfAnswers ? q.tfAnswers[it.key] : undefined;
+            const tCls = uVal === true ? (kVal === undefined || kVal === true ? "btn-emerald" : "btn-danger") : (kVal === true ? "btn-outline tf-key-hint" : "btn-outline");
+            const fCls = uVal === false ? (kVal === undefined || kVal === false ? "btn-emerald" : "btn-danger") : (kVal === false ? "btn-outline tf-key-hint" : "btn-outline");
+            return '<tr><td class="rich-text"><strong>' + U().esc(it.key) + ')</strong> ' + U().renderRich(it.text) + '</td>' +
+              '<td style="text-align:center"><button type="button" class="btn btn-sm ' + tCls + '" data-cact="ans-tf" data-idx="' + idx + '" data-tfkey="' + U().esc(it.key) + '" data-tfval="true">\u0110\u00fang</button></td>' +
+              '<td style="text-align:center"><button type="button" class="btn btn-sm ' + fCls + '" data-cact="ans-tf" data-idx="' + idx + '" data-tfkey="' + U().esc(it.key) + '" data-tfval="false">Sai</button></td></tr>';
+          }).join("") + '</tbody></table>' +
+          (scoreInfo ? '<div class="tf-score-badge">📊 \u0110i\u1ec3m thi 2025: <strong>' + scoreInfo.score + ' / 1.0 \u0111i\u1ec3m</strong> (\u0110\u00fang ' + scoreInfo.correctCount + '/' + scoreInfo.total + ' \u00fd)</div>' : '') +
+        '</div>';
+      } else if (qt === "SHORT_ANSWER" || qt === "ORDERING") {
+        const val = ua.short || "";
+        const checked = !!ua.shortChecked;
+        const ok = checked && D() ? D().compareShortAnswer(val, q.answerText) : false;
+        out += '<div class="digitizer-short-box">' +
+          '<input type="text" class="inline-edit-input" data-ans-short="' + idx + '" value="' + U().esc(val) + '" placeholder="' + (qt === "ORDERING" ? "Nh\u1eadp th\u1ee9 t\u1ef1 (VD: c-a-b-d)..." : "Nh\u1eadp \u0111\u00e1p \u00e1n ng\u1eafn...") + '">' +
+          '<button type="button" class="btn btn-primary btn-sm" data-cact="ans-short-check" data-idx="' + idx + '">Ki\u1ec3m tra</button>' +
+        '</div>' +
+        (checked ? ('<div class="badge ' + (ok ? "badge-ok" : "badge-bad") + '" style="margin-top:6px">' + (ok ? "✅ Ch\u00ednh x\u00e1c!" : ("❌ Ch\u01b0a kh\u1edbp. \u0110\u00e1p \u00e1n chu\u1ea9n: " + U().esc(q.answerText || "Ch\u01b0a c\u00f3"))) + '</div>') : (q.answerText ? '<div class="muted" style="font-size:.78rem;margin-top:4px">\u0110\u00e1p \u00e1n g\u1ed1c: <strong>' + U().esc(q.answerText) + '</strong></div>' : ''));
+      } else if (qt === "ESSAY") {
+        const showGuide = !!ua.showGuide;
+        out += '<div class="digitizer-essay-box">' +
+          '<textarea class="inline-edit-input" rows="3" data-ans-essay="' + idx + '" placeholder="Nh\u1eadp b\u00e0i l\u00e0m t\u1ef1 lu\u1eadn c\u1ee7a b\u1ea1n...">' + U().esc(ua.essay || "") + '</textarea>' +
+          '<div style="margin-top:6px"><button type="button" class="btn btn-outline btn-sm" data-cact="toggle-essay-guide" data-idx="' + idx + '">' + (showGuide ? "🙈 \u1ea8n h\u01b0\u1edbng d\u1eabn ch\u1ea5m" : "👁️ Xem h\u01b0\u1edbng d\u1eabn ch\u1ea5m") + '</button></div>' +
+          (showGuide ? '<div class="digitizer-explain-box rich-text" style="margin-top:8px"><strong>H\u01b0\u1edbng d\u1eabn ch\u1ea5m / \u0110\u00e1p \u00e1n g\u1ee3i \u00fd:</strong><br>' + renderMarkdownRich(q.answerText || shownExp || "B\u1ea5m n\u00fat \ud83e\udd16 AI Gi\u1ea3i th\u00edch \u0111\u1ec3 AI t\u1ea1o \u0111\u00e1p \u00e1n chi ti\u1ebft.") + '</div>' : '') +
+        '</div>';
+      }
+
+      if (shownExp && qt !== "ESSAY") {
+        out += '<div class="digitizer-explain-box rich-text"><strong>💡 L\u1eddi gi\u1ea3i &amp; Ph\u00e2n t\u00edch:</strong> ' + renderMarkdownRich(shownExp) + '</div>';
+      }
+      out += '</article>';
+    });
+
+    // Live Streaming Skeleton / Typing Tail
+    if (cState.busy && cState.streamingTail) {
+      out += '<div class="streaming-skeleton">' +
+        '<div class="streaming-skeleton-head"><span class="spinner"></span><strong>AI \u0111ang vi\u1ebft c\u00e2u ti\u1ebfp theo (Streaming)...</strong></div>' +
+        '<pre class="streaming-tail-text">' + U().esc(cState.streamingTail.slice(-600)) + '</pre>' +
+      '</div>';
+    }
+
+    out += '</div></div>';
+    return out;
+  }
+
+  let _ctxObserver = null;
+  function setupContextScrollObserver(root) {
+    if (_ctxObserver) { try { _ctxObserver.disconnect(); } catch (e) {} _ctxObserver = null; }
+    if (cState.viewMode !== "digitizer" || typeof IntersectionObserver === "undefined") return;
+    const ctxPane = root.querySelector("#digitizerCtxBody");
+    if (!ctxPane) return;
+    const cards = root.querySelectorAll(".digitizer-q-card[data-ctx]");
+    if (!cards.length) return;
+    _ctxObserver = new IntersectionObserver(function (entries) {
+      for (let i = 0; i < entries.length; i++) {
+        if (entries[i].isIntersecting) {
+          const cid = entries[i].target.getAttribute("data-ctx");
+          if (cid && cid !== cState.pinnedContextId && cState.contexts[cid]) {
+            cState.pinnedContextId = cid;
+            ctxPane.innerHTML = renderMarkdownRich(cState.contexts[cid].content);
+            root.querySelectorAll(".digitizer-ctx-tab").forEach(function (btn) {
+              btn.classList.toggle("active", btn.getAttribute("data-ctx") === cid);
+            });
+          }
+          break;
+        }
+      }
+    }, { rootMargin: "-15% 0px -65% 0px", threshold: 0.05 });
+    cards.forEach(function (card) { _ctxObserver.observe(card); });
+  }
+
+  /* ======================== LOCAL MARKDOWN IMPORT & MANUAL FALLBACK MODAL (V3.3 Section 2.7) ======================== */
+  function importLocalMarkdown(rawMd, sourceLabel) {
+    const clean = String(rawMd || "").trim();
+    if (!clean) {
+      U().showToast("Ch\u01b0a c\u00f3 n\u1ed9i dung Markdown \u0111\u1ec3 nh\u1eadp.", "warning");
+      return false;
+    }
+    if (/^ERROR_INVALID_CONTENT\s*:/i.test(clean)) {
+      U().showToast(clean, "error");
+      return false;
+    }
+    let loaded = false;
+    if (D() && (/^---\s*\n[\s\S]*?mode\s*:/i.test(clean) || /^###\s*(?:C\u00e2u|Question|B\u00e0i)\s*\d+/m.test(clean) || /^:::context/m.test(clean))) {
+      const parser = D().createIncrementalParser();
+      parser.append(clean);
+      const doc = parser.finish();
+      cState.docMeta = doc.meta || { title: "", subject: "", mode: "EXAM", total_questions: 0, duration_minutes: 45 };
+      cState.contexts = doc.contexts || {};
+      const ctxIds = Object.keys(cState.contexts);
+      cState.pinnedContextId = ctxIds[0] || "";
+      cState.studyNoteMarkdown = doc.studyNoteMarkdown || "";
+      cState.rawMarkdown = clean;
+      const converted = (doc.questions || []).map(digitizerQToConvItem).filter(Boolean);
+      cState.questions = cState.appendMode ? cState.questions.concat(converted) : converted;
+      loaded = cState.questions.length > 0 || cState.docMeta.mode === "STUDY_NOTE";
+    }
+    if (!loaded) {
+      const fallbackQs = parseMarkdown(clean);
+      if (fallbackQs.length > 0) {
+        cState.questions = cState.appendMode ? cState.questions.concat(fallbackQs) : fallbackQs;
+        cState.rawMarkdown = clean;
+        cState.docMeta = { title: sourceLabel || "Markdown \u0111\u00e3 nh\u1eadp", subject: "", mode: "EXAM", total_questions: cState.questions.length, duration_minutes: 45 };
+        loaded = true;
+      }
+    }
+    if (!loaded) {
+      U().showToast("Kh\u00f4ng th\u1ec3 ph\u00e2n t\u00edch Markdown. H\u00e3y ki\u1ec3m tra \u0111\u00fang \u0111\u1ecbnh d\u1ea1ng Master Prompt.", "error");
+      return false;
+    }
+    cState.chunkStates = [{
+      index: 0,
+      label: (sourceLabel || "Markdown c\u1ee5c b\u1ed9") + " (0 LLM token)",
+      status: "done",
+      error: "",
+      markdown: clean
+    }];
+    cState.viewMode = "digitizer";
+    cState.lastSummary = "Nh\u1eadp c\u1ee5c b\u1ed9 (0 API call): " + (cState.docMeta.mode === "STUDY_NOTE" ? "STUDY_NOTE" : (cState.questions.length + " c\u00e2u h\u1ecfi"));
+    renderConverter();
+    U().showToast("\u0110\u00e3 nh\u1eadp Markdown c\u1ee5c b\u1ed9 th\u00e0nh c\u00f4ng (0 LLM token)!", "success");
+    return true;
+  }
+
+  function openManualFallbackModal(errorReason) {
+    const host = U().$("extraModals");
+    if (!host) return;
+    const lang = (U().state && U().state.lang) || "vi";
+    const copy = {
+      vi: {
+        title: "🌐 Chuy\u1ec3n \u0111\u1ed5i qua AI ngo\u00e0i / Master Prompt (Fallback 0 Token)",
+        s1: "B\u01b0\u1edbc 1: Sao ch\u00e9p ch\u00ednh x\u00e1c CONVERTER_MASTER_PROMPT b\u00ean d\u01b0\u1edbi.",
+        s2: "B\u01b0\u1edbc 2: D\u00e1n prompt n\u00e0y c\u00f9ng file \u0111\u1ec1 thi g\u1ed1c v\u00e0o ChatGPT, Gemini ho\u1eb7c Claude.",
+        s3: "B\u01b0\u1edbc 3: D\u00e1n k\u1ebft qu\u1ea3 Markdown ho\u1eb7c k\u00e9o th\u1ea3 / t\u1ea3i file .md v\u00e0o \u0111\u00e2y \u0111\u1ec3 nh\u1eadp c\u1ee5c b\u1ed9 (kh\u00f4ng g\u1ecdi API).",
+        copyBtn: "📋 Sao ch\u00e9p Master Prompt",
+        copied: "✅ \u0110\u00e3 sao ch\u00e9p!",
+        dropLabel: "📂 K\u00e9o th\u1ea3 ho\u1eb7c ch\u1ecdn file .md t\u1ea1i \u0111\u00e2y",
+        pastePh: "Ho\u1eb7c d\u00e1n to\u00e0n b\u1ed9 n\u1ed9i dung Markdown (.md) t\u1eeb ChatGPT / Gemini / Claude v\u00e0o \u0111\u00e2y...",
+        importBtn: "⚡ Nh\u1eadp Markdown c\u1ee5c b\u1ed9 (0 API call)",
+        closeBtn: "\u0110\u00f3ng"
+      },
+      en: {
+        title: "🌐 Convert via External AI / Master Prompt (Local Fallback)",
+        s1: "Step 1: Copy the exact CONVERTER_MASTER_PROMPT below.",
+        s2: "Step 2: Paste this prompt with your original file into ChatGPT, Gemini, or Claude.",
+        s3: "Step 3: Paste the generated Markdown or upload/drop a .md file below to import locally (0 LLM API calls).",
+        copyBtn: "📋 Copy Master Prompt",
+        copied: "✅ Copied!",
+        dropLabel: "📂 Drag & drop or choose a .md file here",
+        pastePh: "Or paste the generated Markdown (.md) from ChatGPT / Gemini / Claude here...",
+        importBtn: "⚡ Import Markdown Locally (0 API calls)",
+        closeBtn: "Close"
+      },
+      ja: {
+        title: "🌐 \u5916\u90e8AI / Master Prompt \u3067\u5909\u63db (\u30ed\u30fc\u30ab\u30eb\u30d5\u30a9\u30fc\u30eb\u30d0\u30c3\u30af)",
+        s1: "\u30b9\u30c6\u30c3\u30d71: \u4e0b\u8a18\u306e CONVERTER_MASTER_PROMPT \u3092\u30b3\u30d4\u30fc\u3057\u307e\u3059\u3002",
+        s2: "\u30b9\u30c6\u30c3\u30d72: ChatGPT / Gemini / Claude \u306b\u5143\u30d5\u30a1\u30a4\u30eb\u3068\u4e00\u7dd2\u306b\u8cbc\u308a\u4ed8\u3051\u3066\u5909\u63db\u3057\u307e\u3059\u3002",
+        s3: "\u30b9\u30c6\u30c3\u30d73: \u751f\u6210\u3055\u308c\u305f Markdown \u3092\u8cbc\u308a\u4ed8\u3051\u308b\u304b .md \u30d5\u30a1\u30a4\u30eb\u3092\u8aad\u307f\u8fbc\u307f\u307e\u3059 (API\u547c\u51fa\u30570\u56de)\u3002",
+        copyBtn: "📋 Master Prompt \u3092\u30b3\u30d4\u30fc",
+        copied: "✅ \u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f!",
+        dropLabel: "📂 .md \u30d5\u30a1\u30a4\u30eb\u3092\u30c9\u30e9\u30c3\u30b0&\u30c9\u30ed\u30c3\u30d7\u307e\u305f\u306f\u9078\u629e",
+        pastePh: "ChatGPT / Gemini / Claude \u304c\u751f\u6210\u3057\u305f Markdown \u3092\u3053\u3053\u306b\u8cbc\u308a\u4ed8\u3051...",
+        importBtn: "⚡ \u30ed\u30fc\u30ab\u30eb\u3067 Markdown \u3092\u30a4\u30f3\u30dd\u30fc\u30c8 (0 API)",
+        closeBtn: "\u9589\u3058\u308b"
+      }
+    }[lang] || {};
+    const t = copy.title ? copy : {
+      title: "🌐 Convert via External AI / Master Prompt",
+      s1: "Step 1: Copy Master Prompt.", s2: "Step 2: Use it with your original file in ChatGPT/Gemini/Claude.", s3: "Step 3: Import generated Markdown.",
+      copyBtn: "📋 Copy Prompt", copied: "✅ Copied!", dropLabel: "📂 Drop or upload .md file", pastePh: "Paste Markdown...", importBtn: "⚡ Import Locally", closeBtn: "Close"
+    };
+
+    host.innerHTML =
+      '<div class="modal-overlay" id="convFallbackModal" role="dialog" aria-modal="true"><div class="modal modal-lg">' +
+        '<h3>' + U().esc(t.title) + '</h3>' +
+        (errorReason ? '<div class="pending-banner" style="margin-bottom:10px;font-size:.82rem">⚠️ ' + U().esc(errorReason) + '</div>' : '') +
+        '<ol style="margin:0 0 12px 18px;padding:0;font-size:.84rem;line-height:1.55">' +
+          '<li>' + U().esc(t.s1) + '</li>' +
+          '<li>' + U().esc(t.s2) + '</li>' +
+          '<li>' + U().esc(t.s3) + '</li>' +
+        '</ol>' +
+        '<div class="field" style="margin-bottom:10px">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-weight:700;font-size:.8rem">CONVERTER_MASTER_PROMPT (Read-Only)</span>' +
+            '<button type="button" class="btn btn-primary btn-sm" id="fbCopyPromptBtn">' + U().esc(t.copyBtn) + '</button></div>' +
+          '<textarea id="fbMasterPromptBox" rows="6" readonly style="width:100%;font-family:monospace;font-size:.76rem;background:var(--bg2)">' + U().esc(CONVERTER_MASTER_PROMPT) + '</textarea>' +
+        '</div>' +
+        '<label class="conv-drop" id="fbMdDropZone" style="padding:12px;margin-bottom:8px">' +
+          '<strong>' + U().esc(t.dropLabel) + '</strong>' +
+          '<input type="file" id="fbMdFileInput" accept=".md,.txt,text/markdown,text/plain" hidden>' +
+        '</label>' +
+        '<textarea id="fbMdPasteArea" rows="6" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="' + U().esc(t.pastePh) + '"></textarea>' +
+        '<div class="modal-actions">' +
+          '<button type="button" class="btn btn-outline" id="fbCloseBtn">' + U().esc(t.closeBtn) + '</button>' +
+          '<button type="button" class="btn btn-emerald" id="fbImportBtn">' + U().esc(t.importBtn) + '</button>' +
+        '</div>' +
+      '</div></div>';
+
+    U().on("fbCloseBtn", "click", function () { host.innerHTML = ""; });
+    U().on("fbCopyPromptBtn", "click", function () {
+      const btn = U().$("fbCopyPromptBtn");
+      U().copyText(CONVERTER_MASTER_PROMPT, "CONVERTER_MASTER_PROMPT");
+      if (btn) {
+        btn.textContent = t.copied;
+        setTimeout(function () { if (btn) btn.textContent = t.copyBtn; }, 2200);
+      }
+    });
+    const loadMdFile = function (file) {
+      if (!file) return;
+      readFileAsText(file).then(function (txt) {
+        const area = U().$("fbMdPasteArea");
+        if (area) area.value = txt;
+        if (importLocalMarkdown(txt, file.name)) host.innerHTML = "";
+      }).catch(function () { U().showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc file .md.", "error"); });
+    };
+    U().on("fbMdFileInput", "change", function (ev) {
+      const f = ev.target.files && ev.target.files[0];
+      if (f) loadMdFile(f);
+      ev.target.value = "";
+    });
+    const dz = U().$("fbMdDropZone");
+    if (dz) {
+      dz.addEventListener("dragover", function (ev) { ev.preventDefault(); dz.classList.add("drag-over"); });
+      dz.addEventListener("dragleave", function () { dz.classList.remove("drag-over"); });
+      dz.addEventListener("drop", function (ev) {
+        ev.preventDefault();
+        dz.classList.remove("drag-over");
+        const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+        if (f) loadMdFile(f);
+      });
+    }
+    U().on("fbImportBtn", "click", function () {
+      const area = U().$("fbMdPasteArea");
+      const val = area ? area.value : "";
+      if (importLocalMarkdown(val, "External AI Markdown")) host.innerHTML = "";
+    });
+  }
+
+  function loadLegacyExam(legacyInput) {
+    if (!legacyInput) return false;
+    if (typeof legacyInput === "string") {
+      if (D() && /^---\s*\n[\s\S]*?mode\s*:/i.test(legacyInput.trim())) {
+        const p = D().createIncrementalParser();
+        p.append(legacyInput);
+        const doc = p.finish();
+        cState.docMeta = doc.meta;
+        cState.contexts = doc.contexts || {};
+        cState.questions = (doc.questions || []).map(digitizerQToConvItem).filter(Boolean);
+        cState.studyNoteMarkdown = doc.studyNoteMarkdown || "";
+        cState.rawMarkdown = legacyInput;
+      } else {
+        cState.questions = parseMarkdown(legacyInput);
+      }
+    } else {
+      const arr = Array.isArray(legacyInput) ? legacyInput : (Array.isArray(legacyInput.questions) ? legacyInput.questions : []);
+      const doc = D() ? D().fromLegacyQuestions(arr, { title: legacyInput.title || "", subject: legacyInput.tag || "" }) : null;
+      if (doc) {
+        cState.docMeta = doc.meta;
+        cState.contexts = doc.contexts || {};
+        cState.questions = (doc.questions || []).map(digitizerQToConvItem).filter(Boolean);
+        cState.rawMarkdown = D().exportToMarkdown(doc);
+      } else {
+        cState.questions = arr.map(toConvItem).filter(Boolean);
+      }
+    }
+    cState.viewMode = "digitizer";
+    renderConverter();
+    return true;
   }
 
   function renderReviewCard(item) {
@@ -2960,6 +3990,7 @@
     else if (act === "clear-files") clearUnifiedFiles();
     else if (act === "del-file") removeUnifiedFile(Number(b.getAttribute("data-idx")));
     else if (act === "run-smart") runSmartUploadPipeline();
+    else if (act === "open-fallback") openManualFallbackModal("");
     else if (act === "stop-ai") { if (cState.abortCtrl) cState.abortCtrl.abort(); }
     else if (act === "view-tpl") showTemplateModal();
     else if (act === "down-tpl") U().downloadTemplate();
@@ -2984,6 +4015,47 @@
     else if (act === "double-check") runDoubleCheck();
     else if (act === "exp-xlsx") doExport("xlsx", false);
     else if (act === "exp-csv") doExport("csv", false);
+    else if (act === "exp-md") doExportMarkdown();
+    else if (act === "save-drive") doSaveToLibraryAndDrive();
+    else if (act === "retry-chunk") retryFailedChunk(Number(b.getAttribute("data-chunk-idx")));
+    else if (act === "ai-explain") explainSingleQuestionOnDemand(Number(b.getAttribute("data-idx")));
+    else if (act === "pin-ctx") {
+      const cid = b.getAttribute("data-ctx") || "";
+      if (cid && cState.contexts[cid]) {
+        cState.pinnedContextId = cid;
+        renderConverter();
+      }
+    }
+    else if (act === "ans-mcq") {
+      const qIdx = Number(b.getAttribute("data-idx"));
+      const opt = Number(b.getAttribute("data-opt"));
+      if (!cState.userAnswers[qIdx]) cState.userAnswers[qIdx] = {};
+      cState.userAnswers[qIdx].mcq = opt;
+      const q = cState.questions[qIdx];
+      if (q && q.contextId && cState.contexts[q.contextId]) cState.pinnedContextId = q.contextId;
+      renderConverter();
+    }
+    else if (act === "ans-tf") {
+      const qIdx = Number(b.getAttribute("data-idx"));
+      const tfKey = b.getAttribute("data-tfkey");
+      const tfVal = b.getAttribute("data-tfval") === "true";
+      if (!cState.userAnswers[qIdx]) cState.userAnswers[qIdx] = {};
+      if (!cState.userAnswers[qIdx].tf) cState.userAnswers[qIdx].tf = {};
+      cState.userAnswers[qIdx].tf[tfKey] = tfVal;
+      renderConverter();
+    }
+    else if (act === "ans-short-check") {
+      const qIdx = Number(b.getAttribute("data-idx"));
+      if (!cState.userAnswers[qIdx]) cState.userAnswers[qIdx] = {};
+      cState.userAnswers[qIdx].shortChecked = true;
+      renderConverter();
+    }
+    else if (act === "toggle-essay-guide") {
+      const qIdx = Number(b.getAttribute("data-idx"));
+      if (!cState.userAnswers[qIdx]) cState.userAnswers[qIdx] = {};
+      cState.userAnswers[qIdx].showGuide = !cState.userAnswers[qIdx].showGuide;
+      renderConverter();
+    }
     else if (act === "one-click-import") doOneClickImport();
     else if (act === "send-studio") {
       const v = validateAll();
@@ -3021,7 +4093,7 @@
     }
     else if (act === "del-q") { cState.questions.splice(Number(b.getAttribute("data-idx")), 1); renderConverter(); }
     else if (act === "verify-all") { cState.questions.forEach(function (q) { q.verified = true; q.suspect = false; }); renderConverter(); U().showToast("\u0110\u00e3 \u0111\u00e1nh d\u1ea5u duy\u1ec7t t\u1ea5t c\u1ea3 c\u00e2u h\u1ecfi.", "success"); }
-    else if (act === "clear-all") { U().showConfirm("X\u00f3a b\u1ea3ng", "X\u00f3a to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi trong AI Converter?", function () { cState.questions = []; renderConverter(); }); }
+    else if (act === "clear-all") { U().showConfirm("X\u00f3a b\u1ea3ng", "X\u00f3a to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi trong AI Converter?", function () { cState.questions = []; cState.contexts = {}; cState.pinnedContextId = ""; cState.studyNoteMarkdown = ""; cState.rawMarkdown = ""; cState.chunkStates = []; cState.userAnswers = {}; cState.docMeta = { title: "", subject: "", mode: "EXAM", total_questions: 0, duration_minutes: 45 }; renderConverter(); }); }
     else if (act === "zoom") { cState.imgZoom = U().clamp(cState.imgZoom + Number(b.getAttribute("data-val")), 50, 250); renderConverter(); }
     else if (act === "img-prev") { cState.activeImgIdx = Math.max(0, cState.activeImgIdx - 1); renderConverter(); }
     else if (act === "img-next") { cState.activeImgIdx = Math.min(cState.images.length - 1, cState.activeImgIdx + 1); renderConverter(); }
@@ -3032,6 +4104,13 @@
     const t = e.target;
     if (!t) return;
     if (t.id === "convUnifiedInput") { addUnifiedFiles(t.files); t.value = ""; }
+    else if (t.id === "convDirectMdInput") {
+      const f = t.files && t.files[0];
+      if (f) {
+        readFileAsText(f).then(function (txt) { importLocalMarkdown(txt, f.name); }).catch(function () { U().showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc file .md.", "error"); });
+      }
+      t.value = "";
+    }
     else if (t.id === "cSubject") cState.subject = t.value;
     else if (t.id === "cAnsFmt") cState.ansFormat = t.value;
     else if (t.id === "cDefTime") cState.defaultTime = Math.max(5, parseInt(t.value, 10) || 30);
@@ -3058,6 +4137,17 @@
       cState.pasteText = t.value;
       const runBtn = U().$("convSmartRunBtn");
       if (runBtn) runBtn.disabled = cState.busy || (cState.files.length === 0 && !cState.pasteText.trim());
+    }
+    else if (t.hasAttribute("data-ans-short")) {
+      const qIdx = Number(t.getAttribute("data-ans-short"));
+      if (!cState.userAnswers[qIdx]) cState.userAnswers[qIdx] = {};
+      cState.userAnswers[qIdx].short = t.value;
+      cState.userAnswers[qIdx].shortChecked = false;
+    }
+    else if (t.hasAttribute("data-ans-essay")) {
+      const qIdx = Number(t.getAttribute("data-ans-essay"));
+      if (!cState.userAnswers[qIdx]) cState.userAnswers[qIdx] = {};
+      cState.userAnswers[qIdx].essay = t.value;
     }
     else if (t.hasAttribute("data-cedit")) {
       const q = cState.questions[Number(t.getAttribute("data-idx"))];
@@ -3088,13 +4178,18 @@
   }
 
   window.UETConverter = {
+    CONVERTER_MASTER_PROMPT: CONVERTER_MASTER_PROMPT,
     renderConverter: renderConverter,
     renderApiPage: renderApiPage,
     renderApiGuide: renderApiGuide,
     hasPersonalKeys: hasPersonalKeys,
     openTypedDeleteAllModal: openTypedDeleteAllModal,
+    openManualFallbackModal: openManualFallbackModal,
+    importLocalMarkdown: importLocalMarkdown,
     resetAdminVerifyCache: resetAdminVerifyCache,
     applySubRoute: applySubRoute,
+    loadLegacyExam: loadLegacyExam,
+    exportMarkdown: doExportMarkdown,
     getValidQuestions: function () { return validateAll().validItems; }
   };
 })();

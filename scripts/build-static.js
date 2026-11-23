@@ -12,6 +12,7 @@ const STATIC_FILES = [
   "style.css",
   "vocab.css",
   "ai-providers-config.js",
+  "digitizer-engine.js",
   "app.js",
   "converter.js",
   "studio.js",

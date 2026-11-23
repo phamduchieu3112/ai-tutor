@@ -27,6 +27,7 @@
       endpoint: "https://api.groq.com/openai/v1/chat/completions",
       testEndpoint: "https://api.groq.com/openai/v1/models",
       format: "openai",
+      supportsStreaming: true,
       freeTierSummary: "Mi\u1ec5n ph\u00ed (~30 RPM / 1.000 RPD), t\u1ed1c \u0111\u1ed9 LPU si\u00eau nhanh, h\u1ed7 tr\u1ee3 \u0111\u1ecdc \u1ea3nh \u0111\u1ec1 thi (Vision) v\u1edbi Qwen 3.6 27B, kh\u00f4ng c\u1ea7n th\u1ebb t\u00edn d\u1ee5ng.",
       guideSteps: [
         "M\u1edf https://console.groq.com/keys v\u00e0 \u0111\u0103ng nh\u1eadp b\u1eb1ng t\u00e0i kho\u1ea3n Google ho\u1eb7c GitHub (kh\u00f4ng c\u1ea7n th\u1ebb Visa).",
@@ -75,6 +76,7 @@
       endpoint: "https://openrouter.ai/api/v1/chat/completions",
       testEndpoint: "https://openrouter.ai/api/v1/key",
       format: "openai",
+      supportsStreaming: true,
       freeTierSummary: "Mi\u1ec5n ph\u00ed 20 RPM / 50 RPD (t\u0103ng l\u00ean 1.000 RPD khi n\u1ea1p t\u1ed1i thi\u1ec3u $10 m\u1ed9t l\u1ea7n). D\u00f9ng openrouter/free \u0111\u1ec3 t\u1ef1 \u0111\u1ed9ng \u0111\u1ecbnh tuy\u1ebfn model :free \u0111ang ho\u1ea1t \u0111\u1ed9ng.",
       guideSteps: [
         "Truy c\u1eadp https://openrouter.ai/keys v\u00e0 \u0111\u0103ng nh\u1eadp b\u1eb1ng t\u00e0i kho\u1ea3n Google ho\u1eb7c GitHub.",
@@ -141,6 +143,7 @@
       endpoint: "https://generativelanguage.googleapis.com/v1beta/models/",
       testEndpoint: "https://generativelanguage.googleapis.com/v1beta/models",
       format: "gemini",
+      supportsStreaming: true,
       freeTierSummary: "C\u00f3 g\u00f3i mi\u1ec5n ph\u00ed theo d\u1ef1 \u00e1n (RPM/TPM/RPD), ng\u1eef c\u1ea3nh r\u1ea5t d\u00e0i (1M+ token), \u0111\u1ecdc PDF scan, \u1ea3nh c\u00f4ng th\u1ee9c v\u00e0 ti\u1ebfng Vi\u1ec7t r\u1ea5t t\u1ed1t.",
       guideSteps: [
         "M\u1edf https://aistudio.google.com/apikey v\u00e0 \u0111\u0103ng nh\u1eadp b\u1eb1ng t\u00e0i kho\u1ea3n Google c\u1ee7a b\u1ea1n.",
@@ -207,6 +210,7 @@
       endpoint: "https://api.openai.com/v1/chat/completions",
       testEndpoint: "https://api.openai.com/v1/models",
       format: "openai",
+      supportsStreaming: true,
       freeTierSummary: "D\u1ecbch v\u1ee5 tr\u1ea3 ph\u00ed theo token (c\u1ea7n n\u1ea1p t\u1ed1i thi\u1ec3u $5 v\u00e0o Billing), ch\u1ea5t l\u01b0\u1ee3ng Vision & tu\u00e2n th\u1ee7 JSON \u1ed5n \u0111\u1ecbnh cao.",
       guideSteps: [
         "Truy c\u1eadp https://platform.openai.com/api-keys v\u00e0 \u0111\u0103ng nh\u1eadp t\u00e0i kho\u1ea3n OpenAI.",
@@ -264,6 +268,7 @@
       endpoint: "https://api.deepseek.com/chat/completions",
       testEndpoint: "https://api.deepseek.com/models",
       format: "openai",
+      supportsStreaming: true,
       freeTierSummary: "Chi ph\u00ed r\u1ea5t r\u1ebb (~$0.25/1M input), c\u1ef1c m\u1ea1nh khi gi\u1ea3i b\u00e0i t\u1eadp To\u00e1n/L\u00fd/H\u00f3a v\u00e0 suy lu\u1eadn logic b\u1eb1ng v\u0103n b\u1ea3n (kh\u00f4ng h\u1ed7 tr\u1ee3 \u0111\u1ecdc \u1ea3nh Vision).",
       guideSteps: [
         "M\u1edf https://platform.deepseek.com/api_keys v\u00e0 \u0111\u0103ng nh\u1eadp t\u00e0i kho\u1ea3n DeepSeek.",
@@ -356,8 +361,11 @@
     return { valid: true, reason: "S\u1eb5n s\u00e0ng (ki\u1ec3m tra tr\u1ef1c ti\u1ebfp qua API)" };
   }
 
+  const DEFAULT_STREAMING = true;
+
   return {
     DEFAULT_MODEL_ID: DEFAULT_MODEL_ID,
+    DEFAULT_STREAMING: DEFAULT_STREAMING,
     PROVIDERS: PROVIDERS,
     PROVIDER_MAP: PROVIDER_MAP,
     ALLOWED_MODELS: ALLOWED_MODELS,

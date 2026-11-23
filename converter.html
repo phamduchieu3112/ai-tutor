@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
   <link rel="stylesheet" href="/vocab.css?v=20261123a" />
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="/digitizer-engine.js?v=20261123b"></script>
   <script defer src="/vocab.js?v=20261123a"></script>
   <script>
     tailwind.config = {
@@ -145,11 +146,11 @@
 
           <div class="space-y-1.5 text-xs text-slate-700 pt-1">
             <label class="flex items-center gap-2 cursor-pointer">
-              <input id="optAutoSolve" type="checkbox" checked class="rounded text-[#5347CD] focus:ring-[#5347CD]" />
-              <span>T&#x1ef1; &#x111;&#x1ed9;ng nh&#x1edd; AI gi&#x1ea3;i n&#x1ebf;u c&#xe2;u ch&#x1b0;a c&#xf3; &#x111;&#xe1;p &#xe1;n</span>
+              <input id="optAutoSolve" type="checkbox" class="rounded text-[#5347CD] focus:ring-[#5347CD]" />
+              <span><strong>T&#x1ef1; &#x111;&#x1ed9;ng gi&#x1ea3;i chi ti&#x1ebf;t</strong> <span class="text-slate-500">(T&#x1eaf;t = nhanh 3x, ti&#x1ebf;t ki&#x1ec7;m ~65% token)</span></span>
             </label>
             <label class="flex items-center gap-2 cursor-pointer">
-              <input id="optAutoExport" type="checkbox" checked class="rounded text-[#5347CD] focus:ring-[#5347CD]" />
+              <input id="optAutoExport" type="checkbox" class="rounded text-[#5347CD] focus:ring-[#5347CD]" />
               <span>T&#x1ef1; &#x111;&#x1ed9;ng t&#x1ea1;o &amp; t&#x1ea3;i file Excel sau khi AI ho&#xe0;n t&#x1ea5;t</span>
             </label>
             <label class="flex items-center gap-2 cursor-pointer">
@@ -170,7 +171,7 @@
                 <span id="btnRunOcrText">AI &#x111;&#x1ecd;c &#x1ea3;nh &amp; tr&#xed;ch xu&#x1ea5;t c&#xe2;u h&#x1ecf;i</span>
               </button>
               <button id="btnStopAi" type="button" class="hidden px-3 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition">
-                D&#x1eeb;ng l&#x1ea1;i
+                D&#x1eeb;ng chuy&#x1ec3;n &#x111;&#x1ed5;i
               </button>
             </div>
             <!-- Real-time Progress Bar -->
@@ -344,6 +345,10 @@
               Xu&#x1ea5;t CSV (UTF-8)
             </button>
           </div>
+          <button id="btnExportMd" type="button" disabled
+            class="w-full py-2 px-3 bg-[#5347CD] hover:bg-[#4338CA] disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-sm transition">
+            ⬇ T&#x1ea3;i xu&#x1ed1;ng file .md (Chu&#x1ea9;n Digitizer)
+          </button>
         </div>
       </section>
     </div>
@@ -918,6 +923,9 @@
 
       /* ======================== GEMINI API ENGINE ======================== */
       function buildOcrSystemPrompt(subject, keepPrefix) {
+        if (window.AIDigitizer && window.AIDigitizer.MASTER_SYSTEM_PROMPT) {
+          return window.AIDigitizer.MASTER_SYSTEM_PROMPT;
+        }
         const subjectGuide = {
           math: `CH\u1ebe \u0110\u1ed8 CHUY\u00caN TO\u00c1N - L\u00dd - H\u00d3A:
 - M\u1ecdi c\u00f4ng th\u1ee9c to\u00e1n h\u1ecdc, bi\u1ec3u th\u1ee9c, bi\u1ebfn s\u1ed1, s\u1ed1 m\u0169, ch\u1ec9 s\u1ed1, ph\u00e2n s\u1ed1, c\u0103n th\u1ee9c, t\u00edch ph\u00e2n, gi\u1edbi h\u1ea1n, logarit, h\u1ec7 ph\u01b0\u01a1ng tr\u00ecnh, ma tr\u1eadn, vect\u01a1, g\u00f3c, k\u00fd hi\u1ec7u t\u1eadp h\u1ee3p B\u1eaeT BU\u1ed8C ph\u1ea3i vi\u1ebft b\u1eb1ng LaTeX chu\u1ea9n v\u00e0 b\u1ecdc trong $...$ (inline) ho\u1eb7c $$...$$ (block).
@@ -1334,8 +1342,8 @@ QUY T\u1eaeC B\u1eaeT BU\u1ed8C:
         $('statMissing').textContent = missing;
 
         const hasData = total > 0;
-        ['btnExportXlsx', 'btnExportCsv', 'btnExportXlsxTop', 'btnExportCsvTop', 'btnClearAllQ'].forEach(id => {
-          $(id).disabled = !hasData;
+        ['btnExportXlsx', 'btnExportCsv', 'btnExportMd', 'btnExportXlsxTop', 'btnExportCsvTop', 'btnClearAllQ'].forEach(id => {
+          if ($(id)) $(id).disabled = !hasData;
         });
         $('btnSolveMissing').disabled = state.isBusy || missing === 0;
 
@@ -1801,6 +1809,22 @@ QUY T\u1eaeC B\u1eaeT BU\u1ed8C:
             ['modalConfirm', 'modalEdit', 'modalTemplate'].forEach(id => $(id).classList.add('hidden'));
           }
         });
+
+        if ($('btnExportMd')) {
+          $('btnExportMd').addEventListener('click', () => {
+            if (!state.questions.length) return;
+            const md = (window.AIDigitizer && typeof window.AIDigitizer.exportToMarkdown === 'function')
+              ? window.AIDigitizer.exportToMarkdown(window.AIDigitizer.fromLegacyQuestions(state.questions, { title: 'UET Master Exam' }))
+              : state.questions.map((q, i) => `### C\u00e2u ${i + 1}\n${q.text}\n` + q.options.filter(Boolean).map((o, k) => `- ${LETTERS[k]}. ${o}`).join('\n')).join('\n\n');
+            const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `AI_Tutor_Digitized_${new Date().toISOString().slice(0, 10)}.md`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            showToast('\u0110\u00e3 t\u1ea3i xu\u1ed1ng file .md chu\u1ea9n Digitizer!', 'success');
+          });
+        }
 
         renderTable();
       }

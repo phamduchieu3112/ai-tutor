@@ -1393,3 +1393,23 @@
     background: #fff !important;
   }
 }
+
+
+/* ===== V3.3 Cambridge Dictionary, Independent Decks & Two-Tier Semantic Grading ===== */
+.vocab-studio-container .vs-dict-illus { flex-shrink: 0; color: var(--brand, #5347CD); }
+.vocab-studio-container .vs-cefr { background: var(--brand, #5347CD); color: #fff; font-weight: 800; }
+.vocab-studio-container .vs-badge-verified { background: rgba(53,139,113,.15); color: #15803d; font-weight: 700; }
+.vocab-studio-container .vs-badge-ai { background: rgba(83,71,205,.12); color: var(--brand, #5347CD); font-weight: 700; }
+.vocab-studio-container .vs-also-in { margin-top: 6px; font-size: 12px; color: var(--muted, #64748b); }
+.vocab-studio-container .vs-btn-xs { padding: 3px 8px; font-size: 11px; border-radius: 6px; }
+.vocab-studio-container .vs-senses-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.vocab-studio-container .vs-sense-card { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border, #e2e8f0); border-radius: 10px; background: var(--bg2, #f8fafc); cursor: pointer; }
+.vocab-studio-container .vs-sense-ex { display: flex; align-items: flex-start; gap: 6px; margin-top: 4px; font-size: 12.5px; }
+.vocab-studio-container .vs-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.vocab-studio-container .vs-chip-link { padding: 4px 10px; font-size: 12px; border-radius: 999px; border: 1px solid var(--border, #cbd5e1); background: var(--card, #fff); color: var(--brand, #5347CD); cursor: pointer; font-weight: 600; }
+.vocab-studio-container .vs-chip-link:hover { background: var(--brand, #5347CD); color: #fff; border-color: var(--brand, #5347CD); }
+.vocab-studio-container .vs-grade-correct { border-left: 4px solid #16a34a; background: rgba(22,163,74,.1); }
+.vocab-studio-container .vs-grade-partial { border-left: 4px solid #d97706; background: rgba(217,119,6,.12); }
+.vocab-studio-container .vs-grade-incorrect { border-left: 4px solid #dc2626; background: rgba(220,38,38,.1); }
+.vocab-studio-container .vs-btn-accept { padding: 7px 12px; border-radius: 8px; border: 1px solid #d97706; background: #fef3c7; color: #92400e; font-weight: 700; cursor: pointer; font-size: 13px; }
+.vocab-studio-container .vs-btn-accept:hover { background: #fde68a; }

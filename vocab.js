@@ -1412,20 +1412,36 @@
     toast(editingWord ? "Đã cập nhật từ" : "Đã thêm từ mới", "success");
   }
 
-  /* ===== MODULE: Deck CRUD ===== */
+  /* ===== MODULE: Independent Decks CRUD & Cross-Deck Info ===== */
+  function getOtherDecksForWord(enText, excludeDeckId) {
+    const norm = String(enText || "").trim().toLowerCase();
+    if (!norm) return [];
+    const deckMap = {};
+    activeDecks().forEach(function (d) { deckMap[d.id] = d.name; });
+    const names = [];
+    activeWords().forEach(function (w) {
+      if (w.deckId !== excludeDeckId && String(w.en || "").trim().toLowerCase() === norm) {
+        const dn = deckMap[w.deckId];
+        if (dn && names.indexOf(dn) === -1) names.push(dn);
+      }
+    });
+    return names;
+  }
+
   function renderDecks() {
     const listEl = $("vsDeckList");
     if (!listEl) return;
-    listEl.innerHTML = activeDecks().map(function (d) {
+    const decks = activeDecks();
+    listEl.innerHTML = decks.map(function (d) {
       const cnt = activeWords().filter(function (w) { return w.deckId === d.id; }).length;
       return '<div class="vs-panel vs-deck-panel">' +
         '<span class="vs-deck-icon">' + ico("folder") + "</span>" +
         "<h2>" + esc(d.name) + "</h2>" +
-        "<p>" + cnt + " từ " + (d.id === DEFAULT_DECK ? "· Bộ mặc định" : "") + "</p>" +
+        "<p>" + cnt + " t\u1eeb \u00b7 B\u1ed9 \u0111\u1ed9c l\u1eadp</p>" +
         '<div class="vs-row">' +
-          '<button type="button" data-vs-study-deck="' + esc(d.id) + '">Mở bộ từ ' + ico("arrow-up-right") + "</button>" +
-          '<button type="button" class="vs-quiet vs-icon-btn" data-vs-rename-deck="' + esc(d.id) + '" title="Đổi tên">' + ico("pencil") + "</button>" +
-          (d.id !== DEFAULT_DECK ? '<button type="button" class="vs-quiet vs-icon-btn vs-danger" data-vs-delete-deck="' + esc(d.id) + '" title="Xóa">' + ico("trash-2") + "</button>" : "") +
+          '<button type="button" data-vs-study-deck="' + esc(d.id) + '">M\u1edf b\u1ed9 t\u1eeb ' + ico("arrow-up-right") + "</button>" +
+          '<button type="button" class="vs-quiet vs-icon-btn" data-vs-rename-deck="' + esc(d.id) + '" title="\u0110\u1ed5i t\u00ean">' + ico("pencil") + "</button>" +
+          (decks.length > 1 ? '<button type="button" class="vs-quiet vs-icon-btn vs-danger" data-vs-delete-deck="' + esc(d.id) + '" title="X\u00f3a">' + ico("trash-2") + "</button>" : "") +
         "</div>" +
       "</div>";
     }).join("");
@@ -1476,7 +1492,9 @@
   }
 
   function deleteDeck(id) {
-    if (id === DEFAULT_DECK) throw new Error("Không xóa bộ mặc định");
+    const remaining = activeDecks().filter(function (d) { return d.id !== id; });
+    if (remaining.length === 0) throw new Error("C\u1ea7n gi\u1eef l\u1ea1i \u00edt nh\u1ea5t 1 b\u1ed9 t\u1eeb \u0111\u1ed9c l\u1eadp.");
+    const fallbackDeck = remaining[0];
     const doDelete = function () {
       VocabStorageService.commit(function (d) {
         const deck = d.decks.find(function (x) { return x.id === id; });
@@ -1486,16 +1504,19 @@
         }
         d.words.forEach(function (w) {
           if (w.deckId === id) {
-            w.deckId = DEFAULT_DECK;
+            w.deckId = fallbackDeck.id;
             w.updatedAt = Math.max(Date.now(), w.updatedAt + 1);
           }
         });
       });
-      toast("Đã xóa bộ; các từ đã về bộ mặc định", "info");
+      if (deckFilter === id) deckFilter = "all";
+      if (dictDeck === id) dictDeck = fallbackDeck.id;
+      toast("\u0110\u00e3 x\u00f3a b\u1ed9 t\u1eeb; c\u00e1c th\u1ebb \u0111\u00e3 \u0111\u01b0\u1ee3c chuy\u1ec3n an to\u00e0n sang \"" + fallbackDeck.name + "\".", "info");
     };
+    const msg = "X\u00f3a b\u1ed9 t\u1eeb n\u00e0y? C\u00e1c t\u1eeb b\u00ean trong s\u1ebd \u0111\u01b0\u1ee3c chuy\u1ec3n an to\u00e0n sang \"" + fallbackDeck.name + "\", kh\u00f4ng b\u1ecb x\u00f3a.";
     if (U() && typeof U().showConfirm === "function") {
-      U().showConfirm("Xóa bộ từ", "Xóa bộ từ này? Các từ bên trong sẽ được chuyển về bộ mặc định, không bị xóa.", doDelete);
-    } else if (confirm("Xóa bộ từ? Các từ sẽ chuyển về bộ mặc định, không bị xóa.")) {
+      U().showConfirm("X\u00f3a b\u1ed9 t\u1eeb", msg, doDelete);
+    } else if (confirm(msg)) {
       doDelete();
     }
   }
@@ -1887,15 +1908,235 @@
     return { id: word.id, word: clone(word), answer: answer, options: options };
   }
 
+  /* ===== MODULE: Smart Master Review (Deduplicated Multi-Deck Pool) & Two-Tier AI Semantic Grading ===== */
+  const smartReviewState = {
+    selectedDecks: [], // array of deckIds; empty = all active decks
+    syncedKeys: new Set() // idempotency guard: sessionId:normalizedWord
+  };
+
+  function buildDeduplicatedReviewPool(selectedDeckIds) {
+    const decks = activeDecks();
+    const deckMap = {};
+    decks.forEach(function (d) { deckMap[d.id] = d.name; });
+    const ids = Array.isArray(selectedDeckIds) && selectedDeckIds.length > 0
+      ? selectedDeckIds
+      : decks.map(function (d) { return d.id; });
+    const idSet = new Set(ids);
+
+    const rawWords = activeWords().filter(function (w) { return idSet.has(w.deckId); });
+    const byNorm = {};
+    const order = [];
+
+    rawWords.forEach(function (w) {
+      const norm = String(w.en || "").trim().toLowerCase();
+      if (!norm) return;
+      const copyRef = { deckId: w.deckId, deckName: deckMap[w.deckId] || w.deckId, wordId: w.id };
+      if (!byNorm[norm]) {
+        byNorm[norm] = {
+          id: w.id,
+          normalizedKey: norm,
+          en: w.en,
+          viList: w.vi ? [w.vi] : [],
+          exampleList: w.example ? [w.example] : [],
+          posList: w.pos ? [w.pos] : [],
+          ipa: w.ipa || "",
+          audioUrl: w.audioUrl || "",
+          deckId: w.deckId,
+          starred: !!w.starred,
+          sourceCopies: [copyRef]
+        };
+        order.push(norm);
+      } else {
+        const entry = byNorm[norm];
+        entry.sourceCopies.push(copyRef);
+        if (w.vi && entry.viList.indexOf(w.vi) === -1) entry.viList.push(w.vi);
+        if (w.example && entry.exampleList.indexOf(w.example) === -1) entry.exampleList.push(w.example);
+        if (w.pos && entry.posList.indexOf(w.pos) === -1) entry.posList.push(w.pos);
+        if (!entry.ipa && w.ipa) entry.ipa = w.ipa;
+        if (!entry.audioUrl && w.audioUrl) entry.audioUrl = w.audioUrl;
+        if (w.starred) entry.starred = true;
+      }
+    });
+
+    const pool = order.map(function (norm) {
+      const e = byNorm[norm];
+      return {
+        id: e.id,
+        normalizedKey: e.normalizedKey,
+        en: e.en,
+        vi: e.viList.join(" / "),
+        example: e.exampleList.join(" | "),
+        pos: e.posList.join(", "),
+        ipa: e.ipa,
+        audioUrl: e.audioUrl,
+        deckId: e.deckId,
+        starred: e.starred,
+        sourceCopies: e.sourceCopies,
+        mergedCount: e.sourceCopies.length
+      };
+    });
+
+    const mergedDuplicates = Math.max(0, rawWords.length - pool.length);
+    return {
+      pool: pool,
+      rawCount: rawWords.length,
+      uniqueCount: pool.length,
+      mergedDuplicates: mergedDuplicates,
+      summary: mergedDuplicates > 0
+        ? (rawWords.length + " th\u1ebb t\u1eeb " + ids.length + " b\u1ed9 \u0111\u01b0\u1ee3c g\u1ed9p th\u00e0nh " + pool.length + " t\u1eeb duy nh\u1ea5t (\u0111\u00e3 kh\u1eed " + mergedDuplicates + " tr\u00f9ng l\u1eb7p).")
+        : (pool.length + " t\u1eeb duy nh\u1ea5t t\u1eeb " + ids.length + " b\u1ed9 t\u1eeb.")
+    };
+  }
+
+  function syncMasteryToCopies(sessionId, card, isCorrect, allowOverride) {
+    if (!card) return false;
+    const norm = card.normalizedKey || String(card.en || "").trim().toLowerCase();
+    const guardKey = String(sessionId || "s") + ":" + norm + (allowOverride ? ":override" : "");
+    if (smartReviewState.syncedKeys.has(guardKey)) return false;
+    smartReviewState.syncedKeys.add(guardKey);
+
+    const copyIds = Array.isArray(card.sourceCopies) && card.sourceCopies.length > 0
+      ? card.sourceCopies.map(function (c) { return c.wordId; })
+      : [card.id];
+    const idSet = new Set(copyIds);
+
+    VocabStorageService.commit(function (d) {
+      let updatedAny = false;
+      const today = localDay();
+      d.words.forEach(function (w, idx) {
+        if (!w || w.deleted || !idSet.has(w.id)) return;
+        const graded = scheduleGrade(w, isCorrect ? 3 : 1, today);
+        if (isCorrect && allowOverride) graded.starred = false;
+        d.words[idx] = graded;
+        updatedAny = true;
+      });
+      if (updatedAny && !allowOverride) recordStudy(d, isCorrect);
+    });
+    return true;
+  }
+
+  function logVocabMistakeToNotebook(q, userResponse, feedbackText) {
+    try {
+      if (!U() || !U().KEYS || !U().KEYS.mistakes) return;
+      const mk = U().loadObj(U().KEYS.mistakes);
+      const key = "vocab_" + String((q.word && q.word.en) || q.id || Date.now()).trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      mk[key] = {
+        id: key,
+        deckId: "vocab_studio",
+        deckTitle: "Vocab Studio",
+        text: (q.word ? (q.word.en + " — " + q.word.vi) : q.answer),
+        options: [q.answer, userResponse || "(Tr\u1ed1ng)"],
+        correct: [0],
+        explanation: feedbackText || ("B\u1ea1n tr\u1ea3 l\u1eddi: \"" + userResponse + "\". \u0110\u00e1p \u00e1n chu\u1ea9n: " + q.answer),
+        wrongCount: ((mk[key] && mk[key].wrongCount) || 0) + 1,
+        lastWrongAt: new Date().toISOString()
+      };
+      U().saveJSON(U().KEYS.mistakes, mk);
+    } catch (e) { /* ignore */ }
+  }
+
+  /* Tier 1 – Exact Match (0 LLM tokens, preserves meaningful grammatical distinctions) */
+  function gradeTier1Exact(userInput, expectedRaw) {
+    const cleanUser = String(userInput || "").normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
+    const expectedStr = String(expectedRaw || "").trim();
+    const variants = expectedStr.split(/[\/|;]/).map(function (v) {
+      return v.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
+    }).filter(Boolean);
+    const exact = !!cleanUser && variants.indexOf(cleanUser) !== -1;
+    if (exact) {
+      return {
+        tier: 1,
+        status: "CORRECT",
+        score: 100,
+        feedback: "Ch\u00ednh x\u00e1c tuy\u1ec7t \u0111\u1ed1i (Tier 1 Exact Match \u2022 0 token).",
+        expected_answer: expectedStr
+      };
+    }
+    return null;
+  }
+
+  /* Tier 2 – Semantic AI Evaluation (temperature: 0.1, validated JSON 0-100) */
+  async function gradeTier2Semantic(userInput, expectedRaw, direction, wordObj) {
+    const expectedStr = String(expectedRaw || "").trim();
+    const lang = (U() && U().state && U().state.lang) || "vi";
+    const langName = lang === "en" ? "English" : (lang === "ja" ? "Japanese" : "Vietnamese");
+    const prompt =
+      "Evaluate the student's vocabulary quiz answer.\n" +
+      "Direction: " + direction + "\n" +
+      "Prompt word: " + (direction === "vi-en" ? (wordObj && wordObj.vi || "") : (wordObj && wordObj.en || "")) + "\n" +
+      "Reference answer: " + expectedStr + "\n" +
+      "Student answer: " + String(userInput || "").trim() + "\n\n" +
+      "Rules:\n" +
+      "- Accept valid synonyms or semantically equivalent phrasing.\n" +
+      "- Distinguish minor spelling mistakes (PARTIAL, 60-85) from meaning-changing errors (INCORRECT, 0-40).\n" +
+      "- Return STRICT JSON ONLY matching this exact schema:\n" +
+      '{"status":"CORRECT|PARTIAL|INCORRECT","score":0,"feedback":"1-2 sentence explanation in ' + langName + '","expected_answer":"' + expectedStr.replace(/"/g, '\\"') + '"}';
+
+    try {
+      const u = U() && U().state && U().state.user;
+      const hdr = { "Content-Type": "application/json" };
+      if (u && u.email) hdr["X-User-Email"] = u.email;
+      if (u && u.credential) hdr["Authorization"] = "Bearer " + u.credential;
+
+      const res = await fetch("/api/ai/proxy", {
+        method: "POST",
+        headers: hdr,
+        body: JSON.stringify({
+          provider: "gemini",
+          model: "gemini-2.5-flash",
+          stream: false,
+          payload: {
+            systemInstruction: { parts: [{ text: "You are a strict, fair bilingual language grading engine. Output valid JSON only." }] },
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.1, responseMimeType: "application/json", maxOutputTokens: 256 }
+          }
+        })
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      const rawText = (data && data.text) ||
+        (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) ||
+        (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+      const jsonMatch = String(rawText).match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("Invalid JSON");
+      const parsed = JSON.parse(jsonMatch[0]);
+      const validStatuses = ["CORRECT", "PARTIAL", "INCORRECT"];
+      const status = validStatuses.indexOf(String(parsed.status || "").toUpperCase()) !== -1
+        ? String(parsed.status).toUpperCase()
+        : "INCORRECT";
+      const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || (status === "CORRECT" ? 100 : (status === "PARTIAL" ? 65 : 0)))));
+      const feedback = typeof parsed.feedback === "string" && parsed.feedback.trim()
+        ? parsed.feedback.trim().slice(0, 320)
+        : (status === "CORRECT" ? "Ch\u00ednh x\u00e1c v\u1ec1 m\u1eb7t ng\u1eef ngh\u0129a." : "\u0110\u00e1p \u00e1n ch\u01b0a kh\u1edbp ng\u1eef ngh\u0129a.");
+      const expected_answer = typeof parsed.expected_answer === "string" && parsed.expected_answer.trim()
+        ? parsed.expected_answer.trim()
+        : expectedStr;
+      return { tier: 2, status: status, score: score, feedback: feedback, expected_answer: expected_answer };
+    } catch (err) {
+      // Safe fallback without fabricating an AI semantic evaluation
+      return {
+        tier: 1,
+        status: "INCORRECT",
+        score: 0,
+        feedback: "AI ch\u1ea5m ng\u1eef ngh\u0129a t\u1ea1m kh\u00f4ng kh\u1ea3 d\u1ee5ng \u2014 \u0111\u00e3 \u0111\u1ed1i chi\u1ebfu theo \u0111\u00e1p \u00e1n chu\u1ea9n.",
+        expected_answer: expectedStr,
+        fallback: true
+      };
+    }
+  }
+
   function quizPool() {
+    if (quizConfig.source === "smart") {
+      return buildDeduplicatedReviewPool(smartReviewState.selectedDecks).pool;
+    }
     return activeWords().filter(function (w) {
       return (quizConfig.deck === "all" || w.deckId === quizConfig.deck) && (quizConfig.source !== "starred" || w.starred);
     });
   }
 
   function startQuiz(retry) {
-    if (VocabStorageService.blocked) throw new Error("Hãy khôi phục bộ nhớ trước khi bắt đầu kiểm tra");
-    let pool, direction, type, listenStyle;
+    if (VocabStorageService.blocked) throw new Error("H\u00e3y kh\u00f4i ph\u1ee5c b\u1ed9 nh\u1edb tr\u01b0\u1edbc khi b\u1eaft \u0111\u1ea7u ki\u1ec3m tra");
+    let pool, direction, type, listenStyle, dedupSummary = "";
     if (retry && quizSession) {
       const ids = new Set(quizSession.records.filter(function (r) { return !r.correct; }).map(function (r) { return r.id; }));
       pool = activeWords().filter(function (w) { return ids.has(w.id); });
@@ -1903,25 +2144,34 @@
       type = quizSession.type;
       listenStyle = quizSession.listenStyle;
     } else {
-      if (quizConfig.source === "deck" && quizConfig.deck === "all") throw new Error("Hãy chọn một bộ từ để kiểm tra");
-      pool = quizPool();
+      if (quizConfig.source === "deck" && quizConfig.deck === "all") throw new Error("H\u00e3y ch\u1ecdn m\u1ed9t b\u1ed9 t\u1eeb \u0111\u1ec3 ki\u1ec3m tra");
+      if (quizConfig.source === "smart") {
+        const res = buildDeduplicatedReviewPool(smartReviewState.selectedDecks);
+        pool = res.pool;
+        dedupSummary = res.summary;
+      } else {
+        pool = quizPool();
+      }
       direction = VocabStorageService.data.settings.direction;
       type = quizConfig.type;
       listenStyle = quizConfig.listenStyle;
     }
     const requested = retry ? pool.length : (quizConfig.count === "all" ? pool.length : Number(quizConfig.count));
     pool = randomOrder(pool).slice(0, requested);
-    if (!pool.length) throw new Error("Chưa có từ phù hợp trong nguồn đã chọn");
+    if (!pool.length) throw new Error("Ch\u01b0a c\u00f3 t\u1eeb ph\u00f9 h\u1ee3p trong ngu\u1ed3n \u0111\u00e3 ch\u1ecdn");
     const choiceMode = type === "mcq" || (type === "listening" && listenStyle === "choice");
     const questions = pool.map(function (w) { return makeQuestion(w, direction, choiceMode); });
     quizSession = {
+      sessionId: "vsess_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
       direction: direction,
       type: type,
       listenStyle: listenStyle,
+      dedupSummary: dedupSummary,
       questions: questions,
       index: 0,
       records: [],
       feedback: null,
+      gradingBusy: false,
       draft: ""
     };
     renderQuiz();
@@ -1942,43 +2192,84 @@
     }), 120);
   }
 
-  function submitQuiz(input, choiceIndex) {
+  async function submitQuiz(input, choiceIndex) {
     const s = quizSession, q = quizCurrent();
-    if (!s || !q || s.feedback) return;
+    if (!s || !q || s.feedback || s.gradingBusy) return;
     const choiceMode = s.type === "mcq" || (s.type === "listening" && s.listenStyle === "choice");
     if (!choiceMode && !String(input || "").trim()) {
-      toast("Hãy nhập câu trả lời trước khi chấm", "warning");
+      toast("H\u00e3y nh\u1eadp c\u00e2u tr\u1ea3 l\u1eddi tr\u01b0\u1edbc khi ch\u1ea5m", "warning");
       return;
     }
     if (choiceMode && (!Number.isInteger(choiceIndex) || !q.options[choiceIndex])) {
-      throw new Error("Đáp án không hợp lệ");
+      throw new Error("\u0110\u00e1p \u00e1n kh\u00f4ng h\u1ee3p l\u1ec7");
     }
-    const correct = choiceMode ? q.options[choiceIndex].correct : matchesAnswer(input, q.answer);
+
     const answer = choiceMode ? q.options[choiceIndex].text : String(input).trim();
-    VocabStorageService.commit(function (d) {
-      const w = d.words.find(function (x) { return x.id === q.id; });
-      if (!w || w.deleted) throw new Error("Từ đã bị xóa; hãy thoát và tạo bài kiểm tra mới");
-      if (!correct) {
-        const now = Math.max(Date.now(), w.updatedAt + 1, w.starredAt + 1);
-        w.starred = true;
-        w.starredAt = now;
-        w.updatedAt = now;
+    let gradeRes;
+    if (choiceMode) {
+      const ok = !!q.options[choiceIndex].correct;
+      gradeRes = { tier: 1, status: ok ? "CORRECT" : "INCORRECT", score: ok ? 100 : 0, feedback: ok ? "Ch\u00ednh x\u00e1c!" : "Ch\u01b0a \u0111\u00fang.", expected_answer: q.answer };
+    } else {
+      gradeRes = gradeTier1Exact(answer, q.answer);
+      if (!gradeRes) {
+        s.gradingBusy = true;
+        renderQuiz();
+        gradeRes = await gradeTier2Semantic(answer, q.answer, s.direction, q.word);
+        s.gradingBusy = false;
+        if (quizSession !== s) return;
       }
-      recordStudy(d, correct);
-    });
-    s.feedback = { correct: correct, answer: answer, choiceIndex: choiceIndex };
+    }
+
+    const isCorrect = gradeRes.status === "CORRECT";
+    syncMasteryToCopies(s.sessionId, q.word, isCorrect, false);
+    if (gradeRes.status === "INCORRECT") {
+      logVocabMistakeToNotebook(q, answer, gradeRes.feedback);
+    }
+
+    s.feedback = {
+      correct: isCorrect,
+      status: gradeRes.status,
+      score: gradeRes.score,
+      tier: gradeRes.tier,
+      explanation: gradeRes.feedback,
+      expectedAnswer: gradeRes.expected_answer || q.answer,
+      answer: answer,
+      choiceIndex: choiceIndex
+    };
     s.records.push({
       id: q.id,
+      word: q.word,
       question: s.type === "listening" ? ("Nghe: " + q.word.en) : (s.direction === "vi-en" ? q.word.vi : q.word.en),
       answer: q.answer,
       response: answer,
-      correct: correct
+      status: gradeRes.status,
+      score: gradeRes.score,
+      correct: isCorrect
     });
     renderQuiz();
     renderStats();
     renderDailyBanner();
     const nextBtn = $("vsQuizNext");
     if (nextBtn) nextBtn.focus({ preventScroll: true });
+  }
+
+  function acceptPartialAnswer() {
+    const s = quizSession, q = quizCurrent();
+    if (!s || !q || !s.feedback || s.feedback.status !== "PARTIAL") return;
+    s.feedback.status = "CORRECT";
+    s.feedback.correct = true;
+    s.feedback.score = 100;
+    s.feedback.explanation = "\u0110\u00e3 ch\u1ea5p nh\u1eadn l\u00e0 \u0110\u00fang (Override) v\u00e0 \u0111\u1ed3ng b\u1ed9 ti\u1ebfn \u0111\u1ed9.";
+    const lastRec = s.records[s.records.length - 1];
+    if (lastRec && lastRec.id === q.id) {
+      lastRec.status = "CORRECT";
+      lastRec.correct = true;
+      lastRec.score = 100;
+    }
+    syncMasteryToCopies(s.sessionId, q.word, true, true);
+    renderQuiz();
+    renderStats();
+    toast("\u0110\u00e3 ch\u1ea5p nh\u1eadn c\u00e2u tr\u1ea3 l\u1eddi l\u00e0 \u0110\u00fang!", "success");
   }
 
   function planQuizDirection(direction) {
@@ -2052,24 +2343,38 @@
             '<option value="vi-en" ' + (VocabStorageService.data.settings.direction === "vi-en" ? "selected" : "") + ">Việt → Anh</option>" +
             '<option value="en-vi" ' + (VocabStorageService.data.settings.direction === "en-vi" ? "selected" : "") + ">Anh → Việt</option>" +
           "</select></label>" +
-          '<label>Nguồn câu hỏi<select id="vsQuizSource">' +
-            '<option value="all" ' + (quizConfig.source === "all" ? "selected" : "") + ">Tất cả</option>" +
-            '<option value="starred" ' + (quizConfig.source === "starred" ? "selected" : "") + ">Từ cần ôn · Gắn sao</option>" +
-            '<option value="deck" ' + (quizConfig.source === "deck" ? "selected" : "") + ">Theo bộ từ</option>" +
+          '<label>Ngu\u1ed3n c\u00e2u h\u1ecfi<select id="vsQuizSource">' +
+            '<option value="all" ' + (quizConfig.source === "all" ? "selected" : "") + ">T\u1ea5t c\u1ea3</option>" +
+            '<option value="smart" ' + (quizConfig.source === "smart" ? "selected" : "") + ">⚡ Smart Master Review (\u0110a b\u1ed9 t\u1eeb \u2022 Kh\u1eed tr\u00f9ng)</option>" +
+            '<option value="starred" ' + (quizConfig.source === "starred" ? "selected" : "") + ">T\u1eeb c\u1ea7n \u00f4n \u00b7 G\u1eafn sao</option>" +
+            '<option value="deck" ' + (quizConfig.source === "deck" ? "selected" : "") + ">Theo 1 b\u1ed9 t\u1eeb</option>" +
           "</select></label>" +
-          '<label>Bộ từ<select id="vsQuizDeck">' + deckOptions(quizConfig.deck) + "</select></label>" +
-          '<label>Số câu<select id="vsQuizCount">' +
+          (quizConfig.source === "smart"
+            ? '<div class="vs-wide" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid var(--vs-border, #e2e8f0);border-radius:10px">' +
+                '<span class="vs-muted" style="width:100%;font-size:12px;font-weight:700">Ch\u1ecdn nhi\u1ec1u b\u1ed9 t\u1eeb cho Smart Master Review (\u0111\u1ec3 tr\u1ed1ng = t\u1ea5t c\u1ea3):</span>' +
+                activeDecks().map(function (dk) {
+                  const checked = smartReviewState.selectedDecks.indexOf(dk.id) !== -1;
+                  return '<label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:4px 8px;border-radius:8px;background:var(--vs-surface2, #f8fafc);cursor:pointer">' +
+                    '<input type="checkbox" data-vs-smart-deck="' + esc(dk.id) + '"' + (checked ? " checked" : "") + '> ' + esc(dk.name) + '</label>';
+                }).join("") +
+              '</div>'
+            : '<label>B\u1ed9 t\u1eeb<select id="vsQuizDeck">' + deckOptions(quizConfig.deck) + "</select></label>") +
+          '<label>S\u1ed1 c\u00e2u<select id="vsQuizCount">' +
             ["10", "20", "all"].map(function (v) {
-              return '<option value="' + v + '" ' + (quizConfig.count === v ? "selected" : "") + ">" + (v === "all" ? "Tất cả" : v + " câu") + "</option>";
+              return '<option value="' + v + '" ' + (quizConfig.count === v ? "selected" : "") + ">" + (v === "all" ? "T\u1ea5t c\u1ea3" : v + " c\u00e2u") + "</option>";
             }).join("") +
           "</select></label>" +
           (quizConfig.type === "listening"
-            ? '<label>Cách trả lời khi nghe<select id="vsQuizListenStyle">' +
-                '<option value="choice" ' + (quizConfig.listenStyle === "choice" ? "selected" : "") + ">Nghe chọn · 4 đáp án</option>" +
-                '<option value="write" ' + (quizConfig.listenStyle === "write" ? "selected" : "") + ">Nghe viết</option>" +
+            ? '<label>C\u00e1ch tr\u1ea3 l\u1eddi khi nghe<select id="vsQuizListenStyle">' +
+                '<option value="choice" ' + (quizConfig.listenStyle === "choice" ? "selected" : "") + ">Nghe ch\u1ecdn \u00b7 4 \u0111\u00e1p \u00e1n</option>" +
+                '<option value="write" ' + (quizConfig.listenStyle === "write" ? "selected" : "") + ">Nghe vi\u1ebft</option>" +
               "</select></label>"
             : "") +
-          '<div class="vs-wide vs-setup-note">' + quizPool().length + " từ trong nguồn · Đáp án nhiễu lấy từ toàn bộ kho từ.</div>" +
+          '<div class="vs-wide vs-setup-note">' +
+            (quizConfig.source === "smart"
+              ? esc(buildDeduplicatedReviewPool(smartReviewState.selectedDecks).summary)
+              : (quizPool().length + " t\u1eeb trong ngu\u1ed3n \u00b7 Ch\u1ea5m \u0111i\u1ec3m 2 t\u1ea7ng (Exact Match + AI Semantic).")) +
+          '</div>' +
           '<button type="button" class="vs-primary vs-wide" data-vs-action="startQuiz">' + ico("play") + "<span>Bắt đầu kiểm tra</span></button>" +
         "</div></div>";
       return;
@@ -2119,9 +2424,25 @@
             const cls = f ? (o.correct ? "correct" : (f.choiceIndex === i ? "incorrect" : "")) : "";
             return '<button type="button" class="vs-choice ' + cls + '" data-vs-quiz-choice="' + i + '" ' + (f ? "disabled" : "") + '><span class="vs-mono">' + String.fromCharCode(65 + i) + ".</span><span>" + esc(o.text) + "</span></button>";
           }).join("") + "</div>"
-        : '<form id="vsQuizAnswerForm" class="vs-write-form"><input id="vsQuizInput" value="' + esc(s.draft) + '" placeholder="Nhập ' + (s.direction === "vi-en" ? "từ tiếng Anh" : "nghĩa tiếng Việt") + '…" autocomplete="off" maxlength="1000" ' + (f ? "disabled" : "") + '><button class="vs-primary" type="submit" ' + (f ? "disabled" : "") + ">Chấm câu trả lời</button></form>") +
+        : '<form id="vsQuizAnswerForm" class="vs-write-form"><input id="vsQuizInput" value="' + esc(s.draft) + '" placeholder="Nh\u1eadp ' + (s.direction === "vi-en" ? "t\u1eeb ti\u1ebfng Anh" : "ngh\u0129a ti\u1ebfng Vi\u1ec7t") + '\u2026" autocomplete="off" maxlength="1000" ' + (f || s.gradingBusy ? "disabled" : "") + '><button class="vs-primary" type="submit" ' + (f || s.gradingBusy ? "disabled" : "") + ">" + (s.gradingBusy ? "🤖 AI \u0111ang ch\u1ea5m ng\u1eef ngh\u0129a\u2026" : "Ch\u1ea5m c\u00e2u tr\u1ea3 l\u1eddi") + "</button></form>") +
       (f
-        ? '<div class="vs-feedback ' + (f.correct ? "" : "wrong") + '" role="status"><strong>' + (f.correct ? "Chính xác" : "Chưa đúng · Đã lưu ôn") + "</strong><p>Đáp án: " + esc(q.answer) + '</p><button type="button" id="vsQuizNext" class="vs-primary" data-vs-action="nextQuiz"><span>' + (s.index + 1 === total ? "Xem kết quả" : "Câu tiếp theo") + "</span>" + ico("arrow-right") + "</button></div>"
+        ? (function () {
+            const st = f.status || (f.correct ? "CORRECT" : "INCORRECT");
+            const cls = st === "CORRECT" ? "vs-grade-correct" : (st === "PARTIAL" ? "vs-grade-partial" : "wrong vs-grade-incorrect");
+            const heading = st === "CORRECT"
+              ? ("✅ CORRECT (" + (f.score != null ? f.score : 100) + "/100)")
+              : (st === "PARTIAL"
+                ? ("🟡 PARTIAL (" + (f.score != null ? f.score : 65) + "/100)")
+                : ("❌ INCORRECT (" + (f.score != null ? f.score : 0) + "/100) \u00b7 \u0110\u00e3 l\u01b0u S\u1ed5 tay sai"));
+            return '<div class="vs-feedback ' + cls + '" role="status">' +
+              '<strong>' + heading + '</strong>' +
+              (f.explanation ? '<p style="margin:4px 0">' + esc(f.explanation) + '</p>' : '') +
+              '<p>\u0110\u00e1p \u00e1n chu\u1ea9n: <strong>' + esc(f.expectedAnswer || q.answer) + '</strong></p>' +
+              '<div class="vs-row" style="margin-top:8px;gap:8px;flex-wrap:wrap">' +
+                (st === "PARTIAL" ? '<button type="button" class="vs-btn-accept" data-vs-action="acceptPartial">✓ Accept as Correct</button>' : '') +
+                '<button type="button" id="vsQuizNext" class="vs-primary" data-vs-action="nextQuiz"><span>' + (s.index + 1 === total ? "Xem k\u1ebft qu\u1ea3" : "C\u00e2u ti\u1ebfp theo") + "</span>" + ico("arrow-right") + "</button>" +
+              '</div></div>';
+          })()
         : "");
   }
 
@@ -2306,14 +2627,120 @@
     const ipaHit = phonetics.find(function (p) { return p && p.text; });
     const defHit = definitions.find(function (d) { return d && d.definition; });
     const exHit = definitions.find(function (d) { return d && d.example; });
+    const ukAudioHit = phonetics.find(function (p) { return safeHTTPS(p && p.audio) && /-uk\.mp3/i.test(p.audio); });
+    const usAudioHit = phonetics.find(function (p) { return safeHTTPS(p && p.audio) && /-us\.mp3/i.test(p.audio); });
+    const ukIpaHit = phonetics.find(function (p) { return p && p.text && /-uk\.mp3/i.test(String(p.audio || "")); });
+    const usIpaHit = phonetics.find(function (p) { return p && p.text && /-us\.mp3/i.test(String(p.audio || "")); });
+    const senses = [];
+    const synSet = new Set();
+    const antSet = new Set();
+    meanings.forEach(function (m) {
+      const mPos = String((m && m.partOfSpeech) || "").trim();
+      (Array.isArray(m && m.synonyms) ? m.synonyms : []).forEach(function (s) { if (s) synSet.add(String(s).trim()); });
+      (Array.isArray(m && m.antonyms) ? m.antonyms : []).forEach(function (a) { if (a) antSet.add(String(a).trim()); });
+      (Array.isArray(m && m.definitions) ? m.definitions : []).slice(0, 3).forEach(function (d, idx) {
+        if (!d || !d.definition || senses.length >= 6) return;
+        (Array.isArray(d.synonyms) ? d.synonyms : []).forEach(function (s) { if (s) synSet.add(String(s).trim()); });
+        (Array.isArray(d.antonyms) ? d.antonyms : []).forEach(function (a) { if (a) antSet.add(String(a).trim()); });
+        senses.push({
+          id: "s_" + senses.length + "_" + idx,
+          pos: mPos,
+          defEn: String(d.definition || "").trim(),
+          defVi: "",
+          grammarPattern: "",
+          examples: d.example ? [{ en: String(d.example).trim(), vi: "" }] : [],
+          selected: senses.length === 0,
+          verified: true
+        });
+      });
+    });
     return {
-      en: String(first.word || word),
-      ipa: String(first.phonetic || (ipaHit && ipaHit.text) || ""),
-      audioUrl: safeHTTPS(audioHit && audioHit.audio),
-      pos: Array.from(new Set(meanings.map(function (m) { return m.partOfSpeech; }).filter(Boolean))).join(", "),
+      en: String(first.word || word).trim(),
+      ipa: String(first.phonetic || (ipaHit && ipaHit.text) || "").trim(),
+      ukIpa: String((ukIpaHit && ukIpaHit.text) || first.phonetic || (ipaHit && ipaHit.text) || "").trim(),
+      usIpa: String((usIpaHit && usIpaHit.text) || "").trim(),
+      audioUrl: safeHTTPS((usAudioHit && usAudioHit.audio) || (ukAudioHit && ukAudioHit.audio) || (audioHit && audioHit.audio) || ""),
+      ukAudio: safeHTTPS((ukAudioHit && ukAudioHit.audio) || ""),
+      usAudio: safeHTTPS((usAudioHit && usAudioHit.audio) || ""),
+      pos: Array.from(new Set(meanings.map(function (m) { return m.partOfSpeech; }).filter(Boolean))).slice(0, 3).join(", "),
       definition: String((defHit && defHit.definition) || ""),
-      example: String((exHit && exHit.example) || "")
+      example: String((exHit && exHit.example) || ""),
+      senses: senses,
+      synonyms: Array.from(synSet).slice(0, 10),
+      antonyms: Array.from(antSet).slice(0, 10),
+      verifiedDict: true
     };
+  }
+
+  /* Hybrid AI Enrichment (NEVER fabricates IPA or audio; clearly flagged as aiEnriched) */
+  async function enrichDictionaryWithAI(result, signal) {
+    if (!result || !result.en) return result;
+    try {
+      const u = U() && U().state && U().state.user;
+      const hdr = { "Content-Type": "application/json" };
+      if (u && u.email) hdr["X-User-Email"] = u.email;
+      if (u && u.credential) hdr["Authorization"] = "Bearer " + u.credential;
+      const prompt =
+        "Provide structured Cambridge-style learner enrichment for the English word: \"" + result.en + "\".\n" +
+        "Do NOT generate IPA or audio URLs.\n" +
+        "Return STRICT JSON ONLY:\n" +
+        '{"cefr":"A1|A2|B1|B2|C1|C2","syllables":"e.g. ex\u00b7am\u00b7ple","collocations":["..."],"wordFamily":["..."],"senses":[{"pos":"noun|verb|adj","defVi":"Vietnamese meaning","defEn":"concise English definition","grammarPattern":"e.g. [C] / + to V","examples":[{"en":"...","vi":"..."}]}]}';
+      const res = await fetch("/api/ai/proxy", {
+        method: "POST",
+        headers: hdr,
+        signal: signal,
+        body: JSON.stringify({
+          provider: "gemini",
+          model: "gemini-2.5-flash",
+          stream: false,
+          payload: {
+            systemInstruction: { parts: [{ text: "You are a bilingual Cambridge lexicographer. Return strict JSON only." }] },
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.1, responseMimeType: "application/json", maxOutputTokens: 700 }
+          }
+        })
+      });
+      if (!res.ok) return result;
+      const data = await res.json();
+      const rawText = (data && data.text) ||
+        (data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) ||
+        (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+      const m = String(rawText).match(/\{[\s\S]*\}/);
+      if (!m) return result;
+      const ai = JSON.parse(m[0]);
+      if (/^(A1|A2|B1|B2|C1|C2)$/i.test(String(ai.cefr || "").trim())) result.cefr = String(ai.cefr).trim().toUpperCase();
+      if (typeof ai.syllables === "string" && ai.syllables.trim()) result.syllables = ai.syllables.trim();
+      if (Array.isArray(ai.collocations)) result.collocations = ai.collocations.map(String).filter(Boolean).slice(0, 8);
+      if (Array.isArray(ai.wordFamily)) result.wordFamily = ai.wordFamily.map(String).filter(Boolean).slice(0, 8);
+      if (Array.isArray(ai.senses) && ai.senses.length > 0) {
+        if (!Array.isArray(result.senses) || result.senses.length === 0) {
+          result.senses = ai.senses.slice(0, 4).map(function (s, i) {
+            return {
+              id: "ai_s_" + i,
+              pos: String(s.pos || result.pos || ""),
+              defEn: String(s.defEn || ""),
+              defVi: String(s.defVi || result.vi || ""),
+              grammarPattern: String(s.grammarPattern || ""),
+              examples: Array.isArray(s.examples) ? s.examples.slice(0, 3) : [],
+              selected: i === 0,
+              verified: false
+            };
+          });
+        } else {
+          result.senses.forEach(function (vs, idx) {
+            const match = ai.senses[idx] || ai.senses[0];
+            if (!match) return;
+            if (!vs.defVi && match.defVi) vs.defVi = String(match.defVi);
+            if (!vs.grammarPattern && match.grammarPattern) vs.grammarPattern = String(match.grammarPattern);
+            if ((!vs.examples || vs.examples.length < 2) && Array.isArray(match.examples)) {
+              vs.examples = (vs.examples || []).concat(match.examples.slice(0, 2)).slice(0, 3);
+            }
+          });
+        }
+      }
+      result.aiEnriched = true;
+    } catch (e) { /* graceful fallback without AI enrichment */ }
+    return result;
   }
 
   async function lookupTerm(q, selected, signal) {
@@ -2361,7 +2788,10 @@
       return Object.assign({}, cached.result, { source: "stale-cache", cachedAt: cached.cachedAt });
     }
     if (notFound) result.warnings.push("Chưa có IPA hoặc ví dụ từ điển; vẫn có thể lưu bản dịch hoặc nhập tay.");
-    if (!translated && !detailsOK) throw failures[0] || apiError("network", "Không lấy được kết quả");
+    if (!translated && !detailsOK) throw failures[0] || apiError("network", "Kh\u00f4ng l\u1ea5y \u0111\u01b0\u1ee3c k\u1ebft qu\u1ea3");
+    if (result.en) {
+      await enrichDictionaryWithAI(result, signal);
+    }
     if (translated && (detailsOK || notFound)) DictCache.put(key, result);
     return Object.assign({}, result, { source: "api" });
   }
@@ -2458,62 +2888,124 @@
     if (!resBox || !resBody) return;
     resBox.hidden = !r;
     if (!r) { resBody.innerHTML = ""; return; }
+    const otherDecks = getOtherDecksForWord(r.en, dictDeck);
+    const senses = Array.isArray(r.senses) && r.senses.length > 0
+      ? r.senses
+      : [{ id: "s_0", pos: r.pos || "", defEn: r.definition || "", defVi: r.vi || "", grammarPattern: "", examples: r.example ? [{ en: r.example, vi: "" }] : [], selected: true, verified: !!r.verifiedDict }];
+    r.senses = senses;
+
+    const svgFallback = '<svg class="vs-dict-svg" viewBox="0 0 64 64" width="52" height="52" aria-hidden="true">' +
+      '<rect width="64" height="64" rx="14" fill="currentColor" opacity="0.1"/>' +
+      '<text x="32" y="40" text-anchor="middle" font-size="26" font-weight="800" fill="currentColor">' + esc((r.en || "W").charAt(0).toUpperCase()) + '</text></svg>';
+
     resBody.innerHTML =
-      '<div class="vs-row vs-between">' +
-        '<div><div class="vs-eyebrow">' + (r.direction === "vi-en" ? "VIỆT → ANH" : "ANH → VIỆT") + '</div><h2 class="vs-dict-word">' + esc(r.en || "Chưa có từ tiếng Anh") + "</h2>" +
-        (r.ipa ? '<p class="vs-mono vs-muted">' + esc(r.ipa) + "</p>" : "") + "</div>" +
-        '<button type="button" class="vs-icon-btn" data-vs-action="speakDictionary" title="Nghe phát âm" ' + (r.en ? "" : "disabled") + ">" + ico("volume-2") + "</button>" +
-      "</div>" +
+      '<div class="vs-row vs-between" style="align-items:flex-start;gap:12px">' +
+        '<div style="display:flex;gap:12px;align-items:flex-start;flex:1;min-width:0">' +
+          '<div class="vs-dict-illus">' + svgFallback + '</div>' +
+          '<div style="min-width:0">' +
+            '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
+              '<span class="vs-eyebrow">' + (r.direction === "vi-en" ? "VI\u1ec6T \u2192 ANH" : "ANH \u2192 VI\u1ec6T") + '</span>' +
+              (r.cefr ? '<span class="vs-pill vs-cefr">' + esc(r.cefr) + '</span>' : '') +
+              (r.verifiedDict ? '<span class="vs-pill vs-badge-verified">✓ Verified Dictionary</span>' : '') +
+              (r.aiEnriched ? '<span class="vs-pill vs-badge-ai">✨ AI Enrichment</span>' : '') +
+            '</div>' +
+            '<h2 class="vs-dict-word">' + esc(r.en || "Ch\u01b0a c\u00f3 t\u1eeb ti\u1ebfng Anh") +
+              (r.syllables ? ' <span class="vs-muted" style="font-size:13px;font-weight:500">(' + esc(r.syllables) + ')</span>' : '') +
+            '</h2>' +
+            '<div class="vs-row" style="gap:10px;flex-wrap:wrap;margin-top:4px">' +
+              (r.ukIpa ? '<span class="vs-mono vs-muted">UK ' + esc(r.ukIpa) + '</span>' : (r.ipa ? '<span class="vs-mono vs-muted">' + esc(r.ipa) + '</span>' : '')) +
+              (r.ukAudio ? '<button type="button" class="vs-quiet vs-btn-xs" data-vs-dict-audio="uk" title="Ph\u00e1t \u00e2m UK">🔊 UK</button>' : '') +
+              (r.usIpa ? '<span class="vs-mono vs-muted">US ' + esc(r.usIpa) + '</span>' : '') +
+              (r.usAudio ? '<button type="button" class="vs-quiet vs-btn-xs" data-vs-dict-audio="us" title="Ph\u00e1t \u00e2m US">🔊 US</button>' : '') +
+              (!r.ukAudio && !r.usAudio ? '<button type="button" class="vs-icon-btn" data-vs-action="speakDictionary" title="Nghe ph\u00e1t \u00e2m" ' + (r.en ? "" : "disabled") + '>' + ico("volume-2") + '</button>' : '') +
+            '</div>' +
+            (otherDecks.length > 0 ? '<div class="vs-also-in">ℹ️ Also in: <strong>' + esc(otherDecks.join(", ")) + '</strong></div>' : '') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
       (r.pos ? '<p class="vs-dict-pos">' + esc(posLabel(r.pos)) + "</p>" : "") +
-      '<p class="vs-dict-meaning">' + esc(r.vi || "Chưa có nghĩa tiếng Việt") + "</p>" +
-      (r.definition ? '<div class="vs-dict-detail"><span>Định nghĩa tiếng Anh</span><p>' + esc(r.definition) + "</p></div>" : "") +
-      (r.example ? '<div class="vs-dict-detail"><span>Ví dụ</span><p>' + esc(r.example) + "</p></div>" : "") +
+      '<p class="vs-dict-meaning">' + esc(r.vi || "Ch\u01b0a c\u00f3 ngh\u0129a ti\u1ebfng Vi\u1ec7t") + "</p>" +
+      '<div class="vs-senses-list"><div class="vs-muted" style="font-size:12px;margin-bottom:6px;font-weight:700">Ch\u1ecdn c\u00e1c ngh\u0129a mu\u1ed1n l\u01b0u v\u00e0o b\u1ed9 t\u1eeb:</div>' +
+        senses.map(function (s, idx) {
+          return '<label class="vs-sense-card">' +
+            '<input type="checkbox" data-vs-sense-idx="' + idx + '"' + (s.selected ? " checked" : "") + '>' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+                (s.pos ? '<span class="vs-pill">' + esc(posLabel(s.pos)) + '</span>' : '') +
+                (s.grammarPattern ? '<span class="vs-pill vs-mono">' + esc(s.grammarPattern) + '</span>' : '') +
+                (s.defVi ? '<strong>' + esc(s.defVi) + '</strong>' : '') +
+              '</div>' +
+              (s.defEn ? '<p style="margin:3px 0;font-size:13px">' + esc(s.defEn) + '</p>' : '') +
+              (Array.isArray(s.examples) && s.examples.length ? s.examples.map(function (ex) {
+                const exEn = typeof ex === "string" ? ex : (ex.en || "");
+                const exVi = typeof ex === "string" ? "" : (ex.vi || "");
+                return '<div class="vs-sense-ex">' +
+                  '<button type="button" class="vs-quiet vs-btn-xs" data-vs-speak-text="' + esc(exEn) + '" title="Nghe v\u00ed d\u1ee5">🔊</button>' +
+                  '<span><em>' + esc(exEn) + '</em>' + (exVi ? (' — <span class="vs-muted">' + esc(exVi) + '</span>') : '') + '</span></div>';
+              }).join("") : '') +
+            '</div>' +
+          '</label>';
+        }).join("") +
+      '</div>' +
+      (r.synonyms && r.synonyms.length ? '<div class="vs-dict-detail"><span>\u0110\u1ed3ng ngh\u0129a (Synonyms)</span><div class="vs-chip-row">' + r.synonyms.map(function (syn) { return '<button type="button" class="vs-chip-link" data-vs-lookup-word="' + esc(syn) + '">' + esc(syn) + '</button>'; }).join("") + '</div></div>' : '') +
+      (r.antonyms && r.antonyms.length ? '<div class="vs-dict-detail"><span>Tr\u00e1i ngh\u0129a (Antonyms)</span><div class="vs-chip-row">' + r.antonyms.map(function (ant) { return '<button type="button" class="vs-chip-link" data-vs-lookup-word="' + esc(ant) + '">' + esc(ant) + '</button>'; }).join("") + '</div></div>' : '') +
+      (r.collocations && r.collocations.length ? '<div class="vs-dict-detail"><span>Collocations</span><div class="vs-chip-row">' + r.collocations.map(function (c) { return '<span class="vs-pill">' + esc(c) + '</span>'; }).join("") + '</div></div>' : '') +
+      (r.wordFamily && r.wordFamily.length ? '<div class="vs-dict-detail"><span>Word Family</span><div class="vs-chip-row">' + r.wordFamily.map(function (wf) { return '<button type="button" class="vs-chip-link" data-vs-lookup-word="' + esc(wf) + '">' + esc(wf) + '</button>'; }).join("") + '</div></div>' : '') +
       (r.warnings && r.warnings.length ? '<div class="vs-dict-notice">' + r.warnings.map(esc).join("<br>") + "</div>" : "");
     const qs = $("vsDictQuickSave");
-    if (qs) qs.disabled = !r.en || !r.vi;
+    if (qs) qs.disabled = !r.en || (!r.vi && !senses.some(function (s) { return s.selected && (s.defVi || s.defEn); }));
   }
 
   function saveDictionaryWord() {
     const r = dictionaryViews.page.result;
-    if (!r || !r.en || !r.vi) throw new Error("Hãy tự điền các trường còn thiếu trong form Thêm từ");
-    const duplicate = activeWords().find(function (w) {
-      return pair(w) === pair(r) || wordEnKey(w) === wordEnKey(r);
+    if (!r || !r.en) throw new Error("H\u00e3y t\u1ef1 \u0111i\u1ec1n c\u00e1c tr\u01b0\u1eddng c\u00f2n thi\u1ebfu trong form Th\u00eam t\u1eeb");
+    const selectedSenses = (Array.isArray(r.senses) ? r.senses : []).filter(function (s) { return s.selected; });
+    const mergedVi = selectedSenses.map(function (s) { return s.defVi; }).filter(Boolean).join("; ") || r.vi || selectedSenses.map(function (s) { return s.defEn; }).filter(Boolean).join("; ");
+    if (!mergedVi) throw new Error("H\u00e3y ch\u1ecdn \u00edt nh\u1ea5t 1 ngh\u0129a ho\u1eb7c nh\u1eadp ngh\u0129a ti\u1ebfng Vi\u1ec7t.");
+    const mergedPos = Array.from(new Set(selectedSenses.map(function (s) { return s.pos; }).filter(Boolean))).join(", ") || r.pos || "";
+    const firstExObj = selectedSenses.map(function (s) { return s.examples && s.examples[0]; }).find(Boolean);
+    const mergedEx = (firstExObj ? (typeof firstExObj === "string" ? firstExObj : firstExObj.en) : "") || r.example || "";
+
+    // Independent decks: allow same word in different decks! Only prompt if duplicate in the SAME target deck.
+    const sameDeckDup = activeWords().find(function (w) {
+      return w.deckId === dictDeck && wordEnKey(w) === wordEnKey(r);
     });
-    if (duplicate) {
+    if (sameDeckDup) {
       askDuplicatePolicyModal(1, [r.en], function (policy) {
         if (policy === "merge") {
-          VocabStorageService.updateWord(duplicate.id, {
+          VocabStorageService.updateWord(sameDeckDup.id, {
             en: r.en,
-            vi: r.vi,
-            ipa: r.ipa || duplicate.ipa,
-            pos: r.pos || duplicate.pos,
-            example: r.example || duplicate.example,
-            audioUrl: r.audioUrl || duplicate.audioUrl,
+            vi: mergedVi,
+            ipa: r.ipa || sameDeckDup.ipa,
+            pos: mergedPos || sameDeckDup.pos,
+            example: mergedEx || sameDeckDup.example,
+            audioUrl: r.audioUrl || sameDeckDup.audioUrl,
             deckId: dictDeck
           });
-          toast("Đã ghi đè từ “" + r.en + "” trong bộ từ", "success");
+          toast("\u0110\u00e3 c\u1eadp nh\u1eadt t\u1eeb \u201c" + r.en + "\u201d trong b\u1ed9 t\u1eeb", "success");
         } else {
-          toast("Đã bỏ qua từ trùng lặp", "info");
+          toast("\u0110\u00e3 b\u1ecf qua t\u1eeb tr\u00f9ng trong c\u00f9ng b\u1ed9", "info");
         }
       });
       return;
     }
+    const otherDecks = getOtherDecksForWord(r.en, dictDeck);
     VocabStorageService.commit(function (d) {
       d.words.push(wordSchema({
         id: uuid(),
         en: r.en,
-        vi: r.vi,
+        vi: mergedVi,
         ipa: r.ipa,
-        pos: r.pos,
-        example: r.example,
+        pos: mergedPos,
+        example: mergedEx,
         audioUrl: r.audioUrl,
-        unit: "",
+        unit: r.cefr || "",
         deckId: dictDeck,
         custom: true
       }));
     });
     const dk = activeDecks().find(function (d) { return d.id === dictDeck; });
-    toast("Đã lưu từ vào " + (dk ? dk.name : "bộ mặc định"), "success");
+    toast("\u0110\u00e3 l\u01b0u \u201c" + r.en + "\u201d v\u00e0o " + (dk ? dk.name : "b\u1ed9 t\u1eeb") + (otherDecks.length ? (" (Also in: " + otherDecks.join(", ") + ")") : ""), "success");
   }
 
   function openDictionaryForm() {
@@ -2730,6 +3222,7 @@
     startQuiz: function () { startQuiz(false); },
     retryQuiz: function () { startQuiz(true); },
     nextQuiz: nextQuiz,
+    acceptPartial: acceptPartialAnswer,
     exitQuiz: exitQuiz,
     speakQuiz: function () { const cur = quizCurrent(); if (cur) speak(cur.id); },
     moreWords: function () { gridLimit += 60; renderGrid(); },
@@ -2819,6 +3312,25 @@
     if (target.dataset.vsQuizChoice !== undefined) {
       event.preventDefault();
       submitQuiz("", Number(target.dataset.vsQuizChoice));
+      return;
+    }
+    if (target.dataset.vsLookupWord) {
+      const qEl = $("vsDictQuery");
+      if (qEl) { qEl.value = target.dataset.vsLookupWord; runLookup("page"); }
+      return;
+    }
+    if (target.dataset.vsDictAudio) {
+      const r = dictionaryViews.page.result;
+      if (r) {
+        const url = target.dataset.vsDictAudio === "uk" ? r.ukAudio : r.usAudio;
+        if (url) speakWordRecord({ en: r.en, audioUrl: url });
+        else speakWordRecord(r);
+      }
+      return;
+    }
+    if (target.dataset.vsSpeakText) {
+      speakWordRecord({ en: target.dataset.vsSpeakText, audioUrl: "" });
+      return;
     }
   }
 
@@ -2829,6 +3341,23 @@
       event.stopPropagation();
       VocabStorageService.updateWord(t.dataset.vsMove, { deckId: t.value });
       toast("Đã chuyển bộ từ", "success");
+      return;
+    }
+    if (t.dataset.vsSenseIdx !== undefined) {
+      const r = dictionaryViews.page.result;
+      const idx = Number(t.dataset.vsSenseIdx);
+      if (r && Array.isArray(r.senses) && r.senses[idx]) {
+        r.senses[idx].selected = !!t.checked;
+        renderDictionary();
+      }
+      return;
+    }
+    if (t.dataset.vsSmartDeck) {
+      const did = t.dataset.vsSmartDeck;
+      const pos = smartReviewState.selectedDecks.indexOf(did);
+      if (t.checked && pos === -1) smartReviewState.selectedDecks.push(did);
+      else if (!t.checked && pos !== -1) smartReviewState.selectedDecks.splice(pos, 1);
+      renderQuiz();
       return;
     }
     const id = t.id, value = t.value;
@@ -3104,6 +3633,11 @@
     render: render,
     navigate: navigate,
     storage: VocabStorageService,
+    buildDeduplicatedReviewPool: buildDeduplicatedReviewPool,
+    syncMasteryToCopies: syncMasteryToCopies,
+    gradeTier1Exact: gradeTier1Exact,
+    gradeTier2Semantic: gradeTier2Semantic,
+    getOtherDecksForWord: getOtherDecksForWord,
     exportBackupData: function () { return VocabStorageService.exportData(); },
     importBackupData: function (data, mode) {
       if (!data || typeof data !== "object") return false;

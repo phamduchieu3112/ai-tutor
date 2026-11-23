@@ -561,6 +561,28 @@ async function getShareByCode(code) {
     } catch (e) { /* fallback */ }
   } else if (info.driver === "supabase") {
     try {
+      const rows = await sbFetch("/creator_quizzes?share_code=eq." + encodeURIComponent(clean) + "&select=*");
+      if (Array.isArray(rows) && rows[0]) {
+        const r = rows[0];
+        const extra = (r.extra_fields && typeof r.extra_fields === "object") ? r.extra_fields : {};
+        return {
+          code: r.share_code || clean,
+          isPublic: r.is_public !== false,
+          createdBy: r.owner_email || "guest",
+          createdAt: r.created_at || new Date().toISOString(),
+          updatedAt: r.updated_at || r.created_at || new Date().toISOString(),
+          deck: Object.assign({}, extra, {
+            id: r.id,
+            title: r.title,
+            tag: r.tag || "T\u1ed5ng h\u1ee3p",
+            isPublic: r.is_public !== false,
+            shareCode: r.share_code || clean,
+            questions: Array.isArray(r.questions) ? r.questions : []
+          })
+        };
+      }
+    } catch (e) { /* table may not be migrated yet; fall through */ }
+    try {
       const rows = await sbFetch("/system_ai_env_state?id=eq." + encodeURIComponent("__share__:" + clean) + "&select=state_json");
       if (Array.isArray(rows) && rows[0] && rows[0].state_json) return rows[0].state_json;
     } catch (e) { /* fallback */ }
@@ -571,23 +593,63 @@ async function getShareByCode(code) {
 
 async function saveShareByCode(code, entry) {
   const clean = String(code || "").trim().toUpperCase();
-  if (!clean || !entry) return;
+  if (!clean || !entry) throw new Error("Invalid share payload");
+  const nowIso = new Date().toISOString();
+  const normalized = Object.assign({}, entry, {
+    code: clean,
+    isPublic: entry.isPublic !== false,
+    updatedAt: entry.updatedAt || nowIso
+  });
   const info = getDriverInfo();
+  let persistedRemote = false;
+
   if (info.driver === "kv") {
-    try { await kvSetJson(KV_SHARE_PREFIX + clean, entry); } catch (e) { /* fallback */ }
+    await kvSetJson(KV_SHARE_PREFIX + clean, normalized);
+    persistedRemote = true;
   } else if (info.driver === "supabase") {
+    const deck = normalized.deck || {};
+    const extraFields = {};
+    Object.keys(deck).forEach(function (k) {
+      if (["id", "title", "tag", "questions", "isPublic", "shareCode"].indexOf(k) === -1) {
+        extraFields[k] = deck[k];
+      }
+    });
+    let savedToTable = false;
     try {
+      await sbFetch("/creator_quizzes?on_conflict=id", {
+        method: "POST",
+        headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({
+          id: String(deck.id || ("qz_" + clean)),
+          owner_email: String(normalized.createdBy || "guest").toLowerCase(),
+          title: String(deck.title || "Untitled Quiz").slice(0, 300),
+          tag: String(deck.tag || "T\u1ed5ng h\u1ee3p").slice(0, 120),
+          share_code: clean,
+          is_public: normalized.isPublic !== false,
+          questions: Array.isArray(deck.questions) ? deck.questions : [],
+          extra_fields: extraFields,
+          updated_at: nowIso
+        })
+      });
+      savedToTable = true;
+      persistedRemote = true;
+    } catch (e) { /* fall back to system_ai_env_state if table not yet created */ }
+
+    if (!savedToTable) {
       await sbFetch("/system_ai_env_state?on_conflict=id", {
         method: "POST",
         headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
-        body: JSON.stringify({ id: "__share__:" + clean, state_json: entry, updated_at: new Date().toISOString() })
+        body: JSON.stringify({ id: "__share__:" + clean, state_json: normalized, updated_at: nowIso })
       });
-    } catch (e) { /* fallback */ }
+      persistedRemote = true;
+    }
   }
+
   const local = readLocalAppDbFile() || {};
   if (!local.shares || typeof local.shares !== "object") local.shares = {};
-  local.shares[clean] = entry;
+  local.shares[clean] = normalized;
   writeLocalAppDbFile(local);
+  return { persisted: true, remote: persistedRemote, driver: info.driver, entry: normalized };
 }
 
 async function getCloudUser(email) {
