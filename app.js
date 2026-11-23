@@ -35,9 +35,9 @@ function normalizeGmail(email) {
 }
 const isAdminUser = (email) => normalizeGmail(email) === "phamduchieurobotics@gmail.com";
 const DEFAULT_PAYMENT_CONFIG = {
-  bankName: "MBV Bank",
-  bankId: "970414",
-  accountNo: "31122007",
+  bankName: "MB Bank",
+  bankId: "MB",
+  accountNo: "316463",
   accountName: "PHAM DUC HIEU"
 };
 const KEYS = {
@@ -78,12 +78,12 @@ const DAY_MS = 86400000;
 /* 5-Tier Rank System (Arena of Valor inspired) */
 const TIER_ORDER = ["none", "unranked", "bronze", "silver", "gold", "diamond"];
 const TIERS = {
-  none: { name: "Ch\u01b0a x\u1ebfp h\u1ea1ng", full: "Ch\u01b0a \u0111\u0103ng k\u00fd", sub: "\u0110\u0103ng k\u00fd Unranked 0\u0111 \u0111\u1ec3 b\u1eaft \u0111\u1ea7u", price: 0, maxDecks: 3, maxQ: 50, maxImages: 5, memo: "UNRANKED", icon: "🛡️", cls: "rank-unranked" },
-  unranked: { name: "Unranked", full: "Unranked (Ch\u01b0a x\u1ebfp h\u1ea1ng)", sub: "Mi\u1ec5n ph\u00ed tr\u1ecdn \u0111\u1eddi • K\u00edch ho\u1ea1t ngay", price: 0, maxDecks: 3, maxQ: 50, maxImages: 5, memo: "UNRANKED", icon: "🛡️", cls: "rank-unranked" },
-  bronze: { name: "Bronze", full: "Bronze (\u0110\u1ed3ng)", sub: "Thanh to\u00e1n → Ch\u1edd Admin duy\u1ec7t", price: 100000, maxDecks: 15, maxQ: 200, maxImages: 20, memo: "BRONZE", icon: "🥉", cls: "rank-bronze" },
-  silver: { name: "Silver", full: "Silver (B\u1ea1c)", sub: "Thanh to\u00e1n → Ch\u1edd Admin duy\u1ec7t", price: 200000, maxDecks: 50, maxQ: 500, maxImages: 50, memo: "SILVER", icon: "🥈", cls: "rank-silver" },
-  gold: { name: "Gold", full: "Gold (V\u00e0ng)", sub: "Ph\u1ed5 bi\u1ebfn nh\u1ea5t • Ch\u1edd Admin duy\u1ec7t", price: 300000, maxDecks: Infinity, maxQ: Infinity, maxImages: 100, memo: "GOLD", icon: "🥇", cls: "rank-gold" },
-  diamond: { name: "Diamond", full: "Diamond (Kim C\u01b0\u01a1ng)", sub: "To\u00e0n quy\u1ec1n VIP • Ch\u1edd Admin duy\u1ec7t", price: 500000, maxDecks: Infinity, maxQ: Infinity, maxImages: 200, memo: "DIAMOND", icon: "💎", cls: "rank-diamond" }
+  none: { name: "Ch\u01b0a x\u1ebfp h\u1ea1ng", full: "Ch\u01b0a \u0111\u0103ng k\u00fd", sub: "\u0110\u0103ng k\u00fd Unranked 10.000\u0111/n\u0103m \u0111\u1ec3 b\u1eaft \u0111\u1ea7u", price: 0, maxDecks: 3, maxQ: 50, maxImages: 5, memo: "UNRANKED", icon: "🛡️", cls: "rank-unranked" },
+  unranked: { name: "Unranked", full: "Unranked (Ch\u01b0a x\u1ebfp h\u1ea1ng)", sub: "Thanh to\u00e1n VietQR • K\u00edch ho\u1ea1t t\u1ef1 \u0111\u1ed9ng 24/7", price: 10000, maxDecks: 3, maxQ: 50, maxImages: 5, memo: "UNRANKED", icon: "🛡️", cls: "rank-unranked" },
+  bronze: { name: "Bronze", full: "Bronze (\u0110\u1ed3ng)", sub: "Thanh to\u00e1n VietQR • K\u00edch ho\u1ea1t t\u1ef1 \u0111\u1ed9ng", price: 100000, maxDecks: 15, maxQ: 200, maxImages: 20, memo: "BRONZE", icon: "🥉", cls: "rank-bronze" },
+  silver: { name: "Silver", full: "Silver (B\u1ea1c)", sub: "Thanh to\u00e1n VietQR • K\u00edch ho\u1ea1t t\u1ef1 \u0111\u1ed9ng", price: 200000, maxDecks: 50, maxQ: 500, maxImages: 50, memo: "SILVER", icon: "🥈", cls: "rank-silver" },
+  gold: { name: "Gold", full: "Gold (V\u00e0ng)", sub: "Ph\u1ed5 bi\u1ebfn nh\u1ea5t • K\u00edch ho\u1ea1t t\u1ef1 \u0111\u1ed9ng", price: 300000, maxDecks: Infinity, maxQ: Infinity, maxImages: 100, memo: "GOLD", icon: "🥇", cls: "rank-gold" },
+  diamond: { name: "Diamond", full: "Diamond (Kim C\u01b0\u01a1ng)", sub: "To\u00e0n quy\u1ec1n VIP • K\u00edch ho\u1ea1t t\u1ef1 \u0111\u1ed9ng", price: 500000, maxDecks: Infinity, maxQ: Infinity, maxImages: 200, memo: "DIAMOND", icon: "💎", cls: "rank-diamond" }
 };
 const FEATURE_MIN = {
   mistake: 2,        // Bronze+
@@ -277,7 +277,11 @@ function openModal(id) {
   document.body.classList.add("modal-open");
   if (typeof applyI18n === "function") applyI18n(m);
 }
-function closeModal(id) { const m = $(id); if (m) m.classList.add("hidden"); if (!anyModalOpen()) document.body.classList.remove("modal-open"); }
+function closeModal(id) {
+  if (id === "checkoutModal" && typeof stopCheckoutPolling === "function") stopCheckoutPolling();
+  const m = $(id); if (m) m.classList.add("hidden");
+  if (!anyModalOpen()) document.body.classList.remove("modal-open");
+}
 function showConfirm(title, msg, onConfirm, okLabel) {
   const curLang = typeof getLang === "function" ? getLang() : "vi";
   const tr = function (s) { return typeof translateString === "function" ? translateString(String(s || ""), curLang) : s; };
@@ -2272,8 +2276,8 @@ function renderPricing() {
   setText("pricingNote", adm
     ? "👑 Admin (Diamond): B\u1ea1n c\u00f3 m\u1eb7c \u0111\u1ecbnh to\u00e0n quy\u1ec1n Diamond VIP kh\u00f4ng gi\u1edbi h\u1ea1n. B\u1ea1n c\u00f3 th\u1ec3 b\u1ea5m \"K\u00edch ho\u1ea1t ngay (Admin)\" tr\u00ean b\u1ea5t k\u1ef3 g\u00f3i n\u00e0o \u0111\u1ec3 chuy\u1ec3n \u0111\u1ed5i th\u1eed nghi\u1ec7m tr\u1ef1c ti\u1ebfp."
     : (cur === "none"
-      ? "\u0110\u0103ng k\u00fd g\u00f3i Unranked (0\u0111/n\u0103m) \u0111\u1ec3 k\u00edch ho\u1ea1t ngay l\u1eadp t\u1ee9c, ho\u1eb7c ch\u1ecdn 1 trong 4 h\u1ea1ng g\u00f3i tr\u1ea3 ph\u00ed (ch\u1edd Admin x\u00e1c nh\u1eadn)."
-      : "G\u00f3i hi\u1ec7n t\u1ea1i c\u1ee7a b\u1ea1n: " + TIERS[cur].icon + " " + TIERS[cur].full + (sub && cur !== "unranked" ? " • H\u1ebft h\u1ea1n: " + fmtDate(sub.expires) : " • Mi\u1ec5n ph\u00ed 0\u0111/n\u0103m")));
+      ? "Ch\u1ecdn g\u00f3i Unranked (10.000\u0111/n\u0103m) ho\u1eb7c 1 trong 4 h\u1ea1ng g\u00f3i cao c\u1ea5p — qu\u00e9t VietQR MB Bank \u0111\u1ec3 h\u1ec7 th\u1ed1ng SePay t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t trong v\u00e0i gi\u00e2y."
+      : "G\u00f3i hi\u1ec7n t\u1ea1i c\u1ee7a b\u1ea1n: " + TIERS[cur].icon + " " + TIERS[cur].full + (sub ? " • H\u1ebft h\u1ea1n: " + fmtDate(sub.expires) : "")));
 
   // Pending box on Pricing
   const pBox = $("pricingPendingBox");
@@ -2286,20 +2290,20 @@ function renderPricing() {
     } else { pBox.classList.add("hidden"); pBox.innerHTML = ""; }
   }
 
-  // Unranked Banner (Tier 1)
+  // Unranked Banner (Tier 1 - 10,000 VND/year via VietQR + SePay Auto Approval)
   const unBtn = adm
     ? (cur === "unranked" ? '<span class="badge badge-ok">✓ \u0110ang b\u1eadt (Admin)</span>' : '<button type="button" class="btn btn-outline btn-sm" data-admin-switch="unranked">⚡ K\u00edch ho\u1ea1t ngay (Admin)</button>')
     : (cur === "unranked"
-      ? '<span class="badge badge-ok">✓ G\u00f3i hi\u1ec7n t\u1ea1i</span>'
+      ? '<button type="button" class="btn btn-outline" data-buy="unranked">✓ G\u00f3i hi\u1ec7n t\u1ea1i (Gia h\u1ea1n 10.000\u0111)</button>'
       : (curRank > 1
         ? '<button type="button" class="btn btn-outline" disabled>B\u1ea1n \u0111\u00e3 c\u00f3 g\u00f3i cao h\u01a1n</button>'
-        : '<button type="button" class="btn btn-emerald" data-activate-free="unranked">\u0110\u0103ng k\u00fd mi\u1ec5n ph\u00ed (0\u0111)</button>'));
+        : '<button type="button" class="btn btn-emerald" data-buy="unranked">Thanh to\u00e1n VietQR (10.000\u0111/n\u0103m)</button>'));
   setHTML("unrankedBanner",
     '<div class="unranked-banner' + (cur === "unranked" ? " current" : "") + '">' +
       '<div style="flex:1;min-width:260px">' +
         '<div class="rank-head"><span class="rank-crest crest-unranked">🛡️</span><div>' +
-          '<div class="price-name">Unranked <span class="muted" style="font-weight:500;font-size:.86rem">(Ch\u01b0a x\u1ebfp h\u1ea1ng)</span> • <strong style="color:var(--emerald)">0\u0111 / n\u0103m</strong></div>' +
-          '<div class="price-sub">\u0110\u0103ng k\u00fd &amp; k\u00edch ho\u1ea1t ngay l\u1eadp t\u1ee9c – kh\u00f4ng c\u1ea7n thanh to\u00e1n, kh\u00f4ng c\u1ea7n ch\u1edd Admin duy\u1ec7t</div>' +
+          '<div class="price-name">Unranked <span class="muted" style="font-weight:500;font-size:.86rem">(Ch\u01b0a x\u1ebfp h\u1ea1ng)</span> • <strong style="color:var(--emerald)">10.000\u0111 / n\u0103m</strong></div>' +
+          '<div class="price-sub">Qu\u00e9t m\u00e3 VietQR MB Bank (316463) – t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t 1 n\u0103m qua SePay trong v\u00e0i gi\u00e2y</div>' +
         '</div></div>' +
         '<ul class="unranked-feats">' + PRICING_FEATURES.unranked.map(function (f) { return "<li>" + esc(f) + "</li>"; }).join("") + "</ul>" +
       "</div>" +
@@ -2370,60 +2374,179 @@ function checkoutAmount() {
   const pct = c.voucher ? clamp(Number(c.voucher.discountPercent) || 0, 0, 100) : 0;
   return Math.max(0, Math.round(TIERS[c.tier].price * (100 - pct) / 100));
 }
+let _checkoutPollTimer = null;
+let _checkoutPollStartedAt = 0;
+
+function stopCheckoutPolling() {
+  if (_checkoutPollTimer) {
+    clearInterval(_checkoutPollTimer);
+    _checkoutPollTimer = null;
+  }
+  _checkoutPollStartedAt = 0;
+}
+
+function setCheckoutNotice(html, tone) {
+  const modal = $("checkoutModal");
+  if (!modal) return;
+  const notice = modal.querySelector(".checkout-notice");
+  if (!notice) return;
+  notice.innerHTML = html;
+  notice.style.borderColor = tone === "ok" ? "#10b981" : tone === "warn" ? "#f59e0b" : "";
+  notice.style.background = tone === "ok" ? "rgba(16,185,129,0.10)" : tone === "warn" ? "rgba(245,158,11,0.10)" : "";
+}
+
+function startCheckoutOrderPolling(orderCode) {
+  stopCheckoutPolling();
+  if (!orderCode) return;
+  _checkoutPollStartedAt = Date.now();
+  const MAX_POLL_MS = 15 * 60 * 1000;
+
+  async function pollOnce() {
+    const modal = $("checkoutModal");
+    if (!modal || modal.classList.contains("hidden") || !state.checkout || state.checkout.orderCode !== orderCode) {
+      stopCheckoutPolling();
+      return;
+    }
+    if (Date.now() - _checkoutPollStartedAt > MAX_POLL_MS) {
+      stopCheckoutPolling();
+      setCheckoutNotice("H\u1ebft th\u1eddi gian ch\u1edd t\u1ef1 \u0111\u1ed9ng (15 ph\u00fat). N\u1ebfu b\u1ea1n \u0111\u00e3 chuy\u1ec3n kho\u1ea3n, h\u00e3y b\u1ea5m <strong>\"T\u00f4i \u0111\u00e3 thanh to\u00e1n\"</strong> \u0111\u1ec3 Admin h\u1ed7 tr\u1ee3.", "warn");
+      return;
+    }
+    try {
+      const resp = await fetch(API_BASE + "/api/orders/status?code=" + encodeURIComponent(orderCode), { credentials: "same-origin" });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const orderObj = data && (data.order || data);
+      if (!orderObj || !orderObj.status) return;
+      const status = String(orderObj.status || "").toUpperCase();
+      if (status === "PAID") {
+        stopCheckoutPolling();
+        setCheckoutNotice("\u2705 <strong>Thanh to\u00e1n th\u00e0nh c\u00f4ng!</strong> G\u00f3i c\u1ee7a b\u1ea1n \u0111\u00e3 \u0111\u01b0\u1ee3c t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t (365 ng\u00e0y).", "ok");
+        showToast("Thanh to\u00e1n th\u00e0nh c\u00f4ng! G\u00f3i \u0111\u00e3 \u0111\u01b0\u1ee3c t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t.", "success");
+        await syncWithBackend();
+        if (typeof renderAll === "function") renderAll();
+        else { renderPricing(); if (typeof updateUserUI === "function") updateUserUI(); }
+        setTimeout(function () {
+          state.checkout = null;
+          closeModal("checkoutModal");
+        }, 900);
+      } else if (status === "UNDERPAID") {
+        const paid = Number(orderObj.paidAmount || 0);
+        const expected = Number(orderObj.expectedAmount || 0);
+        setCheckoutNotice("\u26a0\ufe0f H\u1ec7 th\u1ed1ng ghi nh\u1eadn b\u1ea1n \u0111\u00e3 chuy\u1ec3n <strong>" + fmtMoney(paid) + "</strong> / <strong>" + fmtMoney(expected) + "</strong> (ch\u01b0a \u0111\u1ee7 s\u1ed1 ti\u1ec1n). Vui l\u00f2ng li\u00ean h\u1ec7 Admin ho\u1eb7c chuy\u1ec3n b\u1ed5 sung.", "warn");
+      }
+    } catch (e) {}
+  }
+
+  _checkoutPollTimer = setInterval(pollOnce, 3000);
+}
+
+async function createCheckoutServerOrder() {
+  const c = state.checkout;
+  if (!c || !state.user) return;
+  const amount = checkoutAmount();
+  if (amount <= 0) {
+    stopCheckoutPolling();
+    c.orderCode = "";
+    c.qrUrl = "";
+    renderCheckout();
+    return;
+  }
+  c.creatingOrder = true;
+  renderCheckout();
+  try {
+    const resp = await fetch(API_BASE + "/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        planId: c.tier,
+        voucherCode: c.voucher ? c.voucher.code : "",
+        userEmail: state.user.email
+      })
+    });
+    const data = await resp.json().catch(function () { return null; });
+    if (!state.checkout || state.checkout !== c) return;
+    c.creatingOrder = false;
+    if (resp.ok && data && data.order && data.order.orderCode) {
+      c.orderCode = data.order.orderCode;
+      c.qrUrl = data.qrUrl || "";
+      c.expectedAmount = Number(data.order.expectedAmount || amount);
+      setCheckoutNotice("\u26a1 Qu\u00e9t m\u00e3 VietQR MB Bank b\u00ean d\u01b0\u1edbi (gi\u1eef nguy\u00ean n\u1ed9i dung <strong>" + esc(c.orderCode) + "</strong>). H\u1ec7 th\u1ed1ng <strong>t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t g\u00f3i trong 5\u201315 gi\u00e2y</strong> ngay khi nh\u1eadn ti\u1ec1n, ho\u1eb7c b\u1ea5m <em>\"T\u00f4i \u0111\u00e3 thanh to\u00e1n\"</em> \u0111\u1ec3 g\u1eedi Admin duy\u1ec7t th\u1ee7 c\u00f4ng.");
+      renderCheckout();
+      startCheckoutOrderPolling(c.orderCode);
+    } else {
+      renderCheckout();
+    }
+  } catch (e) {
+    if (state.checkout === c) {
+      c.creatingOrder = false;
+      renderCheckout();
+    }
+  }
+}
+
 function checkoutMemo() {
   const c = state.checkout;
-  const prefix = state.user ? state.user.email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 20) : "";
-  return "AITUTOR " + prefix + " " + (c ? TIERS[c.tier].memo : "");
+  if (c && c.orderCode) return c.orderCode;
+  const prefix = state.user ? state.user.email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 8) : "USER";
+  return "AITUTOR" + prefix;
 }
 function openCheckout(code) {
-  if (!state.user || !TIERS[code] || code === "none" || code === "unranked") return;
+  if (!state.user || !TIERS[code] || code === "none") return;
   if (isAdmin()) { adminSwitchOwnTier(code); return; }
   const dup = getUserPendingReqs(state.user.email).some(function (r) { return r.plan === code; });
   if (dup) {
     showToast("B\u1ea1n \u0111\u00e3 c\u00f3 y\u00eau c\u1ea7u \u0111ang ch\u1edd duy\u1ec7t cho g\u00f3i " + TIERS[code].name + ". Vui l\u00f2ng ch\u1edd Qu\u1ea3n tr\u1ecb vi\u00ean x\u00e1c nh\u1eadn.", "warning");
     return;
   }
-  state.checkout = { tier: code, voucher: null, receiptImage: "", busy: false };
+  stopCheckoutPolling();
+  state.checkout = { tier: code, voucher: null, receiptImage: "", busy: false, orderCode: "", qrUrl: "", creatingOrder: false };
   const vi = $("voucherInput"); if (vi) vi.value = "";
   const vm = $("voucherMsg"); if (vm) { vm.textContent = ""; vm.className = "voucher-msg"; }
   const tn = $("coTransferNote"); if (tn) tn.value = "";
   const rf = $("coReceiptFile"); if (rf) rf.value = "";
   const rp = $("coReceiptPreview"); if (rp) { rp.src = ""; rp.classList.add("hidden"); }
   toggleEl("coReceiptClear", false);
+  setCheckoutNotice("\u0110ang kh\u1edfi t\u1ea1o \u0111\u01a1n h\u00e0ng VietQR MB Bank (t\u1ef1 \u0111\u1ed9ng duy\u1ec7t qua SePay)...");
   renderCheckout();
   openModal("checkoutModal");
-  syncWithBackend().then(function () {
-    if (state.checkout) renderCheckout();
-  });
+  createCheckoutServerOrder();
 }
 function renderCheckout() {
   const c = state.checkout;
   if (!c) return;
   const t = TIERS[c.tier];
   const cfg = getPayCfg();
+  const bankId = cfg.bankId || "MB";
+  const bankName = cfg.bankName || "MB Bank";
+  const accountNo = cfg.accountNo || "316463";
+  const accountName = cfg.accountName || "PHAM DUC HIEU";
   const amount = checkoutAmount();
   const memo = checkoutMemo();
   const pct = c.voucher ? c.voucher.discountPercent : 0;
-  setText("checkoutTitle", "Thanh to\u00e1n – " + t.full);
-  setText("coTier", t.icon + " " + t.name + " (365 ng\u00e0y sau khi duy\u1ec7t)");
+  setText("checkoutTitle", "Thanh to\u00e1n \u2013 " + t.full);
+  setText("coTier", t.icon + " " + t.name + " (365 ng\u00e0y)");
   setText("coBase", fmtMoney(t.price));
   setText("coDiscount", pct > 0 ? "-" + pct + "% (" + c.voucher.code + ")" : "Kh\u00f4ng c\u00f3");
   setText("coFinal", fmtMoney(amount));
-  setText("coBank", (cfg.bankName || "Ch\u01b0a c\u1ea5u h\u00ecnh") + (cfg.bankId ? " (" + cfg.bankId + ")" : ""));
-  setText("coAcc", cfg.accountNo || "Ch\u01b0a c\u1ea5u h\u00ecnh");
-  setText("coHolder", cfg.accountName || "Ch\u01b0a c\u1ea5u h\u00ecnh");
-  setText("coMemo", memo);
+  setText("coBank", bankName + " (" + bankId + " \u00b7 970422)");
+  setText("coAcc", accountNo);
+  setText("coHolder", accountName);
+  setText("coMemo", c.creatingOrder ? "\u0110ang t\u1ea1o m\u00e3 \u0111\u01a1n..." : memo);
   const img = $("qrImg"), fb = $("qrFallback"), pay = $("payBtn");
-  const configured = !!(cfg.bankId && cfg.accountNo);
+  const configured = !!(bankId && accountNo);
   if (img) img.classList.add("hidden");
   if (fb) fb.classList.remove("hidden");
   if (amount === 0) {
-    if (fb) fb.textContent = "M\u00e3 gi\u1ea3m gi\u00e1 100% – b\u1ea1n kh\u00f4ng c\u1ea7n chuy\u1ec3n kho\u1ea3n. B\u1ea5m \"T\u00f4i \u0111\u00e3 thanh to\u00e1n\" \u0111\u1ec3 g\u1eedi Qu\u1ea3n tr\u1ecb vi\u00ean x\u00e1c nh\u1eadn.";
+    if (fb) fb.textContent = "M\u00e3 gi\u1ea3m gi\u00e1 100% \u2013 b\u1ea1n kh\u00f4ng c\u1ea7n chuy\u1ec3n kho\u1ea3n. B\u1ea5m \"T\u00f4i \u0111\u00e3 thanh to\u00e1n\" \u0111\u1ec3 g\u1eedi Qu\u1ea3n tr\u1ecb vi\u00ean x\u00e1c nh\u1eadn.";
+  } else if (c.creatingOrder) {
+    if (fb) fb.textContent = "\u0110ang t\u1ea1o m\u00e3 VietQR t\u1ef1 \u0111\u1ed9ng...";
   } else if (!configured) {
     if (fb) fb.textContent = "Qu\u1ea3n tr\u1ecb vi\u00ean ch\u01b0a c\u1ea5u h\u00ecnh t\u00e0i kho\u1ea3n VietQR.";
   } else if (img) {
-    const url = "https://img.vietqr.io/image/" + encodeURIComponent(cfg.bankId) + "-" + encodeURIComponent(cfg.accountNo) + "-compact2.png?amount=" + amount +
-      "&addInfo=" + encodeURIComponent(memo) + (cfg.accountName ? "&accountName=" + encodeURIComponent(cfg.accountName) : "");
+    const url = c.qrUrl || ("https://img.vietqr.io/image/" + encodeURIComponent(bankId) + "-" + encodeURIComponent(accountNo) + "-compact2.png?amount=" + amount +
+      "&addInfo=" + encodeURIComponent(memo) + (accountName ? "&accountName=" + encodeURIComponent(accountName) : ""));
     img.onload = function () { img.classList.remove("hidden"); if (fb) fb.classList.add("hidden"); };
     img.onerror = function () { img.classList.add("hidden"); if (fb) { fb.classList.remove("hidden"); fb.textContent = "Kh\u00f4ng t\u1ea3i \u0111\u01b0\u1ee3c m\u00e3 QR. Vui l\u00f2ng chuy\u1ec3n kho\u1ea3n th\u1ee7 c\u00f4ng theo th\u00f4ng tin b\u00ean c\u1ea1nh."; } };
     if (fb) fb.textContent = "\u0110ang t\u1ea3i m\u00e3 QR...";
@@ -2476,6 +2599,7 @@ async function applyVoucher() {
   c.voucher = { code: v.code.toUpperCase(), discountPercent: clamp(Number(v.discountPercent), 1, 100) };
   if (vm) { vm.textContent = "\u00c1p d\u1ee5ng th\u00e0nh c\u00f4ng: gi\u1ea3m " + c.voucher.discountPercent + "%."; vm.className = "voucher-msg ok"; }
   renderCheckout();
+  createCheckoutServerOrder();
 }
 
 /* STRICT MANUAL APPROVAL: NEVER UPGRADES TIER IMMEDIATELY */
@@ -7136,8 +7260,10 @@ function init() {
   on("unrankedBanner", "click", function (e) {
     const sw = e.target.closest ? e.target.closest("[data-admin-switch]") : null;
     if (sw) { adminSwitchOwnTier(sw.getAttribute("data-admin-switch")); return; }
+    const buyBtn = e.target.closest ? e.target.closest("[data-buy]") : null;
+    if (buyBtn && !buyBtn.disabled) { openCheckout(buyBtn.getAttribute("data-buy")); return; }
     const b = e.target.closest ? e.target.closest("[data-activate-free]") : null;
-    if (b) activateUnranked();
+    if (b) openCheckout("unranked");
   });
   on("pricingGrid", "click", function (e) {
     const sw = e.target.closest ? e.target.closest("[data-admin-switch]") : null;

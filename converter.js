@@ -1406,6 +1406,39 @@
     });
   }
 
+  async function computeFileSha256(file) {
+    const buf = await readFileAsArrayBuffer(file);
+    if (typeof crypto === "undefined" || !crypto.subtle) return "";
+    const digest = await crypto.subtle.digest("SHA-256", buf);
+    const bytes = new Uint8Array(digest);
+    let hex = "";
+    for (let i = 0; i < bytes.length; i++) {
+      hex += bytes[i].toString(16).padStart(2, "0");
+    }
+    return hex;
+  }
+
+  async function checkDocCache(fileHash) {
+    if (!fileHash || typeof fetch !== "function") return null;
+    try {
+      const resp = await fetch("/api/docs/check-cache?hash=" + encodeURIComponent(fileHash));
+      if (!resp.ok) return null;
+      const data = await resp.json().catch(function () { return null; });
+      return (data && data.ok && data.hit) ? data : null;
+    } catch (e) { return null; }
+  }
+
+  async function saveDocCache(fileHash, meta) {
+    if (!fileHash || typeof fetch !== "function") return;
+    try {
+      await fetch("/api/docs/cache", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.assign({ hash: fileHash }, meta || {}))
+      });
+    } catch (e) { /* best-effort cache write */ }
+  }
+
   function readFileAsBase64(file) {
     return new Promise(function (resolve, reject) {
       const r = new FileReader();
@@ -2510,12 +2543,27 @@
       for (let di = 0; di < docItems.length; di++) {
         if (signal.aborted) { stopped = true; break; }
         const item = docItems[di];
-        cState.progressLabel = "\u0110ang \u0111\u1ecdc & l\u1ecdc header/footer t\u1eeb " + item.name + "...";
+        cState.progressLabel = "\u0110ang ki\u1ec3m tra SHA-256 cache & \u0111\u1ecdc " + item.name + "...";
         cState.progressPct = Math.round(10 + (di / Math.max(1, docItems.length)) * 15);
         renderConverter();
         try {
+          // Pre-flight SHA-256 cache check: skip heavy parsing/OCR on Cache Hit!
+          const fileHash = await computeFileSha256(item.file).catch(function () { return ""; });
+          if (fileHash) {
+            cState.activeDocHash = fileHash;
+            const cachedHit = await checkDocCache(fileHash);
+            if (cachedHit && cachedHit.parsedText) {
+              cState.activeDocId = cachedHit.docId || "";
+              allTextPages.push(cachedHit.parsedText);
+              U().showToast("⚡ Cache Hit: Đã tái sử dụng nội dung tài liệu \"" + item.name + "\" (không cần OCR/tải lại)!", "success");
+              continue;
+            }
+          }
+
+          let extractedForCache = "";
           if (item.kind === "text") {
             const rawMd = await readFileAsText(item.file);
+            extractedForCache = rawMd;
             const unwrappedMd = (D() && typeof D().unwrapMarkdownFence === "function") ? D().unwrapMarkdownFence(rawMd, true) : rawMd;
             // If user already uploaded a Digitizer-formatted Markdown file (fenced or unfenced), parse directly (0 token!)
             if (/^---\s*\n[\s\S]*?mode\s*:/i.test(unwrappedMd.trim()) && (/^###\s*C\u00e2u\s*\d+/m.test(unwrappedMd) || /mode\s*:\s*["']?STUDY_NOTE/i.test(unwrappedMd))) {
@@ -2531,9 +2579,11 @@
               allTextPages.push(rawMd);
             }
           } else if (item.kind === "docx") {
-            allTextPages.push(await extractDocxText(item.file));
+            extractedForCache = await extractDocxText(item.file);
+            allTextPages.push(extractedForCache);
           } else if (item.kind === "doc") {
-            allTextPages.push(await extractLegacyDocText(item.file));
+            extractedForCache = await extractLegacyDocText(item.file);
+            allTextPages.push(extractedForCache);
           } else if (item.kind === "pdf") {
             const pdfRes = await extractPdfText(item.file);
             if (pdfRes.isScanned && pdfRes.pageImages && pdfRes.pageImages.length > 0) {
@@ -2564,10 +2614,16 @@
                 markdown: ""
               });
             } else if (Array.isArray(pdfRes.pages) && pdfRes.pages.length > 0) {
-              pdfRes.pages.forEach(function (pg) { if (pg && pg.trim()) allTextPages.push(pg); });
+              const validPages = pdfRes.pages.filter(function (pg) { return pg && pg.trim(); });
+              validPages.forEach(function (pg) { allTextPages.push(pg); });
+              extractedForCache = validPages.join("\n\n");
             } else if (pdfRes.text) {
+              extractedForCache = pdfRes.text;
               allTextPages.push(pdfRes.text);
             }
+          }
+          if (fileHash && extractedForCache && extractedForCache.trim()) {
+            saveDocCache(fileHash, { fileName: item.name, mimeType: item.file.type || "", parsedText: extractedForCache });
           }
         } catch (docErr) {
           U().showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc t\u1ec7p \"" + item.name + "\": " + (docErr.message || "T\u1ec7p l\u1ed7i"), "error");
@@ -3560,10 +3616,18 @@
     const pinnedId = (cState.pinnedContextId && cState.contexts[cState.pinnedContextId]) ? cState.pinnedContextId : (ctxIds[0] || "");
     const pinnedCtx = pinnedId ? cState.contexts[pinnedId] : null;
 
+    const mobileTab = cState.mobileSplitTab === "source" ? "source" : "tutor";
+    if (hasContexts) {
+      out += '<div class="split-mobile-tabs" role="tablist" aria-label="Split View Tabs">' +
+        '<button type="button" role="tab" class="split-mobile-tab' + (mobileTab === "source" ? " active" : "") + '" data-cact="split-tab" data-tab="source" aria-selected="' + (mobileTab === "source" ? "true" : "false") + '">📄 T\u00e0i li\u1ec7u g\u1ed1c</button>' +
+        '<button type="button" role="tab" class="split-mobile-tab' + (mobileTab === "tutor" ? " active" : "") + '" data-cact="split-tab" data-tab="tutor" aria-selected="' + (mobileTab === "tutor" ? "true" : "false") + '">✨ Gia s\u01b0 AI</button>' +
+      '</div>';
+    }
+
     out += '<div class="digitizer-split' + (hasContexts ? " has-context" : "") + '">';
 
     if (hasContexts) {
-      out += '<aside class="digitizer-context-pane" id="digitizerCtxPane">' +
+      out += '<aside class="digitizer-context-pane' + (mobileTab !== "source" ? " is-mobile-hidden" : "") + '" id="digitizerCtxPane">' +
         '<div class="digitizer-ctx-head"><strong>📌 Ng\u1eef li\u1ec7u chung (Smart Context Pinning)</strong>' +
           '<div class="digitizer-ctx-tabs">' +
           ctxIds.map(function (cid) {
@@ -3580,7 +3644,7 @@
       '</aside>';
     }
 
-    out += '<div class="digitizer-questions-pane">';
+    out += '<div class="digitizer-questions-pane' + (hasContexts && mobileTab !== "tutor" ? " is-mobile-hidden" : "") + '" id="digitizerQuestionsPane">';
     let lastInstr = "";
     filtered.forEach(function (item) {
       const q = item.q;
@@ -4031,6 +4095,22 @@
     else if (act === "save-drive") doSaveToLibraryAndDrive();
     else if (act === "retry-chunk") retryFailedChunk(Number(b.getAttribute("data-chunk-idx")));
     else if (act === "ai-explain") explainSingleQuestionOnDemand(Number(b.getAttribute("data-idx")));
+    else if (act === "split-tab") {
+      const nextTab = b.getAttribute("data-tab") === "source" ? "source" : "tutor";
+      cState.mobileSplitTab = nextTab;
+      // Preserve DOM state & scroll position: toggle CSS visibility classes directly without re-rendering!
+      const ctxPane = U().$("digitizerCtxPane");
+      const qPane = U().$("digitizerQuestionsPane");
+      if (ctxPane) ctxPane.classList.toggle("is-mobile-hidden", nextTab !== "source");
+      if (qPane) qPane.classList.toggle("is-mobile-hidden", nextTab !== "tutor");
+      const tabBtns = document.querySelectorAll('.split-mobile-tab[data-cact="split-tab"]');
+      for (let i = 0; i < tabBtns.length; i++) {
+        const isAct = tabBtns[i].getAttribute("data-tab") === nextTab;
+        tabBtns[i].classList.toggle("active", isAct);
+        tabBtns[i].setAttribute("aria-selected", isAct ? "true" : "false");
+      }
+      return;
+    }
     else if (act === "pin-ctx") {
       const cid = b.getAttribute("data-ctx") || "";
       if (cid && cState.contexts[cid]) {

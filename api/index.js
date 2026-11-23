@@ -11,6 +11,7 @@ const { handleAiProxy } = require("./lib/ai-proxy");
 const { handleAdminSystemKeys, handleAdminMe } = require("./lib/admin-keys");
 const { verifyAdminRequest } = require("./lib/auth");
 const storage = require("./lib/storage");
+const docCache = require("./lib/doc-cache");
 
 // Load local .env if present (zero-dependency)
 (function loadDotEnv() {
@@ -51,6 +52,25 @@ const PLAN_LABELS = {
   diamond: "Diamond"
 };
 
+const SEPAY_BANK_ID = "MB";
+const SEPAY_ACCOUNT_NO = "316463";
+const SEPAY_ACCOUNT_NAME = "PHAM DUC HIEU";
+const PLAN_PRICES = { unranked: 10000, bronze: 100000, silver: 200000, gold: 300000, diamond: 500000 };
+
+function genOrderCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let suffix = "";
+  for (let i = 0; i < 6; i++) suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+  return "AITUTOR" + suffix;
+}
+
+function buildDynamicVietQrUrl(amount, orderCode) {
+  return "https://img.vietqr.io/image/" + SEPAY_BANK_ID + "-" + SEPAY_ACCOUNT_NO +
+    "-compact2.png?amount=" + encodeURIComponent(String(amount)) +
+    "&addInfo=" + encodeURIComponent(String(orderCode)) +
+    "&accountName=" + encodeURIComponent(SEPAY_ACCOUNT_NAME);
+}
+
 function defaultDb() {
   return {
     registeredUsers: {},
@@ -59,7 +79,8 @@ function defaultDb() {
     userApis: {},
     revokedUserApis: {},
     payment_requests: [],
-    paymentConfig: { bankName: "MBV Bank", bankId: "970414", accountNo: "31122007", accountName: "PHAM DUC HIEU" },
+    sepayOrders: {},
+    paymentConfig: { bankName: "MB Bank", bankId: "MB", bankBin: "970422", accountNo: "316463", accountName: "PHAM DUC HIEU" },
     vouchers: [],
     deletedVouchers: {},
     shares: {},
@@ -1478,6 +1499,51 @@ module.exports = async function apiHandler(req, res) {
       });
     }
 
+    /* ---------- SHA-256 Document Content Cache (24h TTL: Upstash Redis / In-Memory LRU) ---------- */
+    if (p === "/api/docs/check-cache" && method === "GET") {
+      const urlObj = new URL(String(req.url || "/"), "http://localhost");
+      const hash = docCache.normalizeSha256(urlObj.searchParams.get("hash") || "");
+      if (!hash) {
+        return sendJson(res, 400, { ok: false, code: "INVALID_HASH", error: "Invalid SHA-256 hash (expected 64 hex characters)." });
+      }
+      const cached = await docCache.getCachedDoc(hash);
+      if (!cached) {
+        return sendJson(res, 200, { ok: true, hit: false, fileHash: hash, driver: docCache.getCacheDriver() });
+      }
+      return sendJson(res, 200, {
+        ok: true,
+        hit: true,
+        docId: cached.docId,
+        fileHash: cached.fileHash,
+        fileName: cached.fileName,
+        parsedText: cached.parsedText,
+        parsedQuestions: cached.parsedQuestions,
+        cachedAt: cached.cachedAt,
+        driver: docCache.getCacheDriver()
+      });
+    }
+
+    if (p === "/api/docs/cache" && method === "POST") {
+      const body = await readBody(req);
+      const hash = docCache.normalizeSha256(body.hash || body.fileHash || "");
+      if (!hash) {
+        return sendJson(res, 400, { ok: false, code: "INVALID_HASH", error: "Invalid SHA-256 hash." });
+      }
+      const saved = await docCache.setCachedDoc(hash, {
+        fileName: body.fileName || "",
+        mimeType: body.mimeType || "",
+        parsedText: body.parsedText || "",
+        parsedQuestions: body.parsedQuestions || null
+      });
+      return sendJson(res, 200, {
+        ok: true,
+        docId: saved.docId,
+        fileHash: saved.fileHash,
+        ttlSeconds: saved.ttlSeconds,
+        driver: docCache.getCacheDriver()
+      });
+    }
+
     /* ---------- LMS Cloud Assignment Sync & Public Incognito Access ---------- */
     if (p === "/api/lms/assignments/sync" && method === "POST") {
       const body = await readBody(req);
@@ -1904,6 +1970,161 @@ module.exports = async function apiHandler(req, res) {
         submission: sub,
         emailResult: emailResult
       });
+    }
+
+    /* ---------- Automated VietQR Orders & SePay Webhook (MB Bank 316463) ---------- */
+    if (p === "/api/orders" && method === "POST") {
+      const body = await readBody(req);
+      const userEmail = String(body.email || body.userEmail || getCallerEmail(req) || "").trim().toLowerCase();
+      const planId = String(body.planId || body.plan || "").trim().toLowerCase();
+      if (!userEmail) return sendJson(res, 400, { ok: false, error: "Thiếu email tài khoản." });
+      if (!PLAN_PRICES[planId]) return sendJson(res, 400, { ok: false, error: "Gói nâng cấp không hợp lệ." });
+
+      const db = await loadDb();
+      if (!db.sepayOrders || typeof db.sepayOrders !== "object") db.sepayOrders = {};
+
+      const basePrice = PLAN_PRICES[planId];
+      let discountPct = 0;
+      const voucherCode = String(body.voucherCode || "").trim().toUpperCase();
+      if (voucherCode && Array.isArray(db.vouchers)) {
+        const v = db.vouchers.find(function (x) { return x && String(x.code || "").toUpperCase() === voucherCode; });
+        if (v && Number(v.discountPercent) > 0) {
+          discountPct = Math.min(100, Math.max(0, Number(v.discountPercent)));
+        }
+      }
+      const expectedAmount = Math.max(0, Math.round(basePrice * (100 - discountPct) / 100));
+
+      let orderCode = genOrderCode();
+      while (db.sepayOrders[orderCode]) orderCode = genOrderCode();
+
+      const order = {
+        orderCode: orderCode,
+        userId: userEmail,
+        userEmail: userEmail,
+        userName: String(body.userName || ""),
+        planId: planId,
+        baseAmount: basePrice,
+        discountPercent: discountPct,
+        voucherCode: voucherCode,
+        expectedAmount: expectedAmount,
+        paidAmount: 0,
+        status: "PENDING",
+        sepayTransactionId: "",
+        createdAt: new Date().toISOString(),
+        paidAt: ""
+      };
+      db.sepayOrders[orderCode] = order;
+      await saveDb(db);
+
+      return sendJson(res, 201, {
+        ok: true,
+        order: order,
+        qrUrl: buildDynamicVietQrUrl(expectedAmount, orderCode)
+      });
+    }
+
+    if (p === "/api/orders/status" && method === "GET") {
+      const urlObj = new URL(String(req.url || "/"), "http://localhost");
+      const code = String(urlObj.searchParams.get("code") || "").trim().toUpperCase();
+      if (!code || !/^AITUTOR[A-Z0-9]+$/.test(code)) {
+        return sendJson(res, 400, { ok: false, error: "Mã đơn hàng không hợp lệ." });
+      }
+      const db = await loadDb();
+      const order = db.sepayOrders && db.sepayOrders[code];
+      if (!order) {
+        return sendJson(res, 404, { ok: false, code: "ORDER_NOT_FOUND", error: "Không tìm thấy đơn hàng." });
+      }
+      const sub = (db.subscriptions && db.subscriptions[order.userEmail]) || null;
+      return sendJson(res, 200, {
+        ok: true,
+        orderCode: order.orderCode,
+        planId: order.planId,
+        expectedAmount: order.expectedAmount,
+        paidAmount: order.paidAmount || 0,
+        status: order.status,
+        paidAt: order.paidAt || "",
+        order: order,
+        subscription: order.status === "PAID" ? sub : null
+      });
+    }
+
+    if (p === "/api/webhooks/sepay" && method === "POST") {
+      const expectedKey = String(process.env.SEPAY_WEBHOOK_API_KEY || "").trim();
+      const authHeader = String((req.headers && (req.headers.authorization || req.headers.Authorization)) || "").trim();
+      const matchAuth = authHeader.match(/^Apikey\s+(.+)$/i);
+      const providedKey = matchAuth ? matchAuth[1].trim() : "";
+      if (!expectedKey || !providedKey || providedKey !== expectedKey) {
+        return sendJson(res, 401, { success: false, error: "Unauthorized SePay webhook Apikey" });
+      }
+
+      const payload = await readBody(req);
+      const transferType = String((payload && payload.transferType) || "").trim().toLowerCase();
+      const accountNumber = String((payload && payload.accountNumber) || "").trim();
+      if (transferType !== "in" || accountNumber !== SEPAY_ACCOUNT_NO) {
+        return sendJson(res, 200, { success: true, ignored: true });
+      }
+
+      const content = String((payload && payload.content) || "");
+      const codeMatch = content.match(/AITUTOR[A-Z0-9]+/i);
+      if (!codeMatch) {
+        return sendJson(res, 200, { success: true, ignored: true, reason: "no_order_code" });
+      }
+      const orderCode = codeMatch[0].toUpperCase();
+      const transferAmount = Number((payload && payload.transferAmount) || 0);
+      const txId = String((payload && payload.id) || "");
+
+      const db = await loadDb();
+      if (!db.sepayOrders || typeof db.sepayOrders !== "object") db.sepayOrders = {};
+      const order = db.sepayOrders[orderCode];
+      if (!order) {
+        return sendJson(res, 200, { success: true, idempotent: true, reason: "order_not_found" });
+      }
+      if (order.status === "PAID") {
+        return sendJson(res, 200, { success: true, idempotent: true, reason: "already_paid" });
+      }
+
+      if (transferAmount < Number(order.expectedAmount || 0)) {
+        order.status = "UNDERPAID";
+        order.paidAmount = transferAmount;
+        order.sepayTransactionId = txId;
+        order.updatedAt = new Date().toISOString();
+        await saveDb(db);
+        return sendJson(res, 200, { success: true, status: "UNDERPAID" });
+      }
+
+      // Atomic order completion + 1-year membership tier activation
+      const now = Date.now();
+      const nowIso = new Date(now).toISOString();
+      order.status = "PAID";
+      order.paidAmount = transferAmount;
+      order.sepayTransactionId = txId;
+      order.paidAt = nowIso;
+
+      if (!db.subscriptions || typeof db.subscriptions !== "object") db.subscriptions = {};
+      if (!db.revokedSubscriptions || typeof db.revokedSubscriptions !== "object") db.revokedSubscriptions = {};
+      const userEmail = String(order.userEmail || order.userId || "").toLowerCase();
+      if (userEmail) {
+        delete db.revokedSubscriptions[userEmail];
+        db.subscriptions[userEmail] = {
+          tier: order.planId,
+          since: now,
+          expires: now + 365 * DAY_MS,
+          orderCode: order.orderCode,
+          sepayTransactionId: txId,
+          autoApproved: true
+        };
+      }
+      if (Array.isArray(db.payment_requests)) {
+        db.payment_requests.forEach(function (pr) {
+          if (pr && pr.status === "pending" && String(pr.memo || "").toUpperCase().indexOf(orderCode) !== -1) {
+            pr.status = "approved";
+            pr.reviewedAt = nowIso;
+            pr.reviewedBy = "SePay Webhook";
+          }
+        });
+      }
+      await saveDb(db);
+      return sendJson(res, 200, { success: true, orderCode: orderCode, tier: order.planId });
     }
 
     /* ---------- LMS Email Health Diagnostic (No Secrets Exposed) ---------- */

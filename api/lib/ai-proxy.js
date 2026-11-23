@@ -11,6 +11,13 @@ const { decryptSecret, hmacKeyHash, maskApiKey, sanitizeErrorMessage, isEncrypti
 const { verifyUserRequest } = require("./auth");
 const { getClientIp, isOriginAllowed, buildCorsHeaders, sendJsonWithCors, readBoundedJsonBody } = require("./http-utils");
 const storage = require("./storage");
+const llmRouter = require("./llm-router");
+const docCache = require("./doc-cache");
+
+function getHandshakeTimeoutMs() {
+  const n = parseInt(process.env.LLM_TIMEOUT_MS || "18000", 10);
+  return Number.isFinite(n) && n >= 3000 ? n : 18000;
+}
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
@@ -32,8 +39,12 @@ function getMaxTokensCap() {
 function getEnvDefaultKeys(envKeyStates) {
   const envVars = [
     { envName: "DEFAULT_GEMINI_KEYS", provider: "gemini" },
+    { envName: "GEMINI_API_KEY", provider: "gemini" },
+    { envName: "GEMINI_KEY_2", provider: "gemini" },
     { envName: "DEFAULT_GROQ_KEYS", provider: "groq" },
+    { envName: "GROQ_API_KEY", provider: "groq" },
     { envName: "DEFAULT_OPENROUTER_KEYS", provider: "openrouter" },
+    { envName: "OPENROUTER_API_KEY", provider: "openrouter" },
     { envName: "DEFAULT_OPENAI_KEYS", provider: "openai" },
     { envName: "DEFAULT_DEEPSEEK_KEYS", provider: "deepseek" }
   ];
@@ -475,6 +486,16 @@ async function handleAiProxy(req, res) {
   const rl = rlUid;
 
   const caps = detectRequestCapabilities(body);
+  // Follow-up Document Context Injection: if docHash is provided, inject cached parsed text without re-OCR
+  if (body && body.docHash) {
+    const cachedDoc = await docCache.getCachedDoc(body.docHash).catch(function () { return null; });
+    if (cachedDoc && cachedDoc.parsedText) {
+      const ctxPrefix = "[Cached Document Context: " + (cachedDoc.fileName || cachedDoc.docId) + "]\n" + cachedDoc.parsedText.slice(0, 24000) + "\n\n";
+      if (typeof body.system === "string") body.system = ctxPrefix + body.system;
+      else if (typeof body.systemInstruction === "string") body.systemInstruction = ctxPrefix + body.systemInstruction;
+      else body.system = ctxPrefix;
+    }
+  }
   const loaded = await loadSystemKeyPool();
   const plan = buildServerFailoverPlan(requestedModelId, loaded.pool, caps);
 
@@ -551,10 +572,11 @@ async function handleAiProxy(req, res) {
 
       let upRes = null;
       let netFailed = false;
+      const handshakeTimeoutMs = getHandshakeTimeoutMs();
       for (let retry = 0; retry < 2; retry++) {
         if (clientAborted) break;
         const stepCtrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-        const stepTimer = stepCtrl ? setTimeout(function () { stepCtrl.abort(); }, 52000) : null;
+        const stepTimer = stepCtrl ? setTimeout(function () { stepCtrl.abort(); }, handshakeTimeoutMs) : null;
         const forwardAbort = function () { if (stepCtrl) stepCtrl.abort(); };
         if (reqAbortCtrl && reqAbortCtrl.signal) {
           reqAbortCtrl.signal.addEventListener("abort", forwardAbort, { once: true });
@@ -685,6 +707,15 @@ async function handleAiProxy(req, res) {
           lastError: upRes.status + ": Invalid API Key"
         });
         continue;
+      }
+
+      // Immediately return non-recoverable client 400 / safety policy errors without retrying fallback keys
+      if (!llmRouter.isRecoverableLlmError(upRes.status, lastSanitizedErr, false)) {
+        await persistKeyStateUpdates(mutations);
+        return sendJsonWithCors(res, upRes.status || 400, {
+          error: sanitizeErrorMessage(lastSanitizedErr, loaded.secrets),
+          recoverable: false
+        }, corsCheck);
       }
 
       bumpMutation(entry, { errorDelta: 1, lastError: lastSanitizedErr.slice(0, 140) });
