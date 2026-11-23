@@ -1252,7 +1252,6 @@ module.exports = async function apiHandler(req, res) {
         return sendJson(res, 429, { error: "Qu\u00e1 nhi\u1ec1u y\u00eau c\u1ea7u. Vui l\u00f2ng th\u1eed l\u1ea1i sau " + rl.retryAfterSec + " gi\u00e2y." });
       }
       const body = await readBody(req);
-      // #8 Strict field whitelist: strip/ignore role, plan, tier, proExpiresAt, credits, isAdmin
       const caller = getCallerEmail(req) || String((body && body.email) || "").trim().toLowerCase();
       if (!caller || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(caller)) {
         return sendJson(res, 400, { error: "Email kh\u00f4ng h\u1ee3p l\u1ec7." });
@@ -1498,7 +1497,6 @@ module.exports = async function apiHandler(req, res) {
         return r && String(r.userEmail || "").toLowerCase() === caller && r.plan === planKey && r.status === "pending";
       });
       if (dup) return sendJson(res, 409, { error: "B\u1ea1n \u0111\u00e3 c\u00f3 y\u00eau c\u1ea7u \u0111ang ch\u1edd duy\u1ec7t cho g\u00f3i n\u00e0y." });
-      // #4/#5 Server-side authoritative pricing (discard client body.amount)
       const basePrice = PLAN_PRICES[planKey];
       let discountPct = 0;
       const voucherCode = String((body && body.voucher) || "").trim().toUpperCase();
@@ -1509,7 +1507,6 @@ module.exports = async function apiHandler(req, res) {
         }
       }
       const serverAmount = Math.max(0, Math.round(basePrice * (100 - discountPct) / 100));
-      // #6 Manual "Tôi đã thanh toán" ALWAYS creates status "pending" (NEVER "PAID" or tier upgrade)
       const rec = {
         id: "req_" + Date.now() + "_" + crypto.randomBytes(3).toString("hex"),
         userId: caller,
@@ -2045,7 +2042,6 @@ module.exports = async function apiHandler(req, res) {
         return sendJson(res, 400, { ok: false, error: "Thi\u1ebfu email t\u00e0i kho\u1ea3n h\u1ee3p l\u1ec7." });
       }
       if (!PLAN_PRICES[planId]) return sendJson(res, 400, { ok: false, error: "G\u00f3i n\u00e2ng c\u1ea5p kh\u00f4ng h\u1ee3p l\u1ec7." });
-      // #5 Reject negative, zero, non-integer, or tampered quantities
       if (body.quantity !== undefined) {
         const qty = Number(body.quantity);
         if (!Number.isInteger(qty) || qty !== 1) {
@@ -2056,7 +2052,6 @@ module.exports = async function apiHandler(req, res) {
       const db = await loadDb();
       if (!db.sepayOrders || typeof db.sepayOrders !== "object") db.sepayOrders = {};
 
-      // #4 Server-side authoritative pricing (client amount/price/total is completely ignored)
       const basePrice = PLAN_PRICES[planId];
       let discountPct = 0;
       const voucherCode = String(body.voucherCode || "").trim().toUpperCase();
@@ -2126,7 +2121,6 @@ module.exports = async function apiHandler(req, res) {
       if (!order) {
         return sendJson(res, 404, { ok: false, code: "ORDER_NOT_FOUND", error: "Kh\u00f4ng t\u00ecm th\u1ea5y \u0111\u01a1n h\u00e0ng." });
       }
-      // #2 Strict IDOR check: caller must own the order or be a verified admin
       let callerEmail = getCallerEmail(req);
       let callerIsVerifiedAdmin = false;
       try {
@@ -2221,7 +2215,6 @@ module.exports = async function apiHandler(req, res) {
           sepayTransactionId: txId,
           autoApproved: true
         };
-        // #7 Atomically record voucher redemption to prevent replay/reuse
         if (order.voucherCode && Array.isArray(db.vouchers)) {
           const v = db.vouchers.find(function (x) { return x && String(x.code || "").toUpperCase() === String(order.voucherCode).toUpperCase(); });
           if (v) {
@@ -2349,7 +2342,7 @@ module.exports = async function apiHandler(req, res) {
       });
     }
 
-    /* ---------- Strict Admin Routes (#1 Server-Side Verified JWT/Session + Admin Allowlist) ---------- */
+    /* ---------- Admin Routes ---------- */
     if (p.startsWith("/api/admin/")) {
       try {
         await verifyAdminRequest(req);

@@ -180,7 +180,11 @@
     apiStatusMsg: "",
     mounted: false,
     apiMounted: false,
-    disclaimerDismissed: false,
+    disclaimerDismissed: (function () { try { return localStorage.getItem("ai_tutor_conv_api_banner_dismissed") === "1"; } catch (e) { return false; } })(),
+    uploadExpanded: false,
+    advancedOpen: false,
+    quickAnsOpen: false,
+    exportModalOpen: false,
     activeProvTab: "",
     testResults: null,
     fallbackToastShownFor: "",
@@ -3226,258 +3230,341 @@
     const isSignedIn = !!getUserIdToken();
     const disclaimerTxt = (CFG() && CFG().DISCLAIMER_BANNER_TEXT) || "B\u1ea1n \u0111ang s\u1eed d\u1ee5ng API Key mi\u1ec5n ph\u00ed m\u1eb7c \u0111\u1ecbnh \u0111\u01b0\u1ee3c cung c\u1ea5p b\u1edfi h\u1ec7 th\u1ed1ng. Do d\u00f9ng chung n\u00ean h\u1ea1n m\u1ee9c (quota) th\u1ea5p v\u00e0 c\u00f3 th\u1ec3 b\u1ecb ch\u1eadm ho\u1eb7c gi\u00e1n \u0111o\u1ea1n. \u0110\u1ec3 c\u00f3 tr\u1ea3i nghi\u1ec7m m\u01b0\u1ee3t m\u00e0 v\u00e0 kh\u00f4ng gi\u1edbi h\u1ea1n, h\u00e3y c\u00e2n nh\u1eafc s\u1eed d\u1ee5ng API Key c\u00e1 nh\u00e2n c\u1ee7a b\u1ea1n.";
 
-    let h = "";
+    const hasLoadedData = cState.questions.length > 0 || !!cState.studyNoteMarkdown || cState.chunkStates.length > 0;
+    const showHeroUpload = !hasLoadedData || cState.uploadExpanded;
+
+    let h = '<div class="conv-shell">';
+
+    // 1. Ultra-Slim Dismissible API Status Bar (max-height 38px, persisted in localStorage)
     if (!hasPersonal && !cState.disclaimerDismissed) {
-      h += '<div class="sys-disclaimer-banner" id="sysDisclaimerBanner">' +
-        '<div class="sys-disclaimer-body" style="display:flex;align-items:flex-start;gap:10px">' +
-          '<span style="font-size:1.1rem;line-height:1.3;flex-shrink:0" aria-hidden="true">💡</span>' +
+      h += '<div class="conv-slim-banner" id="sysDisclaimerBanner" role="status">' +
+        '<div class="conv-slim-banner-main">' +
+          '<span class="conv-slim-dot" aria-hidden="true"></span>' +
+          '<span class="conv-slim-text">' +
+            (isSignedIn
+              ? '\u0110ang d\u00f9ng API Key mi\u1ec5n ph\u00ed m\u1eb7c \u0111\u1ecbnh (quota gi\u1edbi h\u1ea1n).'
+              : '\u0110ang d\u00f9ng API mi\u1ec5n ph\u00ed m\u1eb7c \u0111\u1ecbnh \u2014 \u0111\u0103ng nh\u1eadp Google ho\u1eb7c th\u00eam Key c\u00e1 nh\u00e2n \u0111\u1ec3 kh\u00f4ng gi\u1edbi h\u1ea1n.') +
+          '</span>' +
+          '<span class="conv-slim-links">' +
+            '<button type="button" class="conv-inline-link" data-cact="go-api">Nh\u1eadp Key c\u00e1 nh\u00e2n</button>' +
+            '<span class="conv-slim-sep" aria-hidden="true">\u00b7</span>' +
+            '<button type="button" class="conv-inline-link" data-cact="go-guide">H\u01b0\u1edbng d\u1eabn</button>' +
+          '</span>' +
+        '</div>' +
+        '<button type="button" class="conv-slim-close" data-cact="dismiss-disclaimer" title="\u1ea8n th\u00f4ng b\u00e1o" aria-label="\u1ea8n th\u00f4ng b\u00e1o">\u2715</button>' +
+      '</div>';
+    }
+
+    // 2. Progressive Disclosure Upload Area (Hero Card when Empty, 1-Line Compact Bar when Loaded)
+    const canRunSmart = !cState.busy && (cState.files.length > 0 || (cState.pasteText || "").trim().length > 0);
+    if (!showHeroUpload) {
+      h += '<div class="conv-compact-bar">' +
+        '<div class="conv-compact-left">' +
+          '<span class="conv-compact-badge">' + (cState.busy ? '<span class="spinner"></span>\u0110ang x\u1eed l\u00fd' : '\u2728 AI Converter') + '</span>' +
+          '<span class="conv-compact-summary">' +
+            (cState.questions.length > 0
+              ? ('<strong>' + cState.questions.length + ' c\u00e2u h\u1ecfi</strong>' + (cState.files.length > 0 ? (' t\u1eeb ' + cState.files.length + ' t\u1ec7p') : ''))
+              : 'T\u00e0i li\u1ec7u \u0111\u00e3 s\u1eb5n s\u00e0ng') +
+            (cState.lastSummary && !cState.busy ? (' <span class="muted">\u00b7 ' + U().esc(cState.lastSummary) + '</span>') : '') +
+          '</span>' +
+        '</div>' +
+        '<div class="conv-compact-actions">' +
+          (cState.busy ? '<button type="button" class="btn btn-danger btn-sm" data-cact="stop-ai">\u23f9 D\u1eebng</button>' : '') +
+          '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="toggle-upload">+ Th\u00eam t\u1ec7p / \u0110\u1ec1 m\u1edbi</button>' +
+        '</div>' +
+      '</div>';
+      if (cState.busy && (cState.progressLabel || cState.steps.length > 0)) {
+        h += '<div class="conv-progress" style="margin-bottom:14px">' +
+          (cState.progressLabel ? ('<div class="conv-progress-row"><span>' + U().esc(cState.progressLabel) + '</span><span>' + cState.progressPct + '%</span></div><div class="progress-bar"><div class="progress-fill" style="width:' + cState.progressPct + '%"></div></div>') : '') +
+        '</div>';
+      }
+    } else {
+      h += '<section class="conv-hero-card' + (hasLoadedData ? ' is-expanded' : '') + '">' +
+        '<div class="conv-hero-head">' +
           '<div>' +
-            '<div style="line-height:1.55">' + U().esc(disclaimerTxt) + ' ' +
-              '<button type="button" class="sys-disclaimer-link" data-cact="go-guide">Xem h\u01b0\u1edbng d\u1eabn l\u1ea5y API Key mi\u1ec5n ph\u00ed →</button>' +
-            '</div>' +
-            (!isSignedIn ? '<div class="muted" style="font-size:.78rem;margin-top:4px">💡 <em>G\u1ee3i \u00fd: \u0110\u0103ng nh\u1eadp Google \u1edf g\u00f3c tr\u00ean \u0111\u1ec3 k\u00edch ho\u1ea1t System Pool mi\u1ec5n ph\u00ed, ho\u1eb7c nh\u1eadp API Key c\u00e1 nh\u00e2n \u0111\u1ec3 d\u00f9ng ngay kh\u00f4ng c\u1ea7n ch\u1edd.</em></div>' : '') +
-            '<div class="sys-disclaimer-actions" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">' +
-              '<button type="button" class="btn btn-primary btn-sm" data-cact="go-guide">Xem h\u01b0\u1edbng d\u1eabn l\u1ea5y API Key mi\u1ec5n ph\u00ed →</button>' +
-              '<button type="button" class="btn btn-outline btn-sm" data-cact="go-api">Nh\u1eadp Key c\u00e1 nh\u00e2n</button>' +
+            '<h2 class="conv-hero-title">Chuy\u1ec3n \u0111\u1ed5i \u0111\u1ec1 thi th\u00f4ng minh</h2>' +
+            '<p class="conv-hero-sub">K\u00e9o th\u1ea3, ch\u1ecdn t\u1ec7p ho\u1eb7c d\u00e1n tr\u1ef1c ti\u1ebfp (Ctrl+V) \u2014 AI t\u1ef1 \u0111\u1ed9ng nh\u1eadn di\u1ec7n v\u00e0 chu\u1ea9n h\u00f3a.</p>' +
+          '</div>' +
+          (hasLoadedData ? '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="toggle-upload">Thu g\u1ecdn \u25b4</button>' : '') +
+        '</div>' +
+        '<label class="conv-drop conv-hero-drop" id="convDropUnified">' +
+          '<div class="conv-drop-icon" aria-hidden="true">📂</div>' +
+          '<strong>Ch\u1ecdn, k\u00e9o th\u1ea3 ho\u1eb7c Ctrl+V t\u1ec7p \u0111\u1ec1 thi</strong>' +
+          '<span class="muted" style="font-size:.78rem">\u1ea2nh \u2192 AI Vision \u00b7 PDF / DOCX / MD / XLSX \u2192 Chu\u1ea9n h\u00f3a t\u1ee9c th\u00ec</span>' +
+          '<div class="conv-drop-formats">' +
+            '<span class="conv-fmt-pill">PNG / JPG</span>' +
+            '<span class="conv-fmt-pill">PDF</span>' +
+            '<span class="conv-fmt-pill">DOCX</span>' +
+            '<span class="conv-fmt-pill">MD / TXT</span>' +
+            '<span class="conv-fmt-pill">XLSX</span>' +
+          '</div>' +
+          '<input type="file" id="convUnifiedInput" accept=".png,.jpg,.jpeg,.webp,.gif,.md,.txt,.pdf,.doc,.docx,.xlsx,.xls,.csv,image/*" multiple hidden>' +
+        '</label>';
+
+      if (cState.files.length > 0) {
+        h += '<div class="conv-queue-head"><strong>' + cState.files.length + ' t\u1ec7p \u0111ang ch\u1edd x\u1eed l\u00fd</strong>' +
+          '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="clear-files"' + (cState.busy ? " disabled" : "") + '>X\u00f3a h\u1ebft</button></div>' +
+          '<div class="conv-queue">' + cState.files.map(function (item, idx) {
+            const meta = fileKindMeta(item.kind);
+            const thumb = item.kind === "image" && item.url
+              ? '<img src="' + item.url + '" alt="">'
+              : '<div class="conv-file-icon" aria-hidden="true">' + meta.icon + '</div>';
+            return '<div class="conv-q-item">' + thumb +
+              '<div style="flex:1;min-width:0"><div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + U().esc(item.name) + '</div>' +
+                '<span class="muted">' + Math.max(1, Math.round(item.size / 1024)) + ' KB' + (item.width ? (" \u00b7 " + item.width + "\u00d7" + item.height) : "") + '</span>' +
+                '<span class="conv-file-badge">' + meta.badge + '</span>' +
+              '</div>' +
+              '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="del-file" data-idx="' + idx + '"' + (cState.busy ? " disabled" : "") + '>\u2715</button></div>';
+          }).join("") + '</div>';
+      }
+
+      h += '<details class="conv-paste-details"' + ((cState.pasteText || "").trim() ? " open" : "") + '>' +
+        '<summary>\u270d\ufe0f D\u00e1n v\u0103n b\u1ea3n / Markdown tr\u1ef1c ti\u1ebfp</summary>' +
+        '<textarea id="convPasteText" rows="3" style="width:100%" placeholder="D\u00e1n c\u00e2u h\u1ecfi tr\u1eafc nghi\u1ec7m ho\u1eb7c Markdown t\u1ea1i \u0111\u00e2y (n\u1ebfu thi\u1ebfu \u0111\u00e1p \u00e1n AI s\u1ebd t\u1ef1 gi\u1ea3i)...">' + U().esc(cState.pasteText) + '</textarea>' +
+      '</details>';
+
+      // Single Primary Inline Switch + Primary CTA + Advanced Toggle
+      h += '<div class="conv-hero-controls">' +
+        '<label class="conv-switch-row">' +
+          '<input type="checkbox" id="cAutoSolve"' + (cState.autoSolve ? " checked" : "") + '>' +
+          '<span><strong>T\u1ef1 \u0111\u1ed9ng gi\u1ea3i chi ti\u1ebft</strong> <span class="muted">(T\u1eaft = nhanh g\u1ea5p 3x, ti\u1ebft ki\u1ec7m ~65% token)</span></span>' +
+        '</label>' +
+        '<div class="conv-hero-cta-row">' +
+          '<button type="button" class="btn btn-primary conv-btn-primary-cta" id="convSmartRunBtn" data-cact="run-smart"' + (canRunSmart ? "" : " disabled") + '>' +
+            (cState.busy ? '<span class="spinner"></span>\u0110ang s\u1ed1 h\u00f3a th\u1eddi gian th\u1ef1c...' : '\u2728 B\u1eaft \u0111\u1ea7u chuy\u1ec3n \u0111\u1ed5i th\u00f4ng minh') +
+          '</button>' +
+          (cState.busy ? '<button type="button" class="btn btn-danger btn-sm" data-cact="stop-ai">\u23f9 D\u1eebng</button>' : '') +
+          '<button type="button" class="btn conv-btn-ghost' + (cState.advancedOpen ? ' is-open' : '') + '" data-cact="toggle-advanced">\u2699\ufe0f T\u00f9y ch\u1ecdn n\u00e2ng cao</button>' +
+        '</div>' +
+      '</div>';
+
+      // Collapsible Advanced Options Accordion
+      if (cState.advancedOpen) {
+        h += '<div class="conv-advanced-box">' +
+          '<div class="conv-advanced-checks">' +
+            '<label class="check-row"><input type="checkbox" id="cAutoExport"' + (cState.autoExport ? " checked" : "") + '> T\u1ef1 \u0111\u1ed9ng t\u1ea3i Excel sau khi xong</label>' +
+            '<label class="check-row"><input type="checkbox" id="cAppend"' + (cState.appendMode ? " checked" : "") + '> N\u1ed1i th\u00eam v\u00e0o danh s\u00e1ch hi\u1ec7n c\u00f3</label>' +
+            '<label class="check-row"><input type="checkbox" id="cKeepPref"' + (cState.keepPrefix ? " checked" : "") + '> Gi\u1eef ti\u1ec1n t\u1ed1 s\u1ed1 c\u00e2u (C\u00e2u 1.)</label>' +
+          '</div>' +
+          '<div class="conv-advanced-actions">' +
+            '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="open-fallback">🌐 Convert via External AI / Prompt</button>' +
+            '<label class="btn conv-btn-ghost btn-sm file-btn">📄 Nh\u1eadp nhanh .md<input type="file" id="convDirectMdInput" accept=".md,.txt,text/markdown,text/plain" hidden></label>' +
+          '</div>' +
+        '</div>';
+      }
+
+      if (cState.progressLabel || cState.steps.length > 0) {
+        h += '<div class="conv-progress">' +
+          (cState.progressLabel ? ('<div class="conv-progress-row"><span>' + U().esc(cState.progressLabel) + '</span><span>' + cState.progressPct + '%</span></div><div class="progress-bar"><div class="progress-fill" style="width:' + cState.progressPct + '%"></div></div>') : "") +
+          (cState.steps.length > 0 ? ('<div class="conv-steps">' + cState.steps.map(function (st) {
+            const icon = st.status === "done" ? "✅" : (st.status === "active" ? "⏳" : (st.status === "skip" ? "⏭️" : "○"));
+            const cls = st.status === "done" ? "is-done" : (st.status === "active" ? "is-active" : (st.status === "skip" ? "is-skip" : ""));
+            return '<div class="conv-step ' + cls + '"><span>' + icon + '</span><span>' + U().esc(st.label) + '</span></div>';
+          }).join("") + '</div>') : "") +
+          (cState.lastSummary && !cState.busy ? ('<div class="muted" style="font-size:.74rem;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">📌 ' + U().esc(cState.lastSummary) + '</div>') : "") +
+        '</div>';
+      }
+
+      // Subtle muted template links below dropzone
+      h += '<div class="conv-hero-footer">' +
+        '<button type="button" class="conv-muted-link" data-cact="view-tpl">Xem file m\u1eabu</button>' +
+        '<span class="conv-slim-sep" aria-hidden="true">\u00b7</span>' +
+        '<button type="button" class="conv-muted-link" data-cact="down-tpl">T\u1ea3i file m\u1eabu (.xlsx)</button>' +
+      '</div></section>';
+    }
+
+    // 3. Question Review & Editor Workspace (Sleek Action Toolbar + Content)
+    if (hasLoadedData || cState.busy) {
+      h += '<section class="panel conv-workspace-panel">' +
+        '<div class="conv-workspace-toolbar">' +
+          '<div class="conv-ws-left">' +
+            '<h2 class="conv-ws-title">Ki\u1ec3m duy\u1ec7t &amp; Ch\u1ec9nh s\u1eeda c\u00e2u h\u1ecfi</h2>' +
+            '<div class="conv-status-pills">' +
+              '<span class="conv-pill">T\u1ed5ng: <strong>' + v.total + '</strong></span>' +
+              '<span class="conv-pill is-ok">H\u1ee3p l\u1ec7: <strong>' + v.valid + '</strong></span>' +
+              '<span class="conv-pill' + ((v.missingAns + v.errors) > 0 ? ' is-warn' : '') + '">Thi\u1ebfu \u0110/A: <strong>' + (v.missingAns + v.errors) + '</strong></span>' +
+              '<span class="conv-pill is-ok">\u0110\u00e3 ki\u1ec3m tra: <strong>' + verifiedCnt + '/' + v.total + '</strong></span>' +
+              (suspectCnt > 0 ? '<span class="conv-pill is-bad">\u26a0\ufe0f Nghi ng\u1edd: <strong>' + suspectCnt + '</strong></span>' : "") +
             '</div>' +
           '</div>' +
+          '<div class="conv-ws-right">' +
+            '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="open-quick-ans">N\u1ea1p \u0111\u00e1p \u00e1n nhanh</button>' +
+            '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="solve-missing"' + (cState.busy || v.missingAns === 0 ? " disabled" : "") + '>🤖 AI gi\u1ea3i thi\u1ebfu \u0110/A (' + v.missingAns + ')</button>' +
+            '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="double-check"' + (cState.busy || cState.questions.length === 0 ? " disabled" : "") + '>' + (U().can("doubleCheck") ? "" : "🔒 ") + 'AI Double-Check</button>' +
+            '<button type="button" class="btn btn-primary btn-sm conv-btn-export-primary" data-cact="open-export">Xu\u1ea5t file \u25be</button>' +
+          '</div>' +
+        '</div>';
+
+      h += '<div class="conv-workspace-subbar">' +
+        '<div class="conv-subbar-filters">' +
+          '<input type="search" id="convSearch" placeholder="T\u00ecm theo s\u1ed1 c\u00e2u ho\u1eb7c t\u1eeb kh\u00f3a..." value="' + U().esc(cState.search) + '">' +
+          '<select id="convFilter">' +
+            '<option value="all"' + (cState.filter === "all" ? " selected" : "") + '>T\u1ea5t c\u1ea3 (' + v.total + ')</option>' +
+            '<option value="unverified"' + (cState.filter === "unverified" ? " selected" : "") + '>Ch\u01b0a duy\u1ec7t (' + (v.total - verifiedCnt) + ')</option>' +
+            '<option value="suspect"' + (cState.filter === "suspect" ? " selected" : "") + '>\u26a0\ufe0f Nghi ng\u1edd sai (' + suspectCnt + ')</option>' +
+            '<option value="missing"' + (cState.filter === "missing" ? " selected" : "") + '>Thi\u1ebfu \u0111\u00e1p \u00e1n (' + v.missingAns + ')</option>' +
+          '</select>' +
         '</div>' +
-        '<button type="button" class="sys-disclaimer-close" data-cact="dismiss-disclaimer" title="\u1ea8n th\u00f4ng b\u00e1o n\u00e0y" aria-label="\u1ea8n th\u00f4ng b\u00e1o">✕</button>' +
-      '</div>';
-    }
-
-    // 3 Top Cards
-    h += '<div class="conv-grid">';
-
-    // Card 1: Unified Smart File Uploader
-    const canRunSmart = !cState.busy && (cState.files.length > 0 || (cState.pasteText || "").trim().length > 0);
-    h += '<section class="panel"><div class="panel-head"><h2>1. T\u1ea3i \u0111\u1ec1 thi th\u00f4ng minh</h2>' +
-      '<span class="badge">T\u1ef1 \u0111\u1ed9ng nh\u1eadn di\u1ec7n</span></div>' +
-      '<label class="conv-drop" id="convDropUnified">' +
-        '<strong>📂 Ch\u1ecdn, k\u00e9o th\u1ea3 ho\u1eb7c Ctrl+V t\u1ec7p \u0111\u1ec1 thi</strong>' +
-        '<span class="muted" style="font-size:.76rem">\u1ea2nh → AI Vision • T\u00e0i li\u1ec7u \u0111\u1ee7 \u0110/A → Chuy\u1ec3n ngay • Thi\u1ebfu \u0110/A → AI gi\u1ea3i &amp; ki\u1ec3m tra ch\u00e9o</span>' +
-        '<div class="conv-drop-formats">' +
-          '<span class="conv-fmt-pill">PNG / JPG / WEBP</span>' +
-          '<span class="conv-fmt-pill">PDF</span>' +
-          '<span class="conv-fmt-pill">DOC / DOCX</span>' +
-          '<span class="conv-fmt-pill">MD / TXT</span>' +
-          '<span class="conv-fmt-pill">XLSX</span>' +
+        '<div class="conv-subbar-tools">' +
+          '<div class="seg">' +
+            '<button type="button" class="seg-btn' + (cState.viewMode === "digitizer" ? " active" : "") + '" data-cact="vmode" data-val="digitizer">\u26a1 Digitizer (Split-Screen)</button>' +
+            '<button type="button" class="seg-btn' + (cState.viewMode === "table" ? " active" : "") + '" data-cact="vmode" data-val="table">B\u1ea3ng nhanh</button>' +
+            '<button type="button" class="seg-btn' + (cState.viewMode === "split" ? " active" : "") + '" data-cact="vmode" data-val="split">' + (U().can("splitReview") ? "" : "🔒 ") + '\u0110\u1ed1i chi\u1ebfu \u1ea3nh g\u1ed1c</button>' +
+          '</div>' +
+          '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="verify-all"' + (v.total === 0 ? " disabled" : "") + '>\u2713 Duy\u1ec7t t\u1ea5t c\u1ea3</button>' +
+          '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="clear-all"' + (v.total === 0 && !cState.studyNoteMarkdown ? " disabled" : "") + '>X\u00f3a b\u1ea3ng</button>' +
         '</div>' +
-        '<input type="file" id="convUnifiedInput" accept=".png,.jpg,.jpeg,.webp,.gif,.md,.txt,.pdf,.doc,.docx,.xlsx,.xls,.csv,image/*" multiple hidden>' +
-      '</label>';
-
-    if (cState.files.length > 0) {
-      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:.8rem"><strong>' + cState.files.length + ' t\u1ec7p \u0111ang ch\u1edd x\u1eed l\u00fd</strong>' +
-        '<button type="button" class="btn btn-outline btn-sm" data-cact="clear-files"' + (cState.busy ? " disabled" : "") + '>X\u00f3a h\u1ebft</button></div>' +
-        '<div class="conv-queue">' + cState.files.map(function (item, idx) {
-          const meta = fileKindMeta(item.kind);
-          const thumb = item.kind === "image" && item.url
-            ? '<img src="' + item.url + '" alt="">'
-            : '<div class="conv-file-icon" aria-hidden="true">' + meta.icon + '</div>';
-          return '<div class="conv-q-item">' + thumb +
-            '<div style="flex:1;min-width:0"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + U().esc(item.name) + '</div>' +
-              '<span class="muted">' + Math.max(1, Math.round(item.size / 1024)) + ' KB' + (item.width ? (" • " + item.width + "×" + item.height) : "") + '</span>' +
-              '<span class="conv-file-badge">' + meta.badge + '</span>' +
-            '</div>' +
-            '<button type="button" class="btn btn-outline btn-sm" data-cact="del-file" data-idx="' + idx + '"' + (cState.busy ? " disabled" : "") + '>✕</button></div>';
-        }).join("") + '</div>';
-    }
-
-    h += '<details class="conv-paste-details"' + ((cState.pasteText || "").trim() ? " open" : "") + '>' +
-      '<summary>✍️ Ho\u1eb7c d\u00e1n nhanh v\u0103n b\u1ea3n / Markdown tr\u1ef1c ti\u1ebfp</summary>' +
-      '<textarea id="convPasteText" rows="3" style="width:100%" placeholder="D\u00e1n c\u00e2u h\u1ecfi tr\u1eafc nghi\u1ec7m ho\u1eb7c Markdown t\u1ea1i \u0111\u00e2y (n\u1ebfu thi\u1ebfu \u0111\u00e1p \u00e1n AI s\u1ebd t\u1ef1 gi\u1ea3i)...">' + U().esc(cState.pasteText) + '</textarea>' +
-    '</details>';
-
-    h += '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAutoSolve"' + (cState.autoSolve ? " checked" : "") + '> <strong>T\u1ef1 \u0111\u1ed9ng gi\u1ea3i chi ti\u1ebft</strong> <span class="muted">(T\u1eaft = nhanh g\u1ea5p 3x, ti\u1ebft ki\u1ec7m ~65% token)</span></label>' +
-      '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAutoExport"' + (cState.autoExport ? " checked" : "") + '> T\u1ef1 \u0111\u1ed9ng t\u1ea3i Excel sau khi xong</label>' +
-      '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cAppend"' + (cState.appendMode ? " checked" : "") + '> N\u1ed1i th\u00eam v\u00e0o danh s\u00e1ch hi\u1ec7n c\u00f3</label>' +
-      '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cKeepPref"' + (cState.keepPrefix ? " checked" : "") + '> Gi\u1eef ti\u1ec1n t\u1ed1 s\u1ed1 c\u00e2u (C\u00e2u 1.)</label>' +
-      '<div class="deck-actions" style="margin-top:8px">' +
-        '<button type="button" class="btn btn-primary" id="convSmartRunBtn" style="flex:1" data-cact="run-smart"' + (canRunSmart ? "" : " disabled") + '>' + (cState.busy ? '<span class="spinner"></span>\u0110ang s\u1ed1 h\u00f3a th\u1eddi gian th\u1ef1c...' : '✨ B\u1eaft \u0111\u1ea7u chuy\u1ec3n \u0111\u1ed5i th\u00f4ng minh') + '</button>' +
-        (cState.busy ? '<button type="button" class="btn btn-danger btn-sm" data-cact="stop-ai">⏹ D\u1eebng chuy\u1ec3n \u0111\u1ed5i</button>' : "") +
-      '</div>' +
-      '<div class="deck-actions" style="margin-top:6px">' +
-        '<button type="button" class="btn btn-outline btn-sm" style="flex:1" data-cact="open-fallback">🌐 Convert via External AI / Prompt</button>' +
-        '<label class="btn btn-outline btn-sm file-btn" style="flex:1;justify-content:center">📄 Nh\u1eadp nhanh .md<input type="file" id="convDirectMdInput" accept=".md,.txt,text/markdown,text/plain" hidden></label>' +
       '</div>';
 
-    if (cState.progressLabel || cState.steps.length > 0) {
-      h += '<div class="conv-progress">' +
-        (cState.progressLabel ? ('<div class="conv-progress-row"><span>' + U().esc(cState.progressLabel) + '</span><span>' + cState.progressPct + '%</span></div><div class="progress-bar"><div class="progress-fill" style="width:' + cState.progressPct + '%"></div></div>') : "") +
-        (cState.steps.length > 0 ? ('<div class="conv-steps">' + cState.steps.map(function (st) {
-          const icon = st.status === "done" ? "✅" : (st.status === "active" ? "⏳" : (st.status === "skip" ? "⏭️" : "○"));
-          const cls = st.status === "done" ? "is-done" : (st.status === "active" ? "is-active" : (st.status === "skip" ? "is-skip" : ""));
-          return '<div class="conv-step ' + cls + '"><span>' + icon + '</span><span>' + U().esc(st.label) + '</span></div>';
-        }).join("") + '</div>') : "") +
-        (cState.lastSummary && !cState.busy ? ('<div class="muted" style="font-size:.74rem;margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">📌 ' + U().esc(cState.lastSummary) + '</div>') : "") +
+      const filtered = cState.questions.map(function (q, idx) { return { q: q, idx: idx }; }).filter(function (item) {
+        const q = item.q;
+        if (cState.filter === "unverified" && q.verified) return false;
+        if (cState.filter === "suspect" && !q.suspect) return false;
+        if (cState.filter === "missing") {
+          const qt = q.qType || "MCQ";
+          if (qt === "MCQ" && q.correct.length > 0) return false;
+          if (qt === "TF_GROUP" && q.tfAnswers && Object.keys(q.tfAnswers).length > 0) return false;
+          if ((qt === "SHORT_ANSWER" || qt === "ORDERING") && (q.answerText || "").trim()) return false;
+          if (qt === "ESSAY") return false;
+        }
+        const kw = cState.search.trim().toLowerCase();
+        if (!kw) return true;
+        return String(item.idx + 1) === kw || q.text.toLowerCase().indexOf(kw) !== -1 || q.options.some(function (o) { return o.toLowerCase().indexOf(kw) !== -1; });
+      });
+
+      if (cState.viewMode === "digitizer" && (filtered.length > 0 || cState.docMeta.mode === "STUDY_NOTE" || cState.chunkStates.length > 0 || (cState.busy && cState.streamingTail))) {
+        h += renderDigitizerWorkspace(filtered);
+      } else if (filtered.length === 0) {
+        h += '<div class="empty-state">Kh\u00f4ng c\u00f3 c\u00e2u h\u1ecfi n\u00e0o kh\u1edbp b\u1ed9 l\u1ecdc hi\u1ec7n t\u1ea1i.</div>';
+      } else if (cState.viewMode === "split") {
+        const curIm = cState.images[cState.activeImgIdx];
+        h += '<div class="split-review">' +
+          '<div class="split-img-pane">' +
+            '<div class="panel-head" style="margin:0"><strong>\u1ea2nh \u0111\u1ec1 g\u1ed1c' + (cState.images.length ? (" (" + (cState.activeImgIdx + 1) + "/" + cState.images.length + ")") : "") + '</strong>' +
+            '<div class="deck-actions">' +
+              '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="zoom" data-val="-25">-</button>' +
+              '<span class="muted" style="font-size:.78rem">' + cState.imgZoom + '%</span>' +
+              '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="zoom" data-val="25">+</button>' +
+              '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="img-prev"' + (cState.activeImgIdx <= 0 ? " disabled" : "") + '>\u2190</button>' +
+              '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="img-next"' + (cState.activeImgIdx >= cState.images.length - 1 ? " disabled" : "") + '>\u2192</button>' +
+            '</div></div>' +
+            '<div class="split-img-stage">' + (curIm ? '<img src="' + curIm.url + '" alt="\u1ea2nh \u0111\u1ec1 g\u1ed1c" style="width:' + cState.imgZoom + '%">' : '<p class="muted">Ch\u01b0a c\u00f3 \u1ea3nh \u0111\u1ec1 g\u1ed1c n\u00e0o trong h\u00e0ng \u0111\u1ee3i. B\u1ea5m "+ Th\u00eam t\u1ec7p / \u0110\u1ec1 m\u1edbi" \u0111\u1ec3 t\u1ea3i \u1ea3nh \u0111\u1ed1i chi\u1ebfu.</p>') + '</div>' +
+          '</div>' +
+          '<div class="review-list">' + filtered.slice(0, 60).map(renderReviewCard).join("") + '</div>' +
+        '</div>';
+      } else {
+        const totalPages = Math.max(1, Math.ceil(filtered.length / cState.perPage));
+        cState.page = U().clamp(cState.page, 1, totalPages);
+        const slice = filtered.slice((cState.page - 1) * cState.perPage, cState.page * cState.perPage);
+        h += '<div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>C\u00e2u h\u1ecfi (KaTeX + HTML)</th><th>Ph\u01b0\u01a1ng \u00e1n</th><th>\u0110\u00e1p \u00e1n</th><th>Gi\u1ea3i th\u00edch</th><th>Duy\u1ec7t</th><th></th></tr></thead><tbody>' +
+          slice.map(function (item) {
+            const q = item.q, i = item.idx;
+            const opts = q.options.map(function (o, k) {
+              if (!o) return "";
+              const ok = q.correct.indexOf(k) !== -1;
+              return '<div class="rich-text" style="' + (ok ? "color:var(--emerald);font-weight:700" : "") + '"><strong>' + U().LETTERS.charAt(k) + ".</strong> " + U().renderRich(o) + "</div>";
+            }).join("");
+            const ansBtns = q.options.map(function (o, k) {
+              if (!o) return "";
+              const ok = q.correct.indexOf(k) !== -1;
+              return '<button type="button" class="btn ' + (ok ? "btn-primary" : "conv-btn-ghost") + ' btn-sm" style="padding:3px 7px;border-radius:6px" data-cact="toggle-ans" data-idx="' + i + '" data-opt="' + k + '">' + U().LETTERS.charAt(k) + "</button>";
+            }).join(" ");
+            return '<tr style="' + (q.suspect ? "background:var(--amber-soft)" : "") + '"><td>' + (i + 1) + '</td>' +
+              '<td style="min-width:220px"><div class="rich-text">' + U().renderRich(q.text) + '</div>' +
+                (q.suspect ? '<div class="badge badge-warn" style="margin-top:4px">\u26a0\ufe0f C\u1ea7n ki\u1ec3m tra k\u1ef9</div>' : "") +
+                (q.checkNote ? '<div class="muted" style="font-size:.74rem;margin-top:3px">' + U().esc(q.checkNote) + "</div>" : "") +
+              '</td><td style="min-width:200px">' + opts + '</td>' +
+              '<td style="white-space:nowrap">' + ansBtns + (q.correct.length === 0 ? '<div class="badge badge-warn" style="margin-top:4px">Thi\u1ebfu \u0110/A</div>' : "") + '</td>' +
+              '<td class="rich-text" style="min-width:140px">' + (q.explanation ? U().renderRich(q.explanation) : '<span class="muted">\u2014</span>') + '</td>' +
+              '<td><label class="check-row" style="margin:0;font-size:.76rem"><input type="checkbox" data-cact="verify-q" data-idx="' + i + '"' + (q.verified ? " checked" : "") + '> \u2713</label></td>' +
+              '<td style="white-space:nowrap">' +
+                '<button type="button" class="btn conv-btn-ghost btn-sm" title="L\u01b0u nhanh t\u1eeb v\u1ef1ng v\u00e0o Vocab Studio" data-cact="quick-vocab" data-idx="' + i + '">📖 +T\u1eeb v\u1ef1ng</button> ' +
+                '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="edit-inline" data-idx="' + i + '">S\u1eeda</button> ' +
+                '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="del-q" data-idx="' + i + '">\u2715</button>' +
+              '</td></tr>';
+          }).join("") + '</tbody></table></div>';
+        if (totalPages > 1) {
+          h += '<div class="pager"><button type="button" data-cact="pg" data-val="' + (cState.page - 1) + '"' + (cState.page <= 1 ? " disabled" : "") + '>&lt;</button>' +
+            '<span class="muted" style="padding:5px 10px;font-size:.82rem">Trang ' + cState.page + "/" + totalPages + '</span>' +
+            '<button type="button" data-cact="pg" data-val="' + (cState.page + 1) + '"' + (cState.page >= totalPages ? " disabled" : "") + '>&gt;</button></div>';
+        }
+      }
+      h += "</section>";
+    }
+
+    // 4. Lightweight Quick Answer Key Modal (Popover)
+    if (cState.quickAnsOpen) {
+      h += '<div class="modal-overlay conv-drawer-overlay" role="dialog" aria-modal="true" data-cact="close-quick-ans-bg">' +
+        '<div class="modal conv-clean-modal" style="max-width:480px">' +
+          '<div class="conv-modal-head">' +
+            '<h3>N\u1ea1p \u0111\u00e1p \u00e1n nhanh</h3>' +
+            '<button type="button" class="conv-slim-close" data-cact="close-quick-ans" aria-label="\u0110\u00f3ng">\u2715</button>' +
+          '</div>' +
+          '<p class="muted" style="font-size:.82rem;margin:0 0 10px">D\u00e1n danh s\u00e1ch \u0111\u00e1p \u00e1n th\u1ee7 c\u00f4ng theo d\u1ea1ng <code>1.C 2.A 3.D</code> ho\u1eb7c <code>1-c, 2-a,c</code>.</p>' +
+          '<textarea id="convManualAns" rows="4" style="width:100%" placeholder="1.C 2.A 3.D 4.B ho\u1eb7c 1-c, 2-a,c"></textarea>' +
+          '<div class="modal-actions" style="margin-top:14px">' +
+            '<button type="button" class="btn conv-btn-ghost" data-cact="close-quick-ans">\u0110\u00f3ng</button>' +
+            '<button type="button" class="btn btn-primary" data-cact="apply-manual-ans">\u00c1p d\u1ee5ng \u0111\u00e1p \u00e1n</button>' +
+          '</div>' +
+        '</div>' +
       '</div>';
     }
-    h += '</section>';
 
-    // Card 2: Template + Manual Answer Key + AI Tools
-    h += '<section class="panel"><div class="panel-head"><h2>2. File m\u1eabu &amp; Ki\u1ec3m duy\u1ec7t AI</h2></div>' +
-      '<div class="checkout-notice" style="margin-bottom:10px">\u0110\u00e3 t\u00edch h\u1ee3p s\u1eb5n c\u1ea5u tr\u00fac chu\u1ea9n 11 c\u1ed9t <strong>AI_Tutor.xlsx</strong> (kh\u00f4ng c\u1ea7n t\u1ea3i file m\u1eabu l\u00ean).</div>' +
-      '<div class="deck-actions" style="margin-bottom:12px">' +
-        '<button type="button" class="btn btn-outline btn-sm" data-cact="view-tpl">👁️ Xem file m\u1eabu</button>' +
-        '<button type="button" class="btn btn-emerald btn-sm" data-cact="down-tpl">⬇ T\u1ea3i file m\u1eabu (.xlsx)</button>' +
-      '</div>' +
-      '<label class="field">N\u1ea1p nhanh b\u1ea3ng \u0111\u00e1p \u00e1n th\u1ee7 c\u00f4ng<textarea id="convManualAns" rows="2" placeholder="1.C 2.A 3.D 4.B ho\u1eb7c 1-c, 2-a,c"></textarea></label>' +
-      '<div class="deck-actions">' +
-        '<button type="button" class="btn btn-outline btn-sm" data-cact="apply-manual-ans">\u00c1p d\u1ee5ng \u0111\u00e1p \u00e1n</button>' +
-        '<button type="button" class="btn btn-primary btn-sm" data-cact="solve-missing"' + (cState.busy || v.missingAns === 0 ? " disabled" : "") + '>🤖 AI gi\u1ea3i c\u00e2u thi\u1ebfu \u0110/A (' + v.missingAns + ')</button>' +
-      '</div>' +
-      '<div class="deck-actions" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">' +
-        '<button type="button" class="btn btn-amber btn-sm" data-cact="double-check"' + (cState.busy || cState.questions.length === 0 ? " disabled" : "") + '>' + (U().can("doubleCheck") ? "" : "🔒 ") + '🔍 AI Ki\u1ec3m tra l\u1ea1i to\u00e0n b\u1ed9 \u0111\u00e1p \u00e1n (Double-Check)</button>' +
-      '</div></section>';
-
-    // Card 3: Options & Export
-    h += '<section class="panel"><div class="panel-head"><h2>3. Chu\u1ea9n h\u00f3a &amp; Xu\u1ea5t file</h2></div>' +
-      '<label class="field">Ch\u1ebf \u0111\u1ed9 m\u00f4n h\u1ecdc<select id="cSubject">' +
-        '<option value="auto"' + (cState.subject === "auto" ? " selected" : "") + '>T\u1ef1 \u0111\u1ed9ng nh\u1eadn di\u1ec7n</option>' +
-        '<option value="math"' + (cState.subject === "math" ? " selected" : "") + '>To\u00e1n - L\u00fd - H\u00f3a (Chuy\u00ean LaTeX)</option>' +
-        '<option value="english"' + (cState.subject === "english" ? " selected" : "") + '>Ti\u1ebfng Anh (G\u1ea1ch ch\u00e2n &lt;u&gt;, tr\u1ecdng \u00e2m)</option>' +
-        '<option value="theory"' + (cState.subject === "theory" ? " selected" : "") + '>M\u00f4n l\u00fd thuy\u1ebft kh\u00e1c</option>' +
-      '</select></label>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-        '<label class="field">\u0110\u1ecbnh d\u1ea1ng \u0110\u00e1p \u00e1n<select id="cAnsFmt"><option value="number"' + (cState.ansFormat === "number" ? " selected" : "") + '>S\u1ed1 (1–5)</option><option value="letter"' + (cState.ansFormat === "letter" ? " selected" : "") + '>Ch\u1eef (A–E)</option></select></label>' +
-        '<label class="field">Th\u1eddi gian (gi\u00e2y)<input type="number" id="cDefTime" min="5" max="600" value="' + cState.defaultTime + '"></label>' +
-        '<label class="field">Ph\u1ea1m vi xu\u1ea5t<select id="cScope"><option value="all"' + (cState.scope === "all" ? " selected" : "") + '>T\u1ea5t c\u1ea3</option><option value="answered"' + (cState.scope === "answered" ? " selected" : "") + '>Ch\u1ec9 c\u00e2u c\u00f3 \u0110/A</option></select></label>' +
-        '<label class="field">Chia file<select id="cSplit"><option value="0"' + (cState.splitSize === 0 ? " selected" : "") + '>G\u1ed9p 1 file</option><option value="100"' + (cState.splitSize === 100 ? " selected" : "") + '>100 c\u00e2u</option><option value="200"' + (cState.splitSize === 200 ? " selected" : "") + '>200 c\u00e2u</option><option value="300"' + (cState.splitSize === 300 ? " selected" : "") + '>300 c\u00e2u</option></select></label>' +
-      '</div>' +
-      '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cKeepLatex"' + (cState.keepLatex ? " checked" : "") + '> Gi\u1eef chu\u1ea9n LaTeX ($...$)</label>' +
-      '<label class="check-row" style="font-size:.8rem"><input type="checkbox" id="cKeepHtml"' + (cState.keepHtml ? " checked" : "") + '> Gi\u1eef th\u1ebb HTML (&lt;u&gt;, &lt;b&gt;, &lt;i&gt;)</label>' +
-      '<p class="muted" style="font-size:.75rem;margin:4px 0 8px">T\u00ean file: <code>AI_Tutor_' + dateStamp() + '.xlsx</code></p>' +
-      '<div class="deck-actions">' +
-        '<button type="button" class="btn btn-emerald btn-sm" style="flex:1" data-cact="exp-xlsx"' + (cState.questions.length === 0 ? " disabled" : "") + '>Xu\u1ea5t .xlsx</button>' +
-        '<button type="button" class="btn btn-outline btn-sm" style="flex:1" data-cact="exp-csv"' + (cState.questions.length === 0 ? " disabled" : "") + '>Xu\u1ea5t CSV</button>' +
-      '</div>' +
-      '<div class="deck-actions" style="margin-top:6px">' +
-        '<button type="button" class="btn btn-primary btn-sm" style="flex:1" data-cact="exp-md"' + (cState.questions.length === 0 && !cState.rawMarkdown && !cState.studyNoteMarkdown ? " disabled" : "") + '>⬇ T\u1ea3i xu\u1ed1ng file .md</button>' +
-        '<button type="button" class="btn btn-outline btn-sm" style="flex:1" data-cact="save-drive"' + (cState.questions.length === 0 && !cState.studyNoteMarkdown ? " disabled" : "") + '>☁️ L\u01b0u th\u01b0 vi\u1ec7n / Drive</button>' +
-      '</div></section></div>';
-
-    // 1-Click Import into Kho \u0111\u1ec1 AI Tutor
-    if (cState.questions.length > 0) {
+    // 5. Export Modal / Slide-Over Drawer (Houses all Column 3 Export + Library Import controls)
+    if (cState.exportModalOpen) {
       const mergeOpts = '<option value="">T\u1ea1o th\u00e0nh b\u1ed9 \u0111\u1ec1 m\u1edbi</option>' +
         (U().can("merge") ? userDecks.map(function (d) { return '<option value="' + U().esc(d.id) + '">G\u1ed9p v\u00e0o: ' + U().esc(d.title) + ' (' + d.questions.length + ' c\u00e2u)</option>'; }).join("") : "");
-      h += '<div class="conv-import-box">' +
-        '<label class="field" style="margin:0">T\u00ean b\u1ed9 \u0111\u1ec1 (1-Click Import)<input type="text" id="convDeckTitle" value="B\u1ed9 \u0111\u1ec1 ' + dateStamp() + '"></label>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-          '<label class="field" style="margin:0">Th\u1ebb m\u00f4n h\u1ecdc / Tag<input type="text" id="convDeckTag" placeholder="VD: Gi\u1ea3i t\u00edch, Ti\u1ebfng Anh"></label>' +
-          '<label class="field" style="margin:0">\u0110\u00edch l\u01b0u' + (U().can("merge") ? "" : " (G\u1ed9p c\u1ea7n Gold)") + '<select id="convMergeTarget">' + mergeOpts + '</select></label>' +
-        '</div>' +
-        '<div class="deck-actions">' +
-          '<button type="button" class="btn btn-emerald" data-cact="one-click-import">⚡ Nh\u1eadp th\u1eb3ng v\u00e0o Kho \u0111\u1ec1 (' + v.valid + ' c\u00e2u h\u1ee3p l\u1ec7)</button>' +
-          '<button type="button" class="btn btn-primary btn-sm" data-cact="send-studio">🎮 M\u1edf trong Creator Studio</button>' +
+      h += '<div class="modal-overlay conv-drawer-overlay" role="dialog" aria-modal="true" data-cact="close-export-bg">' +
+        '<div class="conv-export-drawer">' +
+          '<div class="conv-modal-head">' +
+            '<div><h3 style="margin:0">Chu\u1ea9n h\u00f3a &amp; Xu\u1ea5t file</h3><span class="muted" style="font-size:.78rem">C\u1ea5u h\u00ecnh \u0111\u1ecbnh d\u1ea1ng \u0111\u1ea7u ra v\u00e0 l\u01b0u tr\u1eef</span></div>' +
+            '<button type="button" class="conv-slim-close" data-cact="close-export" aria-label="\u0110\u00f3ng">\u2715</button>' +
+          '</div>' +
+          '<div class="conv-drawer-body">' +
+            '<label class="field">Ch\u1ebf \u0111\u1ed9 m\u00f4n h\u1ecdc<select id="cSubject">' +
+              '<option value="auto"' + (cState.subject === "auto" ? " selected" : "") + '>T\u1ef1 \u0111\u1ed9ng nh\u1eadn di\u1ec7n</option>' +
+              '<option value="math"' + (cState.subject === "math" ? " selected" : "") + '>To\u00e1n - L\u00fd - H\u00f3a (Chuy\u00ean LaTeX)</option>' +
+              '<option value="english"' + (cState.subject === "english" ? " selected" : "") + '>Ti\u1ebfng Anh (G\u1ea1ch ch\u00e2n &lt;u&gt;, tr\u1ecdng \u00e2m)</option>' +
+              '<option value="theory"' + (cState.subject === "theory" ? " selected" : "") + '>M\u00f4n l\u00fd thuy\u1ebft kh\u00e1c</option>' +
+            '</select></label>' +
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+              '<label class="field">\u0110\u1ecbnh d\u1ea1ng \u0110\u00e1p \u00e1n<select id="cAnsFmt"><option value="number"' + (cState.ansFormat === "number" ? " selected" : "") + '>S\u1ed1 (1\u20135)</option><option value="letter"' + (cState.ansFormat === "letter" ? " selected" : "") + '>Ch\u1eef (A\u2013E)</option></select></label>' +
+              '<label class="field">Th\u1eddi gian (gi\u00e2y)<input type="number" id="cDefTime" min="5" max="600" value="' + cState.defaultTime + '"></label>' +
+              '<label class="field">Ph\u1ea1m vi xu\u1ea5t<select id="cScope"><option value="all"' + (cState.scope === "all" ? " selected" : "") + '>T\u1ea5t c\u1ea3</option><option value="answered"' + (cState.scope === "answered" ? " selected" : "") + '>Ch\u1ec9 c\u00e2u c\u00f3 \u0110/A</option></select></label>' +
+              '<label class="field">Chia file<select id="cSplit"><option value="0"' + (cState.splitSize === 0 ? " selected" : "") + '>G\u1ed9p 1 file</option><option value="100"' + (cState.splitSize === 100 ? " selected" : "") + '>100 c\u00e2u</option><option value="200"' + (cState.splitSize === 200 ? " selected" : "") + '>200 c\u00e2u</option><option value="300"' + (cState.splitSize === 300 ? " selected" : "") + '>300 c\u00e2u</option></select></label>' +
+            '</div>' +
+            '<div class="conv-drawer-checks">' +
+              '<label class="check-row"><input type="checkbox" id="cKeepLatex"' + (cState.keepLatex ? " checked" : "") + '> Gi\u1eef chu\u1ea9n LaTeX ($...$)</label>' +
+              '<label class="check-row"><input type="checkbox" id="cKeepHtml"' + (cState.keepHtml ? " checked" : "") + '> Gi\u1eef th\u1ebb HTML (&lt;u&gt;, &lt;b&gt;, &lt;i&gt;)</label>' +
+            '</div>' +
+            '<div class="conv-filename-preview">T\u00ean file d\u1ef1 ki\u1ebfn: <code>AI_Tutor_' + dateStamp() + '.xlsx</code></div>' +
+            '<div class="conv-drawer-actions">' +
+              '<button type="button" class="btn btn-primary" style="width:100%" data-cact="exp-xlsx"' + (cState.questions.length === 0 ? " disabled" : "") + '>\u2b07 Xu\u1ea5t .xlsx (Chu\u1ea9n 11 c\u1ed9t)</button>' +
+              '<div class="conv-drawer-subactions">' +
+                '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="exp-csv"' + (cState.questions.length === 0 ? " disabled" : "") + '>Xu\u1ea5t CSV</button>' +
+                '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="exp-md"' + (cState.questions.length === 0 && !cState.rawMarkdown && !cState.studyNoteMarkdown ? " disabled" : "") + '>T\u1ea3i xu\u1ed1ng file .md</button>' +
+                '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="save-drive"' + (cState.questions.length === 0 && !cState.studyNoteMarkdown ? " disabled" : "") + '>☁️ L\u01b0u th\u01b0 vi\u1ec7n / Drive</button>' +
+              '</div>' +
+            '</div>' +
+            (cState.questions.length > 0 ? (
+              '<div class="conv-drawer-divider"></div>' +
+              '<div class="conv-drawer-section-title">L\u01b0u v\u00e0o Kho \u0111\u1ec1 AI Tutor (1-Click Import)</div>' +
+              '<label class="field">T\u00ean b\u1ed9 \u0111\u1ec1<input type="text" id="convDeckTitle" value="B\u1ed9 \u0111\u1ec1 ' + dateStamp() + '"></label>' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+                '<label class="field">Th\u1ebb m\u00f4n h\u1ecdc / Tag<input type="text" id="convDeckTag" placeholder="VD: Gi\u1ea3i t\u00edch, Ti\u1ebfng Anh"></label>' +
+                '<label class="field">\u0110\u00edch l\u01b0u' + (U().can("merge") ? "" : " (G\u1ed9p c\u1ea7n Gold)") + '<select id="convMergeTarget">' + mergeOpts + '</select></label>' +
+              '</div>' +
+              '<div class="conv-drawer-subactions" style="margin-top:8px">' +
+                '<button type="button" class="btn conv-btn-ghost btn-sm" style="flex:1" data-cact="one-click-import">\u26a1 Nh\u1eadp v\u00e0o Kho \u0111\u1ec1 (' + v.valid + ' c\u00e2u)</button>' +
+                '<button type="button" class="btn conv-btn-ghost btn-sm" style="flex:1" data-cact="send-studio">🎮 M\u1edf Creator Studio</button>' +
+              '</div>'
+            ) : '') +
+          '</div>' +
         '</div>' +
       '</div>';
     }
 
-    // Validation & Review Toolbar
-    h += '<section class="panel"><div class="panel-head">' +
-      '<div><h2>Ki\u1ec3m duy\u1ec7t &amp; Ch\u1ec9nh s\u1eeda c\u00e2u h\u1ecfi</h2>' +
-      '<div class="pills" style="margin:6px 0 0">' +
-        '<span class="badge">T\u1ed5ng: ' + v.total + '</span>' +
-        '<span class="badge badge-ok">H\u1ee3p l\u1ec7: ' + v.valid + '</span>' +
-        '<span class="badge badge-warn">Thi\u1ebfu \u0110/A / L\u1ed7i: ' + (v.missingAns + v.errors) + '</span>' +
-        '<span class="badge badge-ok">✓ \u0110\u00e3 ki\u1ec3m tra: ' + verifiedCnt + '/' + v.total + '</span>' +
-        (suspectCnt > 0 ? '<span class="badge badge-bad">⚠️ Nghi ng\u1edd sai: ' + suspectCnt + '</span>' : "") +
-      '</div></div>' +
-      '<div class="deck-actions">' +
-        '<div class="seg">' +
-          '<button type="button" class="seg-btn' + (cState.viewMode === "digitizer" ? " active" : "") + '" data-cact="vmode" data-val="digitizer">⚡ Digitizer (Split-Screen)</button>' +
-          '<button type="button" class="seg-btn' + (cState.viewMode === "table" ? " active" : "") + '" data-cact="vmode" data-val="table">B\u1ea3ng nhanh</button>' +
-          '<button type="button" class="seg-btn' + (cState.viewMode === "split" ? " active" : "") + '" data-cact="vmode" data-val="split">' + (U().can("splitReview") ? "" : "🔒 ") + '\u0110\u1ed1i chi\u1ebfu \u1ea3nh g\u1ed1c</button>' +
-        '</div>' +
-        '<button type="button" class="btn btn-outline btn-sm" data-cact="verify-all"' + (v.total === 0 ? " disabled" : "") + '>✓ Duy\u1ec7t t\u1ea5t c\u1ea3</button>' +
-        '<button type="button" class="btn btn-outline btn-sm" data-cact="clear-all"' + (v.total === 0 && !cState.studyNoteMarkdown ? " disabled" : "") + '>X\u00f3a b\u1ea3ng</button>' +
-      '</div></div>';
-
-    h += '<div class="filter-bar">' +
-      '<input type="search" id="convSearch" placeholder="T\u00ecm theo s\u1ed1 c\u00e2u ho\u1eb7c t\u1eeb kh\u00f3a..." value="' + U().esc(cState.search) + '" style="flex:1;min-width:200px">' +
-      '<select id="convFilter">' +
-        '<option value="all"' + (cState.filter === "all" ? " selected" : "") + '>T\u1ea5t c\u1ea3 (' + v.total + ')</option>' +
-        '<option value="unverified"' + (cState.filter === "unverified" ? " selected" : "") + '>Ch\u01b0a duy\u1ec7t (' + (v.total - verifiedCnt) + ')</option>' +
-        '<option value="suspect"' + (cState.filter === "suspect" ? " selected" : "") + '>⚠️ C\u1ea3nh b\u00e1o nghi ng\u1edd sai (' + suspectCnt + ')</option>' +
-        '<option value="missing"' + (cState.filter === "missing" ? " selected" : "") + '>Thi\u1ebfu \u0111\u00e1p \u00e1n (' + v.missingAns + ')</option>' +
-      '</select></div>';
-
-    const filtered = cState.questions.map(function (q, idx) { return { q: q, idx: idx }; }).filter(function (item) {
-      const q = item.q;
-      if (cState.filter === "unverified" && q.verified) return false;
-      if (cState.filter === "suspect" && !q.suspect) return false;
-      if (cState.filter === "missing") {
-        const qt = q.qType || "MCQ";
-        if (qt === "MCQ" && q.correct.length > 0) return false;
-        if (qt === "TF_GROUP" && q.tfAnswers && Object.keys(q.tfAnswers).length > 0) return false;
-        if ((qt === "SHORT_ANSWER" || qt === "ORDERING") && (q.answerText || "").trim()) return false;
-        if (qt === "ESSAY") return false;
-      }
-      const kw = cState.search.trim().toLowerCase();
-      if (!kw) return true;
-      return String(item.idx + 1) === kw || q.text.toLowerCase().indexOf(kw) !== -1 || q.options.some(function (o) { return o.toLowerCase().indexOf(kw) !== -1; });
-    });
-
-    if (cState.viewMode === "digitizer" && (filtered.length > 0 || cState.docMeta.mode === "STUDY_NOTE" || cState.chunkStates.length > 0 || (cState.busy && cState.streamingTail))) {
-      h += renderDigitizerWorkspace(filtered);
-    } else if (filtered.length === 0) {
-      h += '<div class="empty-state">Ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi n\u00e0o. H\u00e3y t\u1ea3i t\u1ec7p \u1ea2nh, PDF, Word, Markdown/Text ho\u1eb7c Excel \u1edf Kh\u1ed1i 1 \u0111\u1ec3 b\u1eaft \u0111\u1ea7u.</div>';
-    } else if (cState.viewMode === "split") {
-      // Split-Screen Review Mode
-      const curIm = cState.images[cState.activeImgIdx];
-      h += '<div class="split-review">' +
-        '<div class="split-img-pane">' +
-          '<div class="panel-head" style="margin:0"><strong>\u1ea2nh \u0111\u1ec1 g\u1ed1c' + (cState.images.length ? (" (" + (cState.activeImgIdx + 1) + "/" + cState.images.length + ")") : "") + '</strong>' +
-          '<div class="deck-actions">' +
-            '<button type="button" class="btn btn-outline btn-sm" data-cact="zoom" data-val="-25">-</button>' +
-            '<span class="muted" style="font-size:.78rem">' + cState.imgZoom + '%</span>' +
-            '<button type="button" class="btn btn-outline btn-sm" data-cact="zoom" data-val="25">+</button>' +
-            '<button type="button" class="btn btn-outline btn-sm" data-cact="img-prev"' + (cState.activeImgIdx <= 0 ? " disabled" : "") + '>←</button>' +
-            '<button type="button" class="btn btn-outline btn-sm" data-cact="img-next"' + (cState.activeImgIdx >= cState.images.length - 1 ? " disabled" : "") + '>→</button>' +
-          '</div></div>' +
-          '<div class="split-img-stage">' + (curIm ? '<img src="' + curIm.url + '" alt="\u1ea2nh \u0111\u1ec1 g\u1ed1c" style="width:' + cState.imgZoom + '%">' : '<p class="muted">Ch\u01b0a c\u00f3 \u1ea3nh \u0111\u1ec1 g\u1ed1c n\u00e0o trong h\u00e0ng \u0111\u1ee3i. B\u1ea1n c\u00f3 th\u1ec3 t\u1ea3i \u1ea3nh \u1edf Kh\u1ed1i 1 \u0111\u1ec3 \u0111\u1ed1i chi\u1ebfu song song.</p>') + '</div>' +
-        '</div>' +
-        '<div class="review-list">' + filtered.slice(0, 60).map(renderReviewCard).join("") + '</div>' +
-      '</div>';
-    } else {
-      // Paginated Table View
-      const totalPages = Math.max(1, Math.ceil(filtered.length / cState.perPage));
-      cState.page = U().clamp(cState.page, 1, totalPages);
-      const slice = filtered.slice((cState.page - 1) * cState.perPage, cState.page * cState.perPage);
-      h += '<div class="table-scroll"><table class="data-table"><thead><tr><th>#</th><th>C\u00e2u h\u1ecfi (KaTeX + HTML)</th><th>Ph\u01b0\u01a1ng \u00e1n</th><th>\u0110\u00e1p \u00e1n</th><th>Gi\u1ea3i th\u00edch</th><th>Duy\u1ec7t</th><th></th></tr></thead><tbody>' +
-        slice.map(function (item) {
-          const q = item.q, i = item.idx;
-          const opts = q.options.map(function (o, k) {
-            if (!o) return "";
-            const ok = q.correct.indexOf(k) !== -1;
-            return '<div class="rich-text" style="' + (ok ? "color:var(--emerald);font-weight:700" : "") + '"><strong>' + U().LETTERS.charAt(k) + ".</strong> " + U().renderRich(o) + "</div>";
-          }).join("");
-          const ansBtns = q.options.map(function (o, k) {
-            if (!o) return "";
-            const ok = q.correct.indexOf(k) !== -1;
-            return '<button type="button" class="btn ' + (ok ? "btn-emerald" : "btn-outline") + ' btn-sm" style="padding:3px 7px;border-radius:6px" data-cact="toggle-ans" data-idx="' + i + '" data-opt="' + k + '">' + U().LETTERS.charAt(k) + "</button>";
-          }).join(" ");
-          return '<tr style="' + (q.suspect ? "background:var(--amber-soft)" : "") + '"><td>' + (i + 1) + '</td>' +
-            '<td style="min-width:220px"><div class="rich-text">' + U().renderRich(q.text) + '</div>' +
-              (q.suspect ? '<div class="badge badge-warn" style="margin-top:4px">⚠️ C\u1ea7n ki\u1ec3m tra k\u1ef9</div>' : "") +
-              (q.checkNote ? '<div class="muted" style="font-size:.74rem;margin-top:3px">' + U().esc(q.checkNote) + "</div>" : "") +
-            '</td><td style="min-width:200px">' + opts + '</td>' +
-            '<td style="white-space:nowrap">' + ansBtns + (q.correct.length === 0 ? '<div class="badge badge-warn" style="margin-top:4px">Thi\u1ebfu \u0110/A</div>' : "") + '</td>' +
-            '<td class="rich-text" style="min-width:140px">' + (q.explanation ? U().renderRich(q.explanation) : '<span class="muted">—</span>') + '</td>' +
-            '<td><label class="check-row" style="margin:0;font-size:.76rem"><input type="checkbox" data-cact="verify-q" data-idx="' + i + '"' + (q.verified ? " checked" : "") + '> ✓</label></td>' +
-            '<td style="white-space:nowrap">' +
-              '<button type="button" class="btn btn-outline btn-sm" title="Lưu nhanh từ vựng vào Vocab Studio" data-cact="quick-vocab" data-idx="' + i + '">📖 +Từ vựng</button> ' +
-              '<button type="button" class="btn btn-outline btn-sm" data-cact="edit-inline" data-idx="' + i + '">S\u1eeda</button> ' +
-              '<button type="button" class="btn btn-outline btn-sm" data-cact="del-q" data-idx="' + i + '">✕</button>' +
-            '</td></tr>';
-        }).join("") + '</tbody></table></div>';
-      if (totalPages > 1) {
-        h += '<div class="pager"><button type="button" data-cact="pg" data-val="' + (cState.page - 1) + '"' + (cState.page <= 1 ? " disabled" : "") + '>&lt;</button>' +
-          '<span class="muted" style="padding:5px 10px;font-size:.82rem">Trang ' + cState.page + "/" + totalPages + '</span>' +
-          '<button type="button" data-cact="pg" data-val="' + (cState.page + 1) + '"' + (cState.page >= totalPages ? " disabled" : "") + '>&gt;</button></div>';
-      }
-    }
-    h += "</section>";
+    h += '</div>';
     root.innerHTML = h;
 
     if (!cState.mounted) {
@@ -4091,7 +4178,17 @@
     const act = b.getAttribute("data-cact");
     if (act === "go-api") U().showTab("api");
     else if (act === "go-guide") U().showTab("guide");
-    else if (act === "dismiss-disclaimer") { cState.disclaimerDismissed = true; renderConverter(); }
+    else if (act === "dismiss-disclaimer") {
+      cState.disclaimerDismissed = true;
+      try { localStorage.setItem("ai_tutor_conv_api_banner_dismissed", "1"); } catch (err) {}
+      renderConverter();
+    }
+    else if (act === "toggle-upload") { cState.uploadExpanded = !cState.uploadExpanded; renderConverter(); }
+    else if (act === "toggle-advanced") { cState.advancedOpen = !cState.advancedOpen; renderConverter(); }
+    else if (act === "open-quick-ans") { cState.quickAnsOpen = true; renderConverter(); }
+    else if (act === "close-quick-ans" || (act === "close-quick-ans-bg" && e.target === b)) { cState.quickAnsOpen = false; renderConverter(); }
+    else if (act === "open-export") { cState.exportModalOpen = true; renderConverter(); }
+    else if (act === "close-export" || (act === "close-export-bg" && e.target === b)) { cState.exportModalOpen = false; renderConverter(); }
     else if (act === "vmode") {
       const m = b.getAttribute("data-val");
       if (m === "split" && !U().requireFeature("splitReview")) return;
@@ -4119,6 +4216,7 @@
         }))).filter(function (x) { return x >= 0 && x < maxO; }).sort(function (a, b) { return a - b; });
         if (corr.length > 0) { q.correct = corr; q.type = corr.length > 1 ? "Checkbox" : "Multiple Choice"; n++; }
       }
+      if (n > 0) cState.quickAnsOpen = false;
       renderConverter();
       U().showToast(n > 0 ? ("\u0110\u00e3 \u00e1p d\u1ee5ng \u0111\u00e1p \u00e1n cho " + n + " c\u00e2u.") : "Kh\u00f4ng kh\u1edbp \u0111\u1ecbnh d\u1ea1ng \u0111\u00e1p \u00e1n.", n > 0 ? "success" : "warning");
     }

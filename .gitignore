@@ -7,6 +7,13 @@ dist/
 *.pem
 *.key
 test_*.js
+prompts/
+*.prompt.md
+CLAUDE.md
+AGENTS.md
+.cursorrules
+*_REPORT.md
+scratch/
 server-db.json
 data/db.json
 data/system-keys-store.json
