@@ -968,6 +968,29 @@ module.exports = async function apiHandler(req, res) {
       return sendJson(res, 200, { ok: true, updatedAt: next.updatedAt });
     }
 
+    /* ---------- Vocab Studio Cloud & Supabase Hybrid Sync API ---------- */
+    if (p === "/api/vocab/sync" && method === "GET") {
+      const caller = getCallerEmail(req);
+      if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
+      const data = await storage.getVocabUser(caller);
+      return sendJson(res, 200, { ok: true, data: data || null });
+    }
+    if (p === "/api/vocab/sync" && method === "PUT") {
+      const caller = getCallerEmail(req);
+      if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
+      const body = await readBody(req);
+      const next = {
+        words: Array.isArray(body && body.words) ? body.words : [],
+        decks: Array.isArray(body && body.decks) ? body.decks : [],
+        stats: (body && body.stats && typeof body.stats === "object") ? body.stats : {},
+        settings: (body && body.settings && typeof body.settings === "object") ? body.settings : {},
+        updatedAt: Date.now(),
+        syncedAt: new Date().toISOString()
+      };
+      await storage.saveVocabUser(caller, next);
+      return sendJson(res, 200, { ok: true, updatedAt: next.updatedAt, syncedAt: next.syncedAt });
+    }
+
     /* ---------- Billing State & Bidirectional Sync ---------- */
     if (p === "/api/billing/state" && method === "GET") {
       const caller = getCallerEmail(req);

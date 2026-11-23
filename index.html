@@ -14,15 +14,17 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-  <link rel="stylesheet" href="/style.css?v=20261122f">
+  <link rel="stylesheet" href="/style.css?v=20261123a">
+  <link rel="stylesheet" href="/vocab.css?v=20261123a">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" defer></script>
-  <script src="/ai-providers-config.js?v=20261122f" defer></script>
-  <script src="/app.js?v=20261122f" defer></script>
-  <script src="/converter.js?v=20261122f" defer></script>
-  <script src="/studio.js?v=20261122f" defer></script>
-  <script src="/cloud-share-pdf.js?v=20261122f" defer></script>
+  <script src="/ai-providers-config.js?v=20261123a" defer></script>
+  <script src="/app.js?v=20261123a" defer></script>
+  <script src="/converter.js?v=20261123a" defer></script>
+  <script src="/studio.js?v=20261123a" defer></script>
+  <script src="/vocab.js?v=20261123a" defer></script>
+  <script src="/cloud-share-pdf.js?v=20261123a" defer></script>
 </head>
 <body>
   <header class="topbar no-print" id="topbar">
@@ -38,12 +40,13 @@
       </div>
     </div>
 
-    <!-- Desktop Core Learning Navigation (6 items only) -->
+    <!-- Desktop Core Learning Navigation -->
     <nav class="nav-tabs hidden" id="navTabs" aria-label="&#x110;i&#x1ec1;u h&#x1b0;&#x1edb;ng h&#x1ecd;c t&#x1ead;p ch&#xed;nh">
       <button type="button" class="nav-tab active" data-tab="dashboard">T&#x1ed5;ng quan</button>
       <button type="button" class="nav-tab" data-tab="study">&#xd4;n t&#x1ead;p &amp; Thi</button>
       <button type="button" class="nav-tab" data-tab="studio">Creator Studio</button>
       <button type="button" class="nav-tab" data-tab="converter">AI Converter</button>
+      <button type="button" class="nav-tab" data-tab="vocab">Vocab Studio</button>
       <button type="button" class="nav-tab" data-tab="flash">L&#x1ead;t th&#x1ebb;</button>
       <button type="button" class="nav-tab" data-tab="mistake">S&#x1ed5; tay sai <span class="nav-badge" id="navMistakeBadge">0</span></button>
     </nav>
@@ -113,6 +116,7 @@
       <button type="button" class="drawer-item" data-tab="study">📝 &#xd4;n t&#x1ead;p &amp; Thi</button>
       <button type="button" class="drawer-item" data-tab="studio">🎮 Creator Studio</button>
       <button type="button" class="drawer-item" data-tab="converter">✨ AI Converter</button>
+      <button type="button" class="drawer-item" data-tab="vocab">📖 Vocab Studio</button>
       <button type="button" class="drawer-item" data-tab="flash">🃏 L&#x1ead;t th&#x1ebb;</button>
       <button type="button" class="drawer-item" data-tab="mistake">📕 S&#x1ed5; tay sai <span class="nav-badge" id="drawerMistakeBadge">0</span></button>
       <div class="dd-sep"></div>
@@ -257,6 +261,7 @@
               <div class="q-top">
                 <span class="q-badge" id="qBadge">C&#xe2;u h&#x1ecf;i: 1</span>
                 <span class="q-hint" id="qHint"></span>
+                <button type="button" class="btn btn-outline btn-sm" id="studyQuickVocabBtn" title="L&#x1b0;u nhanh t&#x1eeb; v&#x1ef1;ng v&#xe0;o Vocab Studio" style="margin-left:auto;margin-right:6px">📖 +Vocab</button>
                 <button type="button" class="flag-btn" id="flagBtn" aria-pressed="false" title="&#x110;&#xe1;nh d&#x1ea5;u c&#xe2;u h&#x1ecf;i (ph&#xed;m F)" aria-label="&#x110;&#xe1;nh d&#x1ea5;u c&#xe2;u h&#x1ecf;i">
                   <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path id="flagIcon" d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"></path></svg>
                 </button>
@@ -316,6 +321,9 @@
 
       <!-- ==================== AI CONVERTER ==================== -->
       <section id="viewConverter" class="view hidden"><div id="converterRoot"></div></section>
+
+      <!-- ==================== VOCAB STUDIO ==================== -->
+      <section id="viewVocab" class="view hidden"><div id="vocabRoot"></div></section>
 
       <!-- ==================== FLASHCARD ==================== -->
       <section id="viewFlash" class="view hidden">

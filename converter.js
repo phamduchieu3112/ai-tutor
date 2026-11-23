@@ -2825,7 +2825,11 @@
             '<td style="white-space:nowrap">' + ansBtns + (q.correct.length === 0 ? '<div class="badge badge-warn" style="margin-top:4px">Thi\u1ebfu \u0110/A</div>' : "") + '</td>' +
             '<td class="rich-text" style="min-width:140px">' + (q.explanation ? U().renderRich(q.explanation) : '<span class="muted">—</span>') + '</td>' +
             '<td><label class="check-row" style="margin:0;font-size:.76rem"><input type="checkbox" data-cact="verify-q" data-idx="' + i + '"' + (q.verified ? " checked" : "") + '> ✓</label></td>' +
-            '<td style="white-space:nowrap"><button type="button" class="btn btn-outline btn-sm" data-cact="edit-inline" data-idx="' + i + '">S\u1eeda</button> <button type="button" class="btn btn-outline btn-sm" data-cact="del-q" data-idx="' + i + '">✕</button></td></tr>';
+            '<td style="white-space:nowrap">' +
+              '<button type="button" class="btn btn-outline btn-sm" title="Lưu nhanh từ vựng vào Vocab Studio" data-cact="quick-vocab" data-idx="' + i + '">📖 +Từ vựng</button> ' +
+              '<button type="button" class="btn btn-outline btn-sm" data-cact="edit-inline" data-idx="' + i + '">S\u1eeda</button> ' +
+              '<button type="button" class="btn btn-outline btn-sm" data-cact="del-q" data-idx="' + i + '">✕</button>' +
+            '</td></tr>';
         }).join("") + '</tbody></table></div>';
       if (totalPages > 1) {
         h += '<div class="pager"><button type="button" data-cact="pg" data-val="' + (cState.page - 1) + '"' + (cState.page <= 1 ? " disabled" : "") + '>&lt;</button>' +
@@ -2883,7 +2887,8 @@
     }).join(" ");
     return '<div class="review-card' + (q.verified ? " verified" : "") + (q.suspect ? " suspect" : "") + '">' +
       '<div class="review-card-head"><strong>C\u00e2u #' + (i + 1) + (q.suspect ? ' <span class="badge badge-warn">⚠️ C\u1ea7n ki\u1ec3m tra k\u1ef9</span>' : "") + '</strong>' +
-      '<label class="check-row" style="margin:0;font-size:.8rem"><input type="checkbox" data-cact="verify-q" data-idx="' + i + '"' + (q.verified ? " checked" : "") + '> ✓ \u0110\u00e3 duy\u1ec7t (Verified)</label></div>' +
+      '<div class="deck-actions"><button type="button" class="btn btn-outline btn-sm" title="Lưu nhanh từ vựng vào Vocab Studio" data-cact="quick-vocab" data-idx="' + i + '">📖 +Từ vựng</button>' +
+      '<label class="check-row" style="margin:0;font-size:.8rem"><input type="checkbox" data-cact="verify-q" data-idx="' + i + '"' + (q.verified ? " checked" : "") + '> ✓ \u0110\u00e3 duy\u1ec7t (Verified)</label></div></div>' +
       '<div class="rich-text" style="font-weight:700">' + U().renderRich(q.text) + '</div>' +
       '<textarea class="inline-edit-input" rows="2" data-cedit="text" data-idx="' + i + '" aria-label="S\u1eeda n\u1ed9i dung c\u00e2u h\u1ecfi">' + U().esc(q.text) + '</textarea>' +
       q.options.map(function (o, k) {
@@ -3001,6 +3006,19 @@
       renderConverter();
     }
     else if (act === "edit-inline") openQuickEditModal(Number(b.getAttribute("data-idx")));
+    else if (act === "quick-vocab") {
+      const q = cState.questions[Number(b.getAttribute("data-idx"))];
+      if (!q) return;
+      const stripTags = function (s) { return String(s || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); };
+      const sel = (typeof window.getSelection === "function" ? String(window.getSelection() || "").trim() : "");
+      const corOpt = (q.correct && q.correct.length > 0 && q.options[q.correct[0]]) ? stripTags(q.options[q.correct[0]]) : "";
+      const wordCandidate = sel || corOpt || stripTags(q.text).slice(0, 80);
+      const meaningCandidate = stripTags(q.explanation) || (corOpt && wordCandidate !== corOpt ? corOpt : "");
+      const contextCandidate = stripTags(q.text);
+      if (window.VocabStudioBridge && typeof window.VocabStudioBridge.quickAddWord === "function") {
+        window.VocabStudioBridge.quickAddWord(wordCandidate, meaningCandidate, contextCandidate);
+      }
+    }
     else if (act === "del-q") { cState.questions.splice(Number(b.getAttribute("data-idx")), 1); renderConverter(); }
     else if (act === "verify-all") { cState.questions.forEach(function (q) { q.verified = true; q.suspect = false; }); renderConverter(); U().showToast("\u0110\u00e3 \u0111\u00e1nh d\u1ea5u duy\u1ec7t t\u1ea5t c\u1ea3 c\u00e2u h\u1ecfi.", "success"); }
     else if (act === "clear-all") { U().showConfirm("X\u00f3a b\u1ea3ng", "X\u00f3a to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi trong AI Converter?", function () { cState.questions = []; renderConverter(); }); }

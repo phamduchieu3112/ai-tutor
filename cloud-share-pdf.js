@@ -91,6 +91,9 @@ const CLOUD_CONFIG = {
 
   function buildBackupPayload() {
     const u = U().state.user;
+    const vocabSnapshot = (typeof window !== "undefined" && window.VocabStudio && typeof window.VocabStudio.exportBackupData === "function")
+      ? window.VocabStudio.exportBackupData()
+      : U().loadJSON("vocabStudio.v2", null);
     return {
       version: 2,
       app: "AI Tutor",
@@ -100,6 +103,7 @@ const CLOUD_CONFIG = {
       wrong_questions: U().loadObj(U().KEYS.mistakes),
       quiz_history: U().loadArr(U().KEYS.history),
       studio_quizzes: U().loadArr(U().KEYS.quizzes),
+      vocab_studio: vocabSnapshot,
       progress: U().loadObj(U().KEYS.progress),
       stats: U().loadObj(U().KEYS.stats),
       pins: U().loadArr(U().KEYS.pins),
@@ -116,7 +120,8 @@ const CLOUD_CONFIG = {
     const hasDecks = Array.isArray(obj.exam_sets) || Array.isArray(obj.decks);
     const hasWrong = obj.wrong_questions && typeof obj.wrong_questions === "object";
     const hasHist = Array.isArray(obj.quiz_history);
-    return hasDecks || hasWrong || hasHist || Array.isArray(obj.studio_quizzes);
+    const hasVocab = (obj.vocab_studio && typeof obj.vocab_studio === "object") || Array.isArray(obj.words);
+    return hasDecks || hasWrong || hasHist || Array.isArray(obj.studio_quizzes) || hasVocab;
   }
 
   function applyBackupPayload(obj, mode) {
@@ -177,6 +182,17 @@ const CLOUD_CONFIG = {
       if (obj.settings.font) {
         U().saveJSON(U().KEYS.font, obj.settings.font);
         document.documentElement.style.setProperty("--q-font", U().clamp(Number(obj.settings.font) || 17, 15, 24) + "px");
+      }
+    }
+
+    const incomingVocab = (obj.vocab_studio && typeof obj.vocab_studio === "object")
+      ? obj.vocab_studio
+      : (Array.isArray(obj.words) ? obj : null);
+    if (incomingVocab) {
+      if (typeof window !== "undefined" && window.VocabStudio && typeof window.VocabStudio.importBackupData === "function") {
+        window.VocabStudio.importBackupData(incomingVocab, mode);
+      } else {
+        U().saveJSON("vocabStudio.v2", incomingVocab);
       }
     }
 
@@ -475,6 +491,10 @@ const CLOUD_CONFIG = {
     const deckCount = U().loadArr(U().KEYS.decks).length;
     const mkCount = Object.keys(U().loadObj(U().KEYS.mistakes)).length;
     const histCount = U().loadArr(U().KEYS.history).length;
+    const vocabObj = (typeof window !== "undefined" && window.VocabStudio && typeof window.VocabStudio.exportBackupData === "function")
+      ? window.VocabStudio.exportBackupData()
+      : U().loadJSON("vocabStudio.v2", null);
+    const vocabCount = (vocabObj && Array.isArray(vocabObj.words)) ? vocabObj.words.filter(function (w) { return !w.deleted; }).length : 110;
 
     const userEmail = U().state.user && U().state.user.email ? U().state.user.email : "email-cua-ban";
     const folderDisplay = "AI Tutor - " + userEmail;
@@ -483,7 +503,7 @@ const CLOUD_CONFIG = {
       '<div class="api-wrap">' +
         '<section class="panel">' +
           '<div class="panel-head"><div><h2>☁️ Sao l\u01b0u &amp; Kh\u00f4i ph\u1ee5c d\u1eef li\u1ec7u (3 L\u1edbp)</h2>' +
-          '<p class="muted" style="margin:0;font-size:.84rem">D\u1eef li\u1ec7u hi\u1ec7n c\u00f3: <strong>' + deckCount + '</strong> b\u1ed9 \u0111\u1ec1 · <strong>' + mkCount + '</strong> c\u00e2u sai · <strong>' + histCount + '</strong> l\u1ecbch s\u1eed thi.</p></div>' +
+          '<p class="muted" style="margin:0;font-size:.84rem">D\u1eef li\u1ec7u hi\u1ec7n c\u00f3: <strong>' + deckCount + '</strong> b\u1ed9 \u0111\u1ec1 · <strong>' + vocabCount + '</strong> t\u1eeb v\u1ef1ng (Vocab Studio) · <strong>' + mkCount + '</strong> c\u00e2u sai · <strong>' + histCount + '</strong> l\u1ecbch s\u1eed thi.</p></div>' +
           '<span class="badge badge-ok">' + U().esc(cs.lastSyncText) + '</span></div>' +
 
           '<div class="radio-group" style="margin-bottom:14px"><legend style="font-weight:700;font-size:.84rem">Ch\u1ebf \u0111\u1ed9 khi kh\u00f4i ph\u1ee5c d\u1eef li\u1ec7u</legend>' +

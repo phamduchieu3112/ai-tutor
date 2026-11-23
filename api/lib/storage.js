@@ -22,6 +22,7 @@ const KV_APP_DB_KEY = "aitutor:app_db:v1";
 const KV_NOTIFIED_PREFIX = "aitutor:notified:";
 const KV_SHARE_PREFIX = "aitutor:share:";
 const KV_CLOUD_PREFIX = "aitutor:cloud_user:";
+const KV_VOCAB_PREFIX = "aitutor:vocab_user:";
 
 const LOCAL_APP_DB_PATH = IS_SERVERLESS
   ? path.join(os.tmpdir(), "ai-tutor-db.json")
@@ -629,6 +630,58 @@ async function saveCloudUser(email, data) {
   writeLocalAppDbFile(local);
 }
 
+async function getVocabUser(email) {
+  const clean = String(email || "").trim().toLowerCase();
+  if (!clean) return null;
+  const info = getDriverInfo();
+  if (info.driver === "kv") {
+    try {
+      const v = await kvGetJson(KV_VOCAB_PREFIX + clean, null);
+      if (v) return v;
+    } catch (e) { /* fallback */ }
+  } else if (info.driver === "supabase") {
+    try {
+      const rows = await sbFetch("/user_vocab_data?user_email=eq." + encodeURIComponent(clean) + "&select=*");
+      if (Array.isArray(rows) && rows[0]) {
+        return {
+          decks: Array.isArray(rows[0].decks) ? rows[0].decks : [],
+          words: Array.isArray(rows[0].words) ? rows[0].words : [],
+          stats: rows[0].stats || {},
+          settings: rows[0].settings || {},
+          updatedAt: Number(rows[0].updated_at) || 0
+        };
+      }
+    } catch (e) { /* fallback to system_ai_env_state if table not yet migrated */ }
+    try {
+      const rows = await sbFetch("/system_ai_env_state?id=eq." + encodeURIComponent("__vocab_user__:" + clean) + "&select=state_json");
+      if (Array.isArray(rows) && rows[0] && rows[0].state_json) return rows[0].state_json;
+    } catch (e) { /* fallback */ }
+  }
+  const local = readLocalAppDbFile();
+  return (local && local.vocabUsers && local.vocabUsers[clean]) || null;
+}
+
+async function saveVocabUser(email, data) {
+  const clean = String(email || "").trim().toLowerCase();
+  if (!clean || !data) return;
+  const info = getDriverInfo();
+  if (info.driver === "kv") {
+    try { await kvSetJson(KV_VOCAB_PREFIX + clean, data); } catch (e) { /* fallback */ }
+  } else if (info.driver === "supabase") {
+    try {
+      await sbFetch("/system_ai_env_state?on_conflict=id", {
+        method: "POST",
+        headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ id: "__vocab_user__:" + clean, state_json: data, updated_at: new Date().toISOString() })
+      });
+    } catch (e) { /* fallback */ }
+  }
+  const local = readLocalAppDbFile() || {};
+  if (!local.vocabUsers || typeof local.vocabUsers !== "object") local.vocabUsers = {};
+  local.vocabUsers[clean] = data;
+  writeLocalAppDbFile(local);
+}
+
 module.exports = {
   getDriverInfo: getDriverInfo,
   listStoredKeys: listStoredKeys,
@@ -646,5 +699,7 @@ module.exports = {
   getShareByCode: getShareByCode,
   saveShareByCode: saveShareByCode,
   getCloudUser: getCloudUser,
-  saveCloudUser: saveCloudUser
+  saveCloudUser: saveCloudUser,
+  getVocabUser: getVocabUser,
+  saveVocabUser: saveVocabUser
 };

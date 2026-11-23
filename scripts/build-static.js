@@ -7,13 +7,18 @@ const DIST = path.join(ROOT, "dist");
 
 const STATIC_FILES = [
   "index.html",
+  "converter.html",
+  "vocab.html",
   "style.css",
+  "vocab.css",
   "ai-providers-config.js",
   "app.js",
   "converter.js",
   "studio.js",
+  "vocab.js",
   "cloud-share-pdf.js",
-  "data/manifest.json"
+  "data/manifest.json",
+  "data/vocab/default-vocab.json"
 ];
 
 fs.rmSync(DIST, { recursive: true, force: true });

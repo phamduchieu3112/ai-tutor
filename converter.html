@@ -10,7 +10,9 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <link rel="stylesheet" href="/vocab.css?v=20261123a" />
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="/vocab.js?v=20261123a"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -55,13 +57,21 @@
         </div>
       </div>
 
-      <!-- 2 Main Navigation Tabs -->
+      <!-- Main Navigation Tabs -->
       <nav class="flex items-stretch h-full gap-1 sm:gap-2" aria-label="&#x110;i&#x1ec1;u h&#x1b0;&#x1edb;ng ch&#xed;nh">
+        <a href="/index.html"
+          class="px-3 sm:px-4 flex items-center gap-1.5 text-sm font-semibold border-b-2 border-transparent text-slate-600 hover:text-slate-900 transition">
+          <span>🏠 Tổng quan</span>
+        </a>
         <button id="navTabConverter" type="button" data-page="converter"
           class="px-3 sm:px-5 flex items-center gap-2 text-sm font-bold border-b-2 border-[#5347CD] text-[#5347CD] transition">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
           <span>Chuy&#x1ec3;n &#x111;&#x1ed5;i &#x111;&#x1ec1;</span>
         </button>
+        <a href="/vocab.html"
+          class="px-3 sm:px-4 flex items-center gap-1.5 text-sm font-semibold border-b-2 border-transparent text-slate-600 hover:text-[#5347CD] transition">
+          <span>📖 Vocab Studio</span>
+        </a>
         <button id="navTabApi" type="button" data-page="api"
           class="px-3 sm:px-5 flex items-center gap-2 text-sm font-semibold border-b-2 border-transparent text-slate-600 hover:text-slate-900 transition">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
@@ -1372,6 +1382,7 @@ QUY T\u1eaeC B\u1eaeT BU\u1ed8C:
             </td>
             <td class="py-3 px-3 text-slate-600 rich-preview">${q.explanation ? renderRichPreview(q.explanation) : '<span class="text-slate-300">—</span>'}</td>
             <td class="py-3 px-3 text-center whitespace-nowrap">
+              <button type="button" data-vocab-q="${idx}" title="L\u01b0u nhanh t\u1eeb v\u1ef1ng v\u00e0o Vocab Studio" class="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-[#358B71] hover:text-white text-[#358B71] font-bold transition mr-1">📖 +Vocab</button>
               <button type="button" data-edit-q="${idx}" class="px-2 py-1 rounded-lg bg-[#ECEAFB] hover:bg-[#5347CD] hover:text-white text-[#5347CD] font-bold transition mr-1">S\u1eeda</button>
               <button type="button" data-del-q="${idx}" class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-600 font-bold transition">X\u00f3a</button>
             </td>
@@ -1737,6 +1748,19 @@ QUY T\u1eaeC B\u1eaeT BU\u1ed8C:
               q.correct = q.correct.includes(optIdx) ? [] : [optIdx];
             }
             renderTable();
+            return;
+          }
+          const vocabBtn = e.target.closest('[data-vocab-q]');
+          if (vocabBtn) {
+            const idx = Number(vocabBtn.getAttribute('data-vocab-q'));
+            const q = state.questions[idx];
+            if (q && window.VocabStudioBridge && typeof window.VocabStudioBridge.quickAddWord === 'function') {
+              const strip = (s) => String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+              const cor = (q.correct && q.correct.length > 0 && q.options[q.correct[0]]) ? strip(q.options[q.correct[0]]) : '';
+              const word = cor || strip(q.text).slice(0, 80);
+              const meaning = strip(q.explanation) || strip(q.text);
+              window.VocabStudioBridge.quickAddWord(word, meaning, strip(q.text));
+            }
             return;
           }
           const editBtn = e.target.closest('[data-edit-q]');

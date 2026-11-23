@@ -803,6 +803,9 @@ async function initAppData() {
   if (window.UETCloud && window.UETCloud.cloudStorageService) {
     await window.UETCloud.cloudStorageService.pull();
   }
+  if (window.VocabStudio && typeof window.VocabStudio.onUserAuthenticated === "function") {
+    window.VocabStudio.onUserAuthenticated();
+  }
   try {
     const res = await fetch("/data/manifest.json", { cache: "no-cache" });
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -856,6 +859,8 @@ const ROUTES = {
   "/converter/markdown": { tab: "converter", sub: "upload", title: "AI Converter | AI Tutor" },
   "/converter/excel": { tab: "converter", sub: "upload", title: "AI Converter | AI Tutor" },
   "/converter/review": { tab: "converter", sub: "split", title: "Ki\u1ec3m duy\u1ec7t song song | AI Tutor" },
+  "/vocab": { tab: "vocab", title: "Vocab Studio | AI Tutor" },
+  "/vocab.html": { tab: "vocab", title: "Vocab Studio | AI Tutor" },
   "/flashcards": { tab: "flash", title: "L\u1eadt th\u1ebb | AI Tutor" },
   "/flashcards/play": { tab: "flash", sub: "play", title: "\u0110ang h\u1ecdc L\u1eadt th\u1ebb | AI Tutor" },
   "/mistakes": { tab: "mistake", title: "S\u1ed5 tay c\u00e2u hay sai | AI Tutor" },
@@ -878,6 +883,7 @@ const TAB_TO_PATH = {
   study: "/practice",
   studio: "/creator-studio",
   converter: "/converter",
+  vocab: "/vocab",
   flash: "/flashcards",
   mistake: "/mistakes",
   profile: "/profile",
@@ -972,6 +978,7 @@ function navigateTo(rawPath, options) {
     study: "viewStudy",
     studio: "viewStudio",
     converter: "viewConverter",
+    vocab: "viewVocab",
     flash: "viewFlash",
     mistake: "viewMistake",
     profile: "viewProfile",
@@ -1021,6 +1028,9 @@ function renderTab() {
       break;
     case "converter":
       if (window.UETConverter && typeof window.UETConverter.renderConverter === "function") window.UETConverter.renderConverter();
+      break;
+    case "vocab":
+      if (window.VocabStudio && typeof window.VocabStudio.mount === "function") window.VocabStudio.mount("vocabRoot");
       break;
     case "api":
       if (window.UETConverter && typeof window.UETConverter.renderApiPage === "function") window.UETConverter.renderApiPage();
@@ -4752,7 +4762,205 @@ const I18N_MAP = {
   "Lưu vào Kho Hệ thống (Dùng chung)": { vi: "Lưu vào Kho Hệ thống (Dùng chung)", en: "Save to System Pool (Shared)", ja: "システムプールに保存（共有）" },
   "Xóa toàn bộ Key Hệ thống": { vi: "Xóa toàn bộ Key Hệ thống", en: "Delete All System Keys", ja: "システム Key をすべて削除" },
   "🗑️ Xóa toàn bộ Key Hệ thống": { vi: "🗑️ Xóa toàn bộ Key Hệ thống", en: "🗑️ Delete All System Keys", ja: "🗑️ システム Key をすべて削除" },
-  "⚠️ Xóa toàn bộ Key Hệ thống": { vi: "⚠️ Xóa toàn bộ Key Hệ thống", en: "⚠️ Delete All System Keys", ja: "⚠️ システム Key をすべて削除" }
+  "⚠️ Xóa toàn bộ Key Hệ thống": { vi: "⚠️ Xóa toàn bộ Key Hệ thống", en: "⚠️ Delete All System Keys", ja: "⚠️ システム Key をすべて削除" },
+  "Vocab Studio": { vi: "Vocab Studio", en: "Vocab Studio", ja: "Vocab Studio" },
+  "📖 Vocab Studio": { vi: "📖 Vocab Studio", en: "📖 Vocab Studio", ja: "📖 Vocab Studio" },
+  "Vocab Studio | AI Tutor": { vi: "Vocab Studio | AI Tutor", en: "Vocab Studio | AI Tutor", ja: "Vocab Studio | AI Tutor" },
+  "📖 +Từ vựng": { vi: "📖 +Từ vựng", en: "📖 +Vocab", ja: "📖 +単語登録" },
+  "📖 +Vocab": { vi: "📖 +Vocab", en: "📖 +Vocab", ja: "📖 +単語登録" },
+  "Lưu nhanh từ vựng vào Vocab Studio": { vi: "Lưu nhanh từ vựng vào Vocab Studio", en: "Quick-save word to Vocab Studio", ja: "Vocab Studio に単語をクイック保存" },
+  "Điều hướng Vocab Studio": { vi: "Điều hướng Vocab Studio", en: "Vocab Studio Navigation", ja: "Vocab Studio ナビゲーション" },
+  "Lưới từ vựng": { vi: "Lưới từ vựng", en: "Vocabulary Grid", ja: "単語グリッド" },
+  "Tra từ": { vi: "Tra từ", en: "Dictionary Lookup", ja: "辞書検索" },
+  "Thẻ ghi nhớ": { vi: "Thẻ ghi nhớ", en: "Flashcards", ja: "フラッシュカード" },
+  "Thẻ ghi nhớ 3D (SM-2)": { vi: "Thẻ ghi nhớ 3D (SM-2)", en: "3D Flashcards (SM-2)", ja: "3Dフラッシュカード (SM-2)" },
+  "Kiểm tra": { vi: "Kiểm tra", en: "Quiz Center", ja: "テスト" },
+  "Bảng dò bài": { vi: "Bảng dò bài", en: "Review Table", ja: "復習シート" },
+  "Bộ từ": { vi: "Bộ từ", en: "Decks", ja: "単語帳" },
+  "Cài đặt": { vi: "Cài đặt", en: "Settings", ja: "設定" },
+  "Cài đặt Vocab Studio": { vi: "Cài đặt Vocab Studio", en: "Vocab Studio Settings", ja: "Vocab Studio 設定" },
+  "Chiều học": { vi: "Chiều học", en: "Study Direction", ja: "学習方向" },
+  "Việt → Anh": { vi: "Việt → Anh", en: "VI → EN", ja: "越 → 英" },
+  "Anh → Việt": { vi: "Anh → Việt", en: "EN → VI", ja: "英 → 越" },
+  "VIỆT → ANH": { vi: "VIỆT → ANH", en: "VIETNAMESE → ENGLISH", ja: "ベトナム語 → 英語" },
+  "ANH → VIỆT": { vi: "ANH → VIỆT", en: "ENGLISH → VIETNAMESE", ja: "英語 → ベトナム語" },
+  "Chế độ cục bộ": { vi: "Chế độ cục bộ", en: "Local Mode", ja: "ローカルモード" },
+  "Offline · Chờ đồng bộ": { vi: "Offline · Chờ đồng bộ", en: "Offline · Pending Sync", ja: "オフライン · 同期待ち" },
+  "Lưu cục bộ · Chờ đồng bộ": { vi: "Lưu cục bộ · Chờ đồng bộ", en: "Saved Locally · Pending Sync", ja: "ローカル保存 · 同期待ち" },
+  "Đang đồng bộ…": { vi: "Đang đồng bộ…", en: "Syncing…", ja: "同期中…" },
+  "TÌM HIỂU MỘT TỪ, MỞ THÊM MỘT CÁNH CỬA": { vi: "TÌM HIỂU MỘT TỪ, MỞ THÊM MỘT CÁNH CỬA", en: "LEARN A WORD, OPEN A NEW DOOR", ja: "一つの単語から新しい扉を開く" },
+  "Tra từ Anh–Việt": { vi: "Tra từ Anh–Việt", en: "English–Vietnamese Dictionary", ja: "英越・越英辞書検索" },
+  "Tra nghĩa, nghe phát âm và lưu vào bộ từ trong một chỗ.": { vi: "Tra nghĩa, nghe phát âm và lưu vào bộ từ trong một chỗ.", en: "Look up meanings, listen to pronunciation, and save to your decks in one place.", ja: "意味の検索、発音の再生、単語帳への保存を一箇所で。" },
+  "Thêm từ thủ công": { vi: "Thêm từ thủ công", en: "Add Word Manually", ja: "手動で単語を追加" },
+  "Nhập từ tiếng Anh hoặc tiếng Việt…": { vi: "Nhập từ tiếng Anh hoặc tiếng Việt…", en: "Enter an English or Vietnamese word…", ja: "英語またはベトナム語の単語を入力…" },
+  "Chiều tra cứu": { vi: "Chiều tra cứu", en: "Lookup Direction", ja: "検索方向" },
+  "Tự nhận diện": { vi: "Tự nhận diện", en: "Auto-detect", ja: "自動判別" },
+  "Tra cứu": { vi: "Tra cứu", en: "Look Up", ja: "検索" },
+  "Đang tra…": { vi: "Đang tra…", en: "Looking up…", ja: "検索中…" },
+  "Hủy tra cứu": { vi: "Hủy tra cứu", en: "Cancel Lookup", ja: "検索をキャンセル" },
+  "Bộ từ nhận kết quả tra": { vi: "Bộ từ nhận kết quả tra", en: "Target Deck for Lookup", ja: "保存先の単語帳" },
+  "Lưu ngay vào bộ từ": { vi: "Lưu ngay vào bộ từ", en: "Save Directly to Deck", ja: "単語帳にすぐ保存" },
+  "Tự điền vào form Thêm từ": { vi: "Tự điền vào form Thêm từ", en: "Autofill Add Word Form", ja: "単語追加フォームに自動入力" },
+  "Cache giữ 7 ngày, tối đa 500 mục. Nhập tay luôn sẵn sàng khi mất mạng hoặc hết lượt tra.": { vi: "Cache giữ 7 ngày, tối đa 500 mục. Nhập tay luôn sẵn sàng khi mất mạng hoặc hết lượt tra.", en: "Cache kept for 7 days (up to 500 entries). Manual entry is always available offline.", ja: "キャッシュは7日間（最大500件）保持されます。オフライン時はいつでも手動入力が可能です。" },
+  "Tự nhận diện theo dấu tiếng Việt. Có thể chọn chiều thủ công.": { vi: "Tự nhận diện theo dấu tiếng Việt. Có thể chọn chiều thủ công.", en: "Auto-detected via Vietnamese diacritics, or choose direction manually.", ja: "ベトナム語の声調記号で自動判別します（手動選択も可能）。" },
+  "Đang tra cứu. Mỗi yêu cầu tối đa 8 giây…": { vi: "Đang tra cứu. Mỗi yêu cầu tối đa 8 giây…", en: "Looking up (max 8s timeout per request)…", ja: "検索中（リクエストあたり最大8秒）…" },
+  "Đã tra cứu · Bạn có thể lưu ngay hoặc chỉnh lại nội dung": { vi: "Đã tra cứu · Bạn có thể lưu ngay hoặc chỉnh lại nội dung", en: "Lookup complete · Save directly or edit details", ja: "検索完了 · そのまま保存するか内容を編集できます" },
+  "Định nghĩa tiếng Anh": { vi: "Định nghĩa tiếng Anh", en: "English Definition", ja: "英語の定義" },
+  "Ví dụ": { vi: "Ví dụ", en: "Example", ja: "例文" },
+  "Ví dụ / Ngữ cảnh": { vi: "Ví dụ / Ngữ cảnh", en: "Example / Context", ja: "例文 / 文脈" },
+  "TỪ CỦA BẠN, NHỊP CỦA BẠN": { vi: "TỪ CỦA BẠN, NHỊP CỦA BẠN", en: "YOUR WORDS, YOUR PACE", ja: "あなたの単語、あなたのペース" },
+  "Một từ mới. Một bước tiến nhỏ.": { vi: "Một từ mới. Một bước tiến nhỏ.", en: "One new word. One small step forward.", ja: "一つの新しい単語、小さな一歩。" },
+  "Thêm từ": { vi: "Thêm từ", en: "Add Word", ja: "単語を追加" },
+  "từ vựng": { vi: "từ vựng", en: "words", ja: "単語" },
+  "cần ôn": { vi: "cần ôn", en: "starred", ja: "要復習" },
+  "đã thuộc": { vi: "đã thuộc", en: "mastered", ja: "習得済" },
+  "Tìm từ, nghĩa hoặc STT…": { vi: "Tìm từ, nghĩa hoặc STT…", en: "Search word, meaning, or #…", ja: "単語、意味、または番号で検索…" },
+  "Tìm từ": { vi: "Tìm từ", en: "Search words", ja: "単語を検索" },
+  "Chọn bộ từ": { vi: "Chọn bộ từ", en: "Select deck", ja: "単語帳を選択" },
+  "Tất cả bộ từ": { vi: "Tất cả bộ từ", en: "All Decks", ja: "すべての単語帳" },
+  "Lọc trạng thái": { vi: "Lọc trạng thái", en: "Filter Status", ja: "状態で絞り込み" },
+  "Tất cả trạng thái": { vi: "Tất cả trạng thái", en: "All Statuses", ja: "すべての状態" },
+  "★ Cần ôn": { vi: "★ Cần ôn", en: "★ Starred", ja: "★ 要復習" },
+  "Đã thuộc": { vi: "Đã thuộc", en: "Known", ja: "習得済" },
+  "Chưa thuộc": { vi: "Chưa thuộc", en: "Unmastered", ja: "未習得" },
+  "Từ của tôi": { vi: "Từ của tôi", en: "My Custom Words", ja: "マイ単語" },
+  "Hiện hết": { vi: "Hiện hết", en: "Reveal All", ja: "すべて表示" },
+  "Ẩn hết": { vi: "Ẩn hết", en: "Hide All", ja: "すべて隠す" },
+  "Xáo trộn": { vi: "Xáo trộn", en: "Shuffle", ja: "シャッフル" },
+  "Theo STT": { vi: "Theo STT", en: "By Order", ja: "番号順" },
+  "Bấm để xem đáp án ↵": { vi: "Bấm để xem đáp án ↵", en: "Click to reveal answer ↵", ja: "クリックして解答を表示 ↵" },
+  "Cần ôn": { vi: "Cần ôn", en: "Starred", ja: "要復習" },
+  "Lưu ôn": { vi: "Lưu ôn", en: "Star", ja: "復習に保存" },
+  "Lưu từ cần ôn": { vi: "Lưu từ cần ôn", en: "Star for review", ja: "復習用にスターを付ける" },
+  "Phát âm · S": { vi: "Phát âm · S", en: "Pronounce · S", ja: "発音 · S" },
+  "Chuyển bộ từ": { vi: "Chuyển bộ từ", en: "Move to deck", ja: "単語帳を移動" },
+  "Chưa có từ phù hợp": { vi: "Chưa có từ phù hợp", en: "No matching words found", ja: "一致する単語がありません" },
+  "Thử đổi bộ lọc, từ khóa hoặc thêm từ mới.": { vi: "Thử đổi bộ lọc, từ khóa hoặc thêm từ mới.", en: "Try changing the filter, keyword, or adding a new word.", ja: "フィルターやキーワードを変更するか、新しい単語を追加してください。" },
+  "Bắt đầu ôn": { vi: "Bắt đầu ôn", en: "Start Review", ja: "復習を開始" },
+  "Bắt đầu học": { vi: "Bắt đầu học", en: "Start Studying", ja: "学習を開始" },
+  "MỖI TỪ MỘT CHỖ RIÊNG": { vi: "MỖI TỪ MỘT CHỖ RIÊNG", en: "A PLACE FOR EVERY WORD", ja: "すべての単語に居場所を" },
+  "Bộ từ của bạn": { vi: "Bộ từ của bạn", en: "Your Vocabulary Decks", ja: "マイ単語帳" },
+  "Sắp xếp theo cách bạn muốn học.": { vi: "Sắp xếp theo cách bạn muốn học.", en: "Organize words the way you want to study.", ja: "学習スタイルに合わせて整理しましょう。" },
+  "Tạo bộ từ": { vi: "Tạo bộ từ", en: "Create Deck", ja: "単語帳を作成" },
+  "Đổi tên bộ từ": { vi: "Đổi tên bộ từ", en: "Rename Deck", ja: "単語帳の名前を変更" },
+  "Tên bộ từ": { vi: "Tên bộ từ", en: "Deck Name", ja: "単語帳の名前" },
+  "Lưu bộ từ": { vi: "Lưu bộ từ", en: "Save Deck", ja: "単語帳を保存" },
+  "Mở bộ từ": { vi: "Mở bộ từ", en: "Open Deck", ja: "単語帳を開く" },
+  "ÔN MỘT CHÚT, NHỚ LÂU HƠN": { vi: "ÔN MỘT CHÚT, NHỚ LÂU HƠN", en: "REVIEW A LITTLE, REMEMBER LONGER", ja: "少しの復習で、長く記憶する" },
+  "Chỉ những từ đã gắn sao. Bấm vào ô đang che để mở đáp án.": { vi: "Chỉ những từ đã gắn sao. Bấm vào ô đang che để mở đáp án.", en: "Starred words only. Click any masked cell to reveal its answer.", ja: "スター付きの単語のみ。隠されたセルをクリックすると解答が表示されます。" },
+  "Bộ từ để dò bài": { vi: "Bộ từ để dò bài", en: "Deck for Review Table", ja: "復習シート用の単語帳" },
+  "Che cột Tiếng Anh": { vi: "Che cột Tiếng Anh", en: "Mask English Column", ja: "英語列を隠す" },
+  "Che cột Tiếng Việt": { vi: "Che cột Tiếng Việt", en: "Mask Vietnamese Column", ja: "ベトナム語列を隠す" },
+  "Luyện riêng các từ này": { vi: "Luyện riêng các từ này", en: "Practice These Words", ja: "これらの単語を練習" },
+  "Sao chép danh sách": { vi: "Sao chép danh sách", en: "Copy List", ja: "リストをコピー" },
+  "In danh sách": { vi: "In danh sách", en: "Print List", ja: "リストを印刷" },
+  "STT": { vi: "STT", en: "#", ja: "番号" },
+  "Tiếng Anh": { vi: "Tiếng Anh", en: "English", ja: "英語" },
+  "Tiếng Việt": { vi: "Tiếng Việt", en: "Vietnamese", ja: "ベトナム語" },
+  "Chưa có từ gắn sao trong bộ từ này.": { vi: "Chưa có từ gắn sao trong bộ từ này.", en: "No starred words in this deck yet.", ja: "この単語帳にはスター付きの単語がまだありません。" },
+  "THEO CÁCH CỦA BẠN": { vi: "THEO CÁCH CỦA BẠN", en: "TAILORED TO YOU", ja: "あなたに合わせた設定" },
+  "Quản lý đồng bộ đám mây, sao lưu JSON và nhịp học mỗi ngày.": { vi: "Quản lý đồng bộ đám mây, sao lưu JSON và nhịp học mỗi ngày.", en: "Manage cloud sync, JSON backups, and your daily study pace.", ja: "クラウド同期、JSONバックアップ、毎日の学習ペースを管理します。" },
+  "Tài khoản & Đồng bộ Hybrid (Supabase / Cloud / Google Drive)": { vi: "Tài khoản & Đồng bộ Hybrid (Supabase / Cloud / Google Drive)", en: "Account & Hybrid Sync (Supabase / Cloud / Google Drive)", ja: "アカウントとハイブリッド同期 (Supabase / Cloud / Google Drive)" },
+  "Đồng bộ ngay lên Cloud": { vi: "Đồng bộ ngay lên Cloud", en: "Sync to Cloud Now", ja: "今すぐクラウドに同期" },
+  "Dữ liệu từ vựng (.json)": { vi: "Dữ liệu từ vựng (.json)", en: "Vocabulary Data (.json)", ja: "単語データ (.json)" },
+  "Xuất hoặc nhập riêng dữ liệu Vocab Studio. Hệ thống kiểm tra trùng lặp thông minh (Ghi đè hoặc Bỏ qua) và đồng bộ cùng Google Drive Backup của AI Tutor.": { vi: "Xuất hoặc nhập riêng dữ liệu Vocab Studio. Hệ thống kiểm tra trùng lặp thông minh (Ghi đè hoặc Bỏ qua) và đồng bộ cùng Google Drive Backup của AI Tutor.", en: "Export or import Vocab Studio data with smart duplicate checking (Merge or Skip) and Google Drive Backup integration.", ja: "重複チェック機能（統合またはスキップ）と Google Drive バックアップ連携を備えた Vocab Studio データのエクスポート・インポート。" },
+  "Xuất JSON": { vi: "Xuất JSON", en: "Export JSON", ja: "JSON をエクスポート" },
+  "Nhập JSON": { vi: "Nhập JSON", en: "Import JSON", ja: "JSON をインポート" },
+  "Chiều học mặc định": { vi: "Chiều học mặc định", en: "Default Study Direction", ja: "デフォルトの学習方向" },
+  "Đảo nhanh chiều hiển thị câu hỏi/đáp án giữa Tiếng Việt và Tiếng Anh.": { vi: "Đảo nhanh chiều hiển thị câu hỏi/đáp án giữa Tiếng Việt và Tiếng Anh.", en: "Quickly swap prompt/answer direction between Vietnamese and English.", ja: "ベトナム語と英語の出題・解答方向を素早く切り替えます。" },
+  "Đảo chiều học": { vi: "Đảo chiều học", en: "Swap Study Direction", ja: "学習方向を反転" },
+  "Nhịp học mỗi ngày (SM-2)": { vi: "Nhịp học mỗi ngày (SM-2)", en: "Daily Study Pace (SM-2)", ja: "1日の学習ペース (SM-2)" },
+  "Giới hạn từ mới cho ôn theo lịch, tính chung cho tất cả bộ từ.": { vi: "Giới hạn từ mới cho ôn theo lịch, tính chung cho tất cả bộ từ.", en: "Daily new word limit for scheduled SM-2 reviews across all decks.", ja: "スケジュール復習 (SM-2) における1日あたりの新規単語上限。" },
+  "Từ mới / ngày": { vi: "Từ mới / ngày", en: "New words / day", ja: "新規単語 / 日" },
+  "TỪNG CHÚT MỘT, MỖI NGÀY": { vi: "TỪNG CHÚT MỘT, MỖI NGÀY", en: "LITTLE BY LITTLE, EVERY DAY", ja: "毎日少しずつ着実に" },
+  "Đúng lúc. Đúng từ. Ghi nhớ lâu hơn.": { vi: "Đúng lúc. Đúng từ. Ghi nhớ lâu hơn.", en: "Right time. Right word. Long-term retention.", ja: "適切なタイミングで適切な単語を長期記憶へ。" },
+  "Cách học": { vi: "Cách học", en: "Study Mode", ja: "学習モード" },
+  "Ôn theo lịch (SM-2)": { vi: "Ôn theo lịch (SM-2)", en: "Scheduled Review (SM-2)", ja: "スケジュール復習 (SM-2)" },
+  "Học tự do": { vi: "Học tự do", en: "Free Study", ja: "自由学習" },
+  "Chỉ từ gắn sao": { vi: "Chỉ từ gắn sao", en: "Starred Words Only", ja: "スター付き単語のみ" },
+  "HÔM NAY CẦN ÔN": { vi: "HÔM NAY CẦN ÔN", en: "DUE FOR REVIEW TODAY", ja: "今日の復習対象" },
+  "KHÔNG THEO LỊCH": { vi: "KHÔNG THEO LỊCH", en: "UNSCHEDULED PRACTICE", ja: "スケジュール外学習" },
+  "NHỮNG TỪ CẦN THÊM CHÚT THỜI GIAN": { vi: "NHỮNG TỪ CẦN THÊM CHÚT THỜI GIAN", en: "WORDS THAT NEED EXTRA FOCUS", ja: "重点的に復習したい単語" },
+  "từ trong phiên ôn hôm nay": { vi: "từ trong phiên ôn hôm nay", en: "words in today's review session", ja: "今日の復習セッションの単語数" },
+  "từ sẵn sàng luyện tập": { vi: "từ sẵn sàng luyện tập", en: "words ready for practice", ja: "練習可能な単語数" },
+  "Luyện không giới hạn số từ mới. Lượt chấm vẫn cập nhật lịch ôn và thống kê.": { vi: "Luyện không giới hạn số từ mới. Lượt chấm vẫn cập nhật lịch ôn và thống kê.", en: "Practice without daily new-word limits. Ratings still update SM-2 schedule and stats.", ja: "新規単語数の制限なしで練習します。評価は復習スケジュールと統計に反映されます。" },
+  "Đã hoàn thành phiên học": { vi: "Đã hoàn thành phiên học", en: "Study Session Complete", ja: "学習セッション完了" },
+  "Về lịch ôn": { vi: "Về lịch ôn", en: "Back to Schedule", ja: "復習スケジュールへ戻る" },
+  "Xem tiến độ": { vi: "Xem tiến độ", en: "View Progress", ja: "進捗を見る" },
+  "Thoát phiên": { vi: "Thoát phiên", en: "Exit Session", ja: "セッションを終了" },
+  "TIẾNG VIỆT": { vi: "TIẾNG VIỆT", en: "VIETNAMESE", ja: "ベトナム語" },
+  "TIẾNG ANH": { vi: "TIẾNG ANH", en: "ENGLISH", ja: "英語" },
+  "ĐÁP ÁN": { vi: "ĐÁP ÁN", en: "ANSWER", ja: "解答" },
+  "Chạm thẻ hoặc nhấn Space để lật": { vi: "Chạm thẻ hoặc nhấn Space để lật", en: "Tap card or press Space to flip", ja: "カードをタップするか Space キーでめくる" },
+  "Học lại": { vi: "Học lại", en: "Again", ja: "もう一度" },
+  "Học lại trong phiên": { vi: "Học lại trong phiên", en: "Repeat in session", ja: "セッション内で再出題" },
+  "Nhớ được": { vi: "Nhớ được", en: "Good", ja: "覚えた" },
+  "Rất dễ": { vi: "Rất dễ", en: "Easy", ja: "簡単" },
+  "THỬ SỨC VỚI NHỮNG TỪ ĐÃ HỌC": { vi: "THỬ SỨC VỚI NHỮNG TỪ ĐÃ HỌC", en: "TEST YOUR VOCABULARY", ja: "学習した単語で力試し" },
+  "Trung tâm kiểm tra": { vi: "Trung tâm kiểm tra", en: "Quiz Center", ja: "テストセンター" },
+  "Trắc nghiệm, gõ từ, nghe chọn và nghe viết.": { vi: "Trắc nghiệm, gõ từ, nghe chọn và nghe viết.", en: "Multiple choice, typing, listening choice, and dictation.", ja: "4択クイズ、タイピング、リスニング選択・ディクテーション。" },
+  "Hình thức": { vi: "Hình thức", en: "Quiz Format", ja: "出題形式" },
+  "Trắc nghiệm · 4 đáp án": { vi: "Trắc nghiệm · 4 đáp án", en: "Multiple Choice · 4 Options", ja: "4択クイズ" },
+  "Gõ chính tả / nghĩa": { vi: "Gõ chính tả / nghĩa", en: "Typing / Spelling", ja: "タイピング / スペル入力" },
+  "Nghe chọn / Nghe viết": { vi: "Nghe chọn / Nghe viết", en: "Listening Choice / Dictation", ja: "リスニング選択 / ディクテーション" },
+  "Chiều hỏi": { vi: "Chiều hỏi", en: "Question Direction", ja: "出題方向" },
+  "Nguồn câu hỏi": { vi: "Nguồn câu hỏi", en: "Question Source", ja: "出題範囲" },
+  "Từ cần ôn · Gắn sao": { vi: "Từ cần ôn · Gắn sao", en: "Starred Words", ja: "スター付き（要復習）" },
+  "Theo bộ từ": { vi: "Theo bộ từ", en: "By Deck", ja: "単語帳別" },
+  "Số câu": { vi: "Số câu", en: "Question Count", ja: "問題数" },
+  "Cách trả lời khi nghe": { vi: "Cách trả lời khi nghe", en: "Listening Response Mode", ja: "リスニング解答方式" },
+  "Nghe chọn · 4 đáp án": { vi: "Nghe chọn · 4 đáp án", en: "Listen & Choose · 4 Options", ja: "聞いて選ぶ（4択）" },
+  "Nghe viết": { vi: "Nghe viết", en: "Listen & Type (Dictation)", ja: "聞いて書く（ディクテーション）" },
+  "Bắt đầu kiểm tra": { vi: "Bắt đầu kiểm tra", en: "Start Quiz", ja: "テストを開始" },
+  "BÀI KIỂM TRA HOÀN TẤT": { vi: "BÀI KIỂM TRA HOÀN TẤT", en: "QUIZ COMPLETE", ja: "テスト完了" },
+  "Các câu sai đã được gắn sao để bạn luyện lại.": { vi: "Các câu sai đã được gắn sao để bạn luyện lại.", en: "Incorrect words have been starred for review.", ja: "間違えた単語には復習用のスターが付きました。" },
+  "Bạn đã trả lời đúng tất cả các câu.": { vi: "Bạn đã trả lời đúng tất cả các câu.", en: "You answered every question correctly!", ja: "全問正解しました！" },
+  "Luyện lại các câu sai": { vi: "Luyện lại các câu sai", en: "Retry Incorrect Words", ja: "間違えた単語を再練習" },
+  "Tạo bài kiểm tra mới": { vi: "Tạo bài kiểm tra mới", en: "New Quiz", ja: "新しいテストを作成" },
+  "Các câu cần luyện lại": { vi: "Các câu cần luyện lại", en: "Words to Review", ja: "復習が必要な問題" },
+  "Thoát bài": { vi: "Thoát bài", en: "Exit Quiz", ja: "テストを終了" },
+  "Nội dung được đọc bằng tiếng Anh.": { vi: "Nội dung được đọc bằng tiếng Anh.", en: "Audio is spoken in English.", ja: "音声は英語で読み上げられます。" },
+  "Nghe lại": { vi: "Nghe lại", en: "Replay Audio", ja: "もう一度聞く" },
+  "TỪ TIẾNG ANH LÀ GÌ?": { vi: "TỪ TIẾNG ANH LÀ GÌ?", en: "WHAT IS THE ENGLISH WORD?", ja: "英語で何と言いますか？" },
+  "NGHĨA TIẾNG VIỆT LÀ GÌ?": { vi: "NGHĨA TIẾNG VIỆT LÀ GÌ?", en: "WHAT IS THE VIETNAMESE MEANING?", ja: "ベトナム語の意味は何ですか？" },
+  "Chấm câu trả lời": { vi: "Chấm câu trả lời", en: "Submit Answer", ja: "解答を採点" },
+  "Chính xác": { vi: "Chính xác", en: "Correct!", ja: "正解！" },
+  "Chưa đúng · Đã lưu ôn": { vi: "Chưa đúng · Đã lưu ôn", en: "Incorrect · Starred for review", ja: "不正解 · 復習リストに保存しました" },
+  "Xem kết quả": { vi: "Xem kết quả", en: "View Results", ja: "結果を見る" },
+  "Câu tiếp theo": { vi: "Câu tiếp theo", en: "Next Question", ja: "次の問題" },
+  "BƯỚC NHỎ, TIẾN BỘ DÀI": { vi: "BƯỚC NHỎ, TIẾN BỘ DÀI", en: "SMALL STEPS, LONG PROGRESS", ja: "小さな一歩が大きな進歩へ" },
+  "Thống kê tiến độ": { vi: "Thống kê tiến độ", en: "Progress Statistics", ja: "学習進捗の統計" },
+  "Mỗi lượt học đều được ghi lại theo ngày trên thiết bị và đồng bộ đám mây.": { vi: "Mỗi lượt học đều được ghi lại theo ngày trên thiết bị và đồng bộ đám mây.", en: "Every study review is logged daily on your device and synced to the cloud.", ja: "すべての学習記録は日別にデバイスへ保存され、クラウドと同期されます。" },
+  "Tổng số từ": { vi: "Tổng số từ", en: "Total Words", ja: "総単語数" },
+  "Từ đang hoạt động": { vi: "Từ đang hoạt động", en: "Active vocabulary", ja: "有効な単語" },
+  "Đến hạn hôm nay": { vi: "Đến hạn hôm nay", en: "Due Today", ja: "今日の復習対象" },
+  "Bao gồm các từ quá hạn": { vi: "Bao gồm các từ quá hạn", en: "Includes overdue words", ja: "期限切れの単語を含む" },
+  "Streak hiện tại": { vi: "Streak hiện tại", en: "Current Streak", ja: "現在の連続学習" },
+  "Streak dài nhất": { vi: "Streak dài nhất", en: "Longest Streak", ja: "最長連続学習" },
+  "ngày học liên tiếp": { vi: "ngày học liên tiếp", en: "consecutive study days", ja: "日連続" },
+  "Độ chính xác 7 ngày": { vi: "Độ chính xác 7 ngày", en: "7-Day Accuracy", ja: "過去7日間の正答率" },
+  "Chưa có lượt học trong 7 ngày": { vi: "Chưa có lượt học trong 7 ngày", en: "No study sessions in the last 7 days", ja: "過去7日間の学習記録はありません" },
+  "Trạng thái từ vựng": { vi: "Trạng thái từ vựng", en: "Vocabulary Status", ja: "単語の習得状況" },
+  "Chưa học": { vi: "Chưa học", en: "New", ja: "未学習" },
+  "Đang học": { vi: "Đang học", en: "Learning", ja: "学習中" },
+  "Thêm từ mới": { vi: "Thêm từ mới", en: "Add New Word", ja: "新しい単語を追加" },
+  "Sửa từ vựng": { vi: "Sửa từ vựng", en: "Edit Word", ja: "単語を編集" },
+  "Tra cứu và tự điền": { vi: "Tra cứu và tự điền", en: "Look Up & Autofill", ja: "辞書検索して自動入力" },
+  "Nhập từ cần tra…": { vi: "Nhập từ cần tra…", en: "Enter word to look up…", ja: "検索する単語を入力…" },
+  "Tiếng Anh *": { vi: "Tiếng Anh *", en: "English *", ja: "英語 *" },
+  "Nghĩa tiếng Việt *": { vi: "Nghĩa tiếng Việt *", en: "Vietnamese Meaning *", ja: "ベトナム語の意味 *" },
+  "Phiên âm IPA": { vi: "Phiên âm IPA", en: "IPA Pronunciation", ja: "IPA 発音記号" },
+  "Từ loại": { vi: "Từ loại", en: "Part of Speech", ja: "品詞" },
+  "danh từ, động từ…": { vi: "danh từ, động từ…", en: "noun, verb…", ja: "名詞、動詞…" },
+  "Bài học / Nguồn": { vi: "Bài học / Nguồn", en: "Unit / Source", ja: "ユニット / 出典" },
+  "Tùy chọn": { vi: "Tùy chọn", en: "Optional", ja: "任意" },
+  "Lưu từ": { vi: "Lưu từ", en: "Save Word", ja: "単語を保存" },
+  "Phát hiện từ vựng trùng lặp": { vi: "Phát hiện từ vựng trùng lặp", en: "Duplicate Vocabulary Detected", ja: "重複する単語が見つかりました" },
+  "Bỏ qua (Skip)": { vi: "Bỏ qua (Skip)", en: "Skip", ja: "スキップ (Skip)" },
+  "Ghi đè / Hợp nhất (Merge)": { vi: "Ghi đè / Hợp nhất (Merge)", en: "Overwrite / Merge", ja: "上書き / 統合 (Merge)" },
+  "Bạn đang học ở Chế độ Khách (Guest). Dữ liệu được bảo toàn trong trình duyệt và sẽ tự động đồng bộ lên tài khoản ngay khi bạn đăng nhập.": { vi: "Bạn đang học ở Chế độ Khách (Guest). Dữ liệu được bảo toàn trong trình duyệt và sẽ tự động đồng bộ lên tài khoản ngay khi bạn đăng nhập.", en: "You are studying in Guest Mode. Your vocabulary is preserved in this browser and will automatically sync to your cloud account upon sign-in.", ja: "ゲストモードで学習中です。データはこのブラウザに保存され、ログイン時に自動的にクラウドアカウントと同期されます。" },
+  "Đã tự động đồng bộ dữ liệu từ vựng trên trình duyệt lên tài khoản đám mây của bạn!": { vi: "Đã tự động đồng bộ dữ liệu từ vựng trên trình duyệt lên tài khoản đám mây của bạn!", en: "Automatically migrated and synced your local browser vocabulary to your cloud account!", ja: "ブラウザ内の単語データをクラウドアカウントに自動移行・同期しました！" },
+  "Đã đồng bộ dữ liệu Vocab Studio với đám mây!": { vi: "Đã đồng bộ dữ liệu Vocab Studio với đám mây!", en: "Synced Vocab Studio data with the cloud!", ja: "Vocab Studio のデータをクラウドと同期しました！" }
 };
 
 const I18N_PATTERNS = [
@@ -5685,6 +5893,61 @@ const I18N_PATTERNS = [
     re: /^🔄 Đang kích hoạt\s+(\d+)\s+API Key trong hàng đợi tự động xoay vòng:$/,
     en: (m) => "🔄 Active in auto-rotation pool: " + m[1] + " API Key(s):",
     ja: (m) => "🔄 自動ローテーションプールで有効な API Key (" + m[1] + " 件):"
+  },
+  {
+    re: /^Đã đồng bộ\s*\((.+)\)$/,
+    en: (m) => "Synced (" + m[1] + ")",
+    ja: (m) => "同期済 (" + m[1] + ")"
+  },
+  {
+    re: /^(\d+)\/(\d+)\s+từ\s*·\s*Bấm thẻ để lật$/,
+    en: (m) => m[1] + "/" + m[2] + " words · Click card to flip",
+    ja: (m) => m[1] + "/" + m[2] + " 語 · カードをクリックしてめくる"
+  },
+  {
+    re: /^Hiển thị thêm\s+(\d+)\s+từ$/,
+    en: (m) => "Load " + m[1] + " more words",
+    ja: (m) => "さらに " + m[1] + " 語を表示"
+  },
+  {
+    re: /^(\d+)\s+đến hạn\s*·\s*(\d+)\s+từ mới chưa học\s*·\s*(\d+)\s+từ mới trong phiên$/,
+    en: (m) => m[1] + " due · " + m[2] + " unlearned new · " + m[3] + " new in session",
+    ja: (m) => "期限到来 " + m[1] + " · 未学習 " + m[2] + " · 今セッションの新規 " + m[3]
+  },
+  {
+    re: /^Bảng dò bài\s*·\s*(\d+)\s+từ cần ôn$/,
+    en: (m) => "Review Table · " + m[1] + " starred words",
+    ja: (m) => "復習シート · 要復習 " + m[1] + " 語"
+  },
+  {
+    re: /^(\d+)\s+từ(\s*·\s*Bộ mặc định)?$/,
+    en: (m) => m[1] + " words" + (m[2] ? " · Default Deck" : ""),
+    ja: (m) => m[1] + " 語" + (m[2] ? " · デフォルト単語帳" : "")
+  },
+  {
+    re: /^(\d+)\s+ngày(\s*·\s*Gỡ sao)?$/,
+    en: (m) => m[1] + " days" + (m[2] ? " · Unstar" : ""),
+    ja: (m) => m[1] + " 日" + (m[2] ? " · スター解除" : "")
+  },
+  {
+    re: /^(\d+)\s+từ trong nguồn\s*·\s*Đáp án nhiễu lấy từ toàn bộ kho từ\.$/,
+    en: (m) => m[1] + " words in source · Distractors drawn from entire vocabulary.",
+    ja: (m) => "対象範囲に " + m[1] + " 語 · 誤答選択肢は全単語から抽出されます。"
+  },
+  {
+    re: /^(\d+)%\s+chính xác$/,
+    en: (m) => m[1] + "% Accuracy",
+    ja: (m) => "正答率 " + m[1] + "%"
+  },
+  {
+    re: /^Đã lưu nhanh “(.+?)” vào Vocab Studio!$/,
+    en: (m) => "Quick-saved “" + m[1] + "” to Vocab Studio!",
+    ja: (m) => "「" + m[1] + "」を Vocab Studio にクイック保存しました！"
+  },
+  {
+    re: /^Dữ liệu hiện có:\s*(\d+)\s*bộ đề\s*·\s*(\d+)\s*từ vựng \(Vocab Studio\)\s*·\s*(\d+)\s*câu sai\s*·\s*(\d+)\s*lịch sử thi\.$/,
+    en: (m) => "Current data: " + m[1] + " decks · " + m[2] + " words (Vocab Studio) · " + m[3] + " mistakes · " + m[4] + " exam records.",
+    ja: (m) => "現在のデータ: 問題集 " + m[1] + " · 単語 (Vocab Studio) " + m[2] + " · 弱点ノート " + m[3] + " · 試験履歴 " + m[4] + "。"
   }
 ];
 /* END_VI_TRANSLATION_DICTIONARY */
@@ -6010,6 +6273,19 @@ function init() {
   });
   on("checkBtn", "click", submitCurrent);
   on("flagBtn", "click", toggleFlag);
+  on("studyQuickVocabBtn", "click", function () {
+    const s = state.session;
+    if (!s || !s.questions || !s.questions[s.currentIndex]) return;
+    const q = s.questions[s.currentIndex];
+    const stripTags = function (str) { return String(str || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); };
+    const sel = (typeof window.getSelection === "function" ? String(window.getSelection() || "").trim() : "");
+    const corOpt = (q.correct && q.correct.length > 0 && q.options[q.correct[0]]) ? stripTags(q.options[q.correct[0]]) : "";
+    const wordCandidate = sel || corOpt || stripTags(q.text).slice(0, 80);
+    const meaningCandidate = stripTags(q.explanation) || (corOpt && wordCandidate !== corOpt ? corOpt : "");
+    if (window.VocabStudioBridge && typeof window.VocabStudioBridge.quickAddWord === "function") {
+      window.VocabStudioBridge.quickAddWord(wordCandidate, meaningCandidate, stripTags(q.text));
+    }
+  });
   on("firstBtn", "click", function () { goTo(0); });
   on("prevBtn", "click", prevQuestion);
   on("nextBtn", "click", nextQuestion);
@@ -6076,8 +6352,12 @@ function init() {
 
   initGoogle();
   const stored = loadStoredAuth();
+  const curPth = (window.location.pathname || "").toLowerCase();
   if (stored) onAuthenticated(stored);
-  else {
+  else if (curPth === "/vocab" || curPth === "/vocab.html") {
+    enterGuestShareMode();
+    navigateTo("/vocab", { replace: true });
+  } else {
     toggleEl("loginView", true);
     document.title = "\u0110\u0103ng nh\u1eadp | AI Tutor";
   }
