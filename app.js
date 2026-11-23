@@ -1,5 +1,25 @@
 const GOOGLE_CLIENT_ID = "480927164540-o3o4h9v5vmi8h93605ridg4eqvtf5rcf.apps.googleusercontent.com";
 
+/* Capture initial LMS assignment/attempt/receipt query params at script boot BEFORE any router runs */
+const INITIAL_LMS_PARAMS = (function () {
+  try {
+    const qs = (typeof window !== "undefined" && window.location && window.location.search) || "";
+    const hs = (typeof window !== "undefined" && window.location && window.location.hash) || "";
+    const sp = typeof URLSearchParams === "function" ? new URLSearchParams(qs) : null;
+    const hAssign = hs.match(/(?:^|[#&])assign=([^&]+)/i);
+    const hAttempt = hs.match(/(?:^|[#&])attempt=([^&]+)/i);
+    return {
+      assignCode: String((sp && sp.get("assign")) || (hAssign ? decodeURIComponent(hAssign[1]) : "") || "").trim().toUpperCase(),
+      attemptId: String((sp && sp.get("attempt")) || (hAttempt ? decodeURIComponent(hAttempt[1]) : "") || "").trim(),
+      review: Boolean((sp && (sp.get("review") === "1" || sp.get("review") === "true")) || (sp && sp.get("attempt")) || hAttempt),
+      receiptId: String((sp && sp.get("receipt")) || "").trim()
+    };
+  } catch (e) {
+    return { assignCode: "", attemptId: "", review: false, receiptId: "" };
+  }
+})();
+let initialLmsConsumed = false;
+
 /* ============================================================
    AI Tutor – Core Application (app.js)
    ============================================================ */
@@ -1047,18 +1067,31 @@ function navigateTo(rawPath, options) {
     pageTitle = (state.session.review ? "Xem l\u1ea1i b\u00e0i thi" : (MODE_LABEL[state.session.mode] || "\u0110ang l\u00e0m b\u00e0i")) + " | AI Tutor";
   }
 
-  const fullUrl = finalPath + (parsed.search || "") + (parsed.hash || "");
+  let finalSearch = parsed.search || "";
+  // Preserve ?assign=...&attempt=... across /creator-studio transitions whenever an assignment is active or booting
+  if (route.tab === "studio" && !finalSearch) {
+    const activeAssign = (window.UETLms && typeof window.UETLms.getActiveAssignCode === "function" && window.UETLms.getActiveAssignCode())
+      || (!initialLmsConsumed ? INITIAL_LMS_PARAMS.assignCode : "");
+    const activeAttempt = (window.UETLms && typeof window.UETLms.getActiveAttemptId === "function" && window.UETLms.getActiveAttemptId())
+      || (!initialLmsConsumed ? INITIAL_LMS_PARAMS.attemptId : "");
+    if (activeAssign && (opts.preserveScreen || finalPath === "/creator-studio" || finalPath === "/creator-studio/assignment")) {
+      finalPath = "/creator-studio";
+      finalSearch = "?assign=" + encodeURIComponent(activeAssign) + (activeAttempt ? ("&attempt=" + encodeURIComponent(activeAttempt)) : "");
+    }
+  }
+
+  const fullUrl = finalPath + finalSearch + (parsed.hash || "");
   if (!opts.fromPopState) syncHistory(fullUrl, pageTitle, replace);
   else document.title = pageTitle;
 
   state.tab = route.tab;
 
-  // Apply sub-tab state before rendering
+  // Apply sub-tab state before rendering (NEVER overwrite student-assign when preserveScreen is set!)
   if (route.tab === "admin" && route.sub) state.adminTab = route.sub;
   if (route.tab === "converter" && route.sub && window.UETConverter && typeof window.UETConverter.applySubRoute === "function") {
     window.UETConverter.applySubRoute(route.sub);
   }
-  if (route.tab === "studio" && route.sub && route.sub !== "quiz" && window.UETStudio && typeof window.UETStudio.applySubRoute === "function") {
+  if (!opts.preserveScreen && route.tab === "studio" && route.sub && route.sub !== "quiz" && window.UETStudio && typeof window.UETStudio.applySubRoute === "function") {
     window.UETStudio.applySubRoute(route.sub);
   }
 
@@ -6875,6 +6908,7 @@ const CURRICULUM_CATALOG = (function () {
 window.UET = {
   CURRICULUM: CURRICULUM_CATALOG,
   migrateLegacyQuizzes: migrateLegacyQuizzes,
+  getInitialLmsParams: function () { return Object.assign({}, INITIAL_LMS_PARAMS, { consumed: initialLmsConsumed }); },
   state: state, KEYS: KEYS, XLSX_HEADERS: XLSX_HEADERS, LETTERS: LETTERS, TIERS: TIERS, TIER_ORDER: TIER_ORDER,
   $: $, esc: esc, renderRich: renderRich, setText: setText, setHTML: setHTML, toggleEl: toggleEl, on: on, clamp: clamp,
   fmtMoney: fmtMoney, fmtDate: fmtDate, fmtDateTime: fmtDateTime,
@@ -7150,12 +7184,9 @@ function init() {
   initGoogle();
   const stored = loadStoredAuth();
   const curPth = (window.location.pathname || "").toLowerCase();
-  const bootQs = window.location.search || "";
-  const bootHash = window.location.hash || "";
-  const bootParams = typeof URLSearchParams === "function" ? new URLSearchParams(bootQs) : null;
-  const hashAssignMatch = bootHash.match(/(?:^|[#&])assign=([^&]+)/i);
-  const bootAssignCode = (bootParams && bootParams.get("assign")) || (hashAssignMatch ? decodeURIComponent(hashAssignMatch[1]) : "");
-  const bootReceiptId = (bootParams && bootParams.get("receipt")) || "";
+  const bootAssignCode = INITIAL_LMS_PARAMS.assignCode;
+  const bootAttemptId = INITIAL_LMS_PARAMS.attemptId;
+  const bootReceiptId = INITIAL_LMS_PARAMS.receiptId;
 
   if (stored) onAuthenticated(stored);
   else if (bootAssignCode || bootReceiptId) {
@@ -7169,31 +7200,34 @@ function init() {
     document.title = "\u0110\u0103ng nh\u1eadp | AI Tutor";
   }
 
-  // Check if opened via Assignment Link (?assign=... / #assign=...) or Share Link — works even in Incognito!
-  setTimeout(function () {
-    const qs = window.location.search || "";
-    const pth = (window.location.pathname || "").toLowerCase();
-    const params = typeof URLSearchParams === "function" ? new URLSearchParams(qs) : null;
+  // Trigger assignment / attempt hydration explicitly after route mount (works even with 0 local quizzes!)
+  const bootLmsFromUrl = function () {
     if (window.UETLms && (bootAssignCode || bootReceiptId)) {
+      initialLmsConsumed = true;
       if (bootAssignCode) {
         if (!state.user) enterGuestShareMode();
-        const att = (params && params.get("attempt")) || "";
-        window.UETLms.openStudentAssignment(bootAssignCode, {
-          attemptId: att,
-          review: Boolean(att) || (params && (params.get("review") === "1" || params.get("review") === "true"))
-        });
-        return;
+        window.UETLms.openPublicAssignment(bootAssignCode, bootAttemptId);
+        return true;
       }
       if (bootReceiptId) {
         if (!state.user) enterGuestShareMode();
         window.UETLms.openParentReceipt(bootReceiptId);
-        return;
+        return true;
       }
     }
-    if (window.UETCloud && (pth === "/quiz" || pth.indexOf("/quiz/") === 0 || qs.indexOf("quiz=") !== -1 || qs.indexOf("share=") !== -1 || qs.indexOf("code=") !== -1 || window.location.hash.indexOf("d=") !== -1)) {
-      window.UETCloud.resolveAndOpenShare("");
-    }
-  }, 80);
+    return false;
+  };
+
+  if (!bootLmsFromUrl()) {
+    setTimeout(function () {
+      if (bootLmsFromUrl()) return;
+      const qs = window.location.search || "";
+      const pth = (window.location.pathname || "").toLowerCase();
+      if (window.UETCloud && (pth === "/quiz" || pth.indexOf("/quiz/") === 0 || qs.indexOf("quiz=") !== -1 || qs.indexOf("share=") !== -1 || qs.indexOf("code=") !== -1 || window.location.hash.indexOf("d=") !== -1)) {
+        window.UETCloud.resolveAndOpenShare("");
+      }
+    }, 80);
+  }
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

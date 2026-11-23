@@ -284,16 +284,37 @@
     if (!U() || U().state.tab !== "studio") return;
     const entry = STUDIO_ROUTE_MAP[sState.screen] || STUDIO_ROUTE_MAP.home;
     const curPath = (window.location.pathname || "").toLowerCase();
+    const curSearch = window.location.search || "";
     // Keep /quiz?code=... URL intact when playing a shared link in Lobby
     if (curPath === "/quiz" && sState.screen === "lobby") {
       document.title = "L\u00e0m b\u00e0i chia s\u1ebb | AI Tutor";
       return;
     }
-    if ((window.location.search || "").indexOf("assign=") !== -1 && sState.screen === "student-assign") return;
-    if ((window.location.search || "").indexOf("receipt=") !== -1 && sState.screen === "parent-receipt") return;
+    // NEVER strip ?assign=... or ?receipt=... from URL while assignment/receipt is active or booting
+    const initLms = typeof U().getInitialLmsParams === "function" ? U().getInitialLmsParams() : null;
+    if (curSearch.indexOf("assign=") !== -1 || sState.screen === "student-assign" || (initLms && initLms.assignCode && !initLms.consumed)) {
+      const activeCode = (window.UETLms && typeof window.UETLms.getActiveAssignCode === "function" && window.UETLms.getActiveAssignCode())
+        || (initLms && initLms.assignCode) || "";
+      const activeAtt = (window.UETLms && typeof window.UETLms.getActiveAttemptId === "function" && window.UETLms.getActiveAttemptId())
+        || (initLms && initLms.attemptId) || "";
+      if (activeCode && curSearch.indexOf("assign=") === -1 && typeof U().syncHistory === "function") {
+        U().syncHistory("/creator-studio?assign=" + encodeURIComponent(activeCode) + (activeAtt ? ("&attempt=" + encodeURIComponent(activeAtt)) : ""), entry[1], true);
+      } else {
+        document.title = entry[1];
+      }
+      return;
+    }
+    if (curSearch.indexOf("receipt=") !== -1 && sState.screen === "parent-receipt") return;
     if (typeof U().syncHistory === "function") U().syncHistory(entry[0], entry[1], !!replace);
   }
   function applySubRoute(sub) {
+    // Never bounce back to empty Home screen while an ?assign= flow is active or loading
+    const curSearch = window.location.search || "";
+    const initLms = U() && typeof U().getInitialLmsParams === "function" ? U().getInitialLmsParams() : null;
+    if (sub === "home" && (sState.screen === "student-assign" || curSearch.indexOf("assign=") !== -1 || (initLms && initLms.assignCode && !initLms.consumed))) {
+      sState.screen = "student-assign";
+      return;
+    }
     if (sub === "home" || sub === "students" || sub === "assignments" || sub === "gradebook" || sub === "student-assign" || sub === "parent-receipt") {
       stopStudioTimer();
       sState.screen = sub;
@@ -1607,8 +1628,11 @@
   function openLmsScreen(screenName) {
     stopStudioTimer();
     sState.screen = screenName || "home";
-    if (U().state.tab !== "studio") U().showTab("studio");
-    else render();
+    if (U().state.tab !== "studio") {
+      U().showTab("studio", { preserveScreen: true, replace: sState.screen === "student-assign" || sState.screen === "parent-receipt" });
+    } else {
+      render();
+    }
   }
 
   window.UETStudio = {

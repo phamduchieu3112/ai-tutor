@@ -3631,6 +3631,11 @@
     handleClick: handleClick,
     handleChange: handleChange,
     openStudentAssignment: openStudentAssignment,
+    openPublicAssignment: function (code, attemptId) {
+      return openStudentAssignment(code, { attemptId: attemptId || "", review: Boolean(attemptId) });
+    },
+    getActiveAssignCode: function () { return lmsState.activeAssignCode || ""; },
+    getActiveAttemptId: function () { return lmsState.lastSubmissionId || ""; },
     openParentReceipt: openParentReceipt,
     openAssignModalForQuiz: openAssignModalForQuiz,
     generateQrSvg: generateQrSvg,
