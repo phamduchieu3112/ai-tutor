@@ -806,12 +806,65 @@ function normalizeDeck(d, idx) {
       id: d.id !== undefined && d.id !== null && String(d.id) ? String(d.id) : "deck_" + idx,
       title: String(d.title || "B\u1ed9 \u0111\u1ec1 kh\u00f4ng t\u00ean"),
       tag: String(d.tag || "Ch\u01b0a ph\u00e2n lo\u1ea1i"),
+      gradeLevel: String(d.gradeLevel || d.grade_level || d.grade || ""),
+      subject: String(d.subject || ""),
       isBuiltIn: false,
       questions: questions
     };
   } catch (e) { return null; }
 }
 function getUserDecks() { return loadArr(KEYS.decks).map(normalizeDeck).filter(Boolean); }
+
+function migrateLegacyQuizzes() {
+  try {
+    const raw = loadArr(KEYS.quizzes);
+    if (!Array.isArray(raw) || !raw.length) return [];
+    let changed = false;
+    const normalized = raw.map(function (q, idx) {
+      if (!q || typeof q !== "object") { changed = true; return null; }
+      const rawId = q.id !== undefined && q.id !== null && String(q.id).trim() !== ""
+        ? String(q.id).trim()
+        : ("qz_legacy_" + Date.now() + "_" + idx);
+      if (rawId !== q.id) changed = true;
+
+      const rawQs = Array.isArray(q.questions) ? q.questions : (Array.isArray(q.items) ? q.items : []);
+      if (!Array.isArray(q.questions)) changed = true;
+
+      const isPub = typeof q.isPublic === "boolean"
+        ? q.isPublic
+        : (typeof q.is_public === "boolean"
+          ? q.is_public
+          : (q.visibility ? String(q.visibility).toLowerCase() !== "private" : true));
+      if (typeof q.isPublic !== "boolean") changed = true;
+
+      const explicitGrade = String(q.gradeLevel || q.grade_level || q.grade || "").trim();
+      const explicitSubj = String(q.subject || "").trim();
+      const tax = typeof CURRICULUM_CATALOG !== "undefined" && CURRICULUM_CATALOG
+        ? CURRICULUM_CATALOG.detectTaxonomy({ title: q.title, tag: q.tag, gradeLevel: explicitGrade, subject: explicitSubj })
+        : { gradeLevel: explicitGrade || "unclassified", subject: explicitSubj };
+
+      const nextGrade = explicitGrade || tax.gradeLevel || "unclassified";
+      const nextSubj = explicitSubj || tax.subject || "";
+      if (q.gradeLevel !== nextGrade || q.subject !== nextSubj) changed = true;
+
+      return Object.assign({}, q, {
+        id: rawId,
+        title: String(q.title || "Quiz kh\u00f4ng t\u00ean"),
+        tag: String(q.tag || nextSubj || "T\u1ed5ng h\u1ee3p"),
+        gradeLevel: nextGrade,
+        subject: nextSubj,
+        isPublic: isPub,
+        shareCode: String(q.shareCode || q.share_code || ""),
+        questions: rawQs
+      });
+    }).filter(Boolean);
+    if (changed) saveJSON(KEYS.quizzes, normalized);
+    return normalized;
+  } catch (e) {
+    console.warn("[AI Tutor] migrateLegacyQuizzes fallback:", e && e.message);
+    return [];
+  }
+}
 
 function rebuildDecks() {
   const seen = {}, result = [];
@@ -821,18 +874,21 @@ function rebuildDecks() {
   state.decks = result;
 }
 function getDeck(id) {
-  for (let i = 0; i < state.decks.length; i++) if (state.decks[i].id === id) return state.decks[i];
+  const sid = String(id == null ? "" : id);
+  for (let i = 0; i < state.decks.length; i++) if (String(state.decks[i].id) === sid) return state.decks[i];
   return null;
 }
 
 async function initAppData() {
+  migrateLegacyQuizzes();
   rebuildDecks();
   renderTab();
   if (!state.user) return;
-  await syncWithBackend();
+  try { await syncWithBackend(); } catch (e) { console.warn("[AI Tutor] syncWithBackend fallback:", e && e.message); }
   if (window.UETCloud && window.UETCloud.cloudStorageService) {
-    await window.UETCloud.cloudStorageService.pull();
+    try { await window.UETCloud.cloudStorageService.pull(); } catch (e) { console.warn("[AI Tutor] cloudStorageService.pull fallback:", e && e.message); }
   }
+  migrateLegacyQuizzes();
   if (window.VocabStudio && typeof window.VocabStudio.onUserAuthenticated === "function") {
     window.VocabStudio.onUserAuthenticated();
   }
@@ -5288,6 +5344,14 @@ const I18N_MAP = {
   "Sửa nhanh": { vi: "Sửa nhanh", en: "Quick Edit", ja: "クイック編集" },
   "Đã cập nhật bài giao thành công!": { vi: "Đã cập nhật bài giao thành công!", en: "Assignment updated successfully!", ja: "課題を更新しました！" },
   "Đã cập nhật thông tin học sinh và đồng bộ danh bạ.": { vi: "Đã cập nhật thông tin học sinh và đồng bộ danh bạ.", en: "Student info updated and synced to roster.", ja: "生徒情報を更新し名簿に同期しました。" },
+  "Chọn tất cả đề hiển thị": { vi: "Chọn tất cả đề hiển thị", en: "Select All Visible Quizzes", ja: "表示中の問題をすべて選択" },
+  "Chọn tất cả học sinh": { vi: "Chọn tất cả học sinh", en: "Select All Students", ja: "すべての生徒を選択" },
+  "Tìm tên đề...": { vi: "Tìm tên đề...", en: "Search quiz title...", ja: "問題名で検索..." },
+  "Mọi khối": { vi: "Mọi khối", en: "All Grades", ja: "すべての学年" },
+  "Mọi môn": { vi: "Mọi môn", en: "All Subjects", ja: "すべての科目" },
+  "Mọi lớp": { vi: "Mọi lớp", en: "All Classes", ja: "すべてのクラス" },
+  "Sao chép tất cả link": { vi: "Sao chép tất cả link", en: "Copy All Links", ja: "すべてのリンクをコピー" },
+  "Vui lòng chọn ít nhất 1 bộ đề để giao.": { vi: "Vui lòng chọn ít nhất 1 bộ đề để giao.", en: "Please select at least 1 quiz to assign.", ja: "配布する問題を少なくとも1つ選択してください。" },
   "Tạo & Giao bài": { vi: "Tạo & Giao bài", en: "Create & Assign", ja: "作成して配布" },
   "Vui lòng chọn hạn nộp bài.": { vi: "Vui lòng chọn hạn nộp bài.", en: "Please set a deadline.", ja: "提出期限を設定してください。" },
   "Vui lòng chọn ít nhất 1 học sinh.": { vi: "Vui lòng chọn ít nhất 1 học sinh.", en: "Please select at least 1 student.", ja: "少なくとも1名の生徒を選択してください。" },
@@ -6810,6 +6874,7 @@ const CURRICULUM_CATALOG = (function () {
 
 window.UET = {
   CURRICULUM: CURRICULUM_CATALOG,
+  migrateLegacyQuizzes: migrateLegacyQuizzes,
   state: state, KEYS: KEYS, XLSX_HEADERS: XLSX_HEADERS, LETTERS: LETTERS, TIERS: TIERS, TIER_ORDER: TIER_ORDER,
   $: $, esc: esc, renderRich: renderRich, setText: setText, setHTML: setHTML, toggleEl: toggleEl, on: on, clamp: clamp,
   fmtMoney: fmtMoney, fmtDate: fmtDate, fmtDateTime: fmtDateTime,

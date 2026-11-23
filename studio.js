@@ -69,8 +69,36 @@
 
   function U() { return window.UET; }
 
-  function loadQuizzes() { return U().loadArr(U().KEYS.quizzes); }
+  function normalizeStudioQuiz(qz, idx) {
+    if (!qz || typeof qz !== "object") return null;
+    const rawQs = Array.isArray(qz.questions) ? qz.questions : (Array.isArray(qz.items) ? qz.items : []);
+    const tax = U().CURRICULUM ? U().CURRICULUM.detectTaxonomy(qz) : { gradeLevel: "unclassified", subject: "" };
+    const isPub = typeof qz.isPublic === "boolean"
+      ? qz.isPublic
+      : (typeof qz.is_public === "boolean"
+        ? qz.is_public
+        : (qz.visibility ? String(qz.visibility).toLowerCase() !== "private" : true));
+    return Object.assign({}, qz, {
+      id: (qz.id !== undefined && qz.id !== null && String(qz.id).trim() !== "") ? String(qz.id).trim() : ("qz_norm_" + Date.now() + "_" + (idx || 0)),
+      title: String(qz.title || "Quiz kh\u00f4ng t\u00ean"),
+      tag: String(qz.tag || qz.subject || tax.subject || "T\u1ed5ng h\u1ee3p"),
+      gradeLevel: String(qz.gradeLevel || qz.grade_level || qz.grade || tax.gradeLevel || "unclassified"),
+      subject: String(qz.subject || tax.subject || ""),
+      isPublic: isPub,
+      shareCode: String(qz.shareCode || qz.share_code || ""),
+      questions: rawQs.map(normalizeStudioQuestion)
+    });
+  }
+
+  function loadQuizzes() {
+    const raw = U().loadArr(U().KEYS.quizzes);
+    return (Array.isArray(raw) ? raw : []).map(normalizeStudioQuiz).filter(Boolean);
+  }
   function saveQuizzes(list) { return U().saveJSON(U().KEYS.quizzes, list); }
+  function findQuizById(id) {
+    const sid = String(id == null ? "" : id);
+    return loadQuizzes().find(function (x) { return x && String(x.id) === sid; }) || null;
+  }
 
   function playTone(ok) {
     if (!sState.lobby.sound) return;
@@ -1291,7 +1319,8 @@
     if (act === "slice-quiz") {
       if (!sState.quiz || sState.quiz.questions.length <= 1) return;
       const cnt = Math.max(1, parseInt(U().$("stSliceCount") ? U().$("stSliceCount").value : "50", 10) || 50);
-      const picked = U().shuffle(sState.quiz.questions.slice()).slice(0, Math.min(cnt, sState.quiz.questions.length));
+      const shuffler = typeof U().shuffleArray === "function" ? U().shuffleArray : function (a) { return a; };
+      const picked = shuffler(sState.quiz.questions.slice()).slice(0, Math.min(cnt, sState.quiz.questions.length));
       const subQuiz = Object.assign({}, sState.quiz, {
         id: "qz_sub_" + Date.now(),
         title: sState.quiz.title + " (" + picked.length + " c\u00e2u)",
@@ -1323,17 +1352,17 @@
       if (qs.length) openFromQuestions("Quiz t\u1eeb AI Converter", "AI Converter", qs);
     }
     else if (act === "edit-saved") {
-      const qz = loadQuizzes().find(function (x) { return x && x.id === b.getAttribute("data-id"); });
-      if (qz) { sState.quiz = JSON.parse(JSON.stringify(qz)); sState.screen = "editor"; render(); }
+      const qz = findQuizById(b.getAttribute("data-id"));
+      if (qz) { sState.quiz = JSON.parse(JSON.stringify(qz)); sState.editorPage = 1; sState.screen = "editor"; render(); }
     }
     else if (act === "play-saved") {
-      const qz = loadQuizzes().find(function (x) { return x && x.id === b.getAttribute("data-id"); });
+      const qz = findQuizById(b.getAttribute("data-id"));
       if (qz) { sState.quiz = JSON.parse(JSON.stringify(qz)); initLobbyDefaultsForQuiz(sState.quiz); sState.screen = "lobby"; render(); }
     }
     else if (act === "del-saved") {
-      const id = b.getAttribute("data-id");
+      const id = String(b.getAttribute("data-id") || "");
       U().showConfirm("X\u00f3a Quiz", "X\u00f3a Quiz n\u00e0y kh\u1ecfi Creator Studio?", function () {
-        saveQuizzes(loadQuizzes().filter(function (x) { return x && x.id !== id; }));
+        saveQuizzes(loadQuizzes().filter(function (x) { return x && String(x.id) !== id; }));
         render();
       });
     }
@@ -1352,11 +1381,11 @@
       if (sState.quiz && window.UETCloud) window.UETCloud.openPdfModal(sState.quiz);
     }
     else if (act === "share-saved") {
-      const qz = loadQuizzes().find(function (x) { return x && x.id === b.getAttribute("data-id"); });
+      const qz = findQuizById(b.getAttribute("data-id"));
       if (qz && window.UETCloud) window.UETCloud.openShareModal(qz);
     }
     else if (act === "pdf-saved") {
-      const qz = loadQuizzes().find(function (x) { return x && x.id === b.getAttribute("data-id"); });
+      const qz = findQuizById(b.getAttribute("data-id"));
       if (qz && window.UETCloud) window.UETCloud.openPdfModal(qz);
     }
     else if (act === "filter-quiz-grade") {

@@ -35,6 +35,12 @@ ALTER TABLE public.creator_quizzes
 ALTER TABLE public.creator_quizzes
   ADD COLUMN IF NOT EXISTS extra_fields JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+ALTER TABLE public.creator_quizzes
+  ADD COLUMN IF NOT EXISTS grade_level TEXT NOT NULL DEFAULT 'unclassified';
+
+ALTER TABLE public.creator_quizzes
+  ADD COLUMN IF NOT EXISTS subject TEXT NOT NULL DEFAULT '';
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_creator_quizzes_share_code
   ON public.creator_quizzes(share_code)
   WHERE share_code IS NOT NULL;
@@ -62,6 +68,10 @@ CREATE POLICY creator_quizzes_select
   USING (
     is_public = TRUE
     OR (auth.uid() IS NOT NULL AND auth.uid() = owner_id)
+    OR (
+      COALESCE(auth.jwt() ->> 'email', '') <> ''
+      AND lower(auth.jwt() ->> 'email') = lower(owner_email)
+    )
   );
 
 -- INSERT: Authenticated users can create only their own quizzes.

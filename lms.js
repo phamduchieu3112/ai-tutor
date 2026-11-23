@@ -106,21 +106,52 @@
   }
 
   function getAllAvailableQuizzes() {
-    const studioQzs = U().loadArr(U().KEYS.quizzes) || [];
+    const rawStudio = U().loadArr(U().KEYS.quizzes) || [];
     const decks = U().getDecks ? U().getDecks() : [];
+    const curr = U().CURRICULUM;
     const map = {};
     const out = [];
-    studioQzs.forEach(function (q) {
-      if (!q || !q.id || !Array.isArray(q.questions) || !q.questions.length) return;
-      map[q.id] = true;
-      out.push(q);
+    rawStudio.forEach(function (q) {
+      if (!q || q.id == null) return;
+      const qs = Array.isArray(q.questions) ? q.questions : (Array.isArray(q.items) ? q.items : []);
+      if (!qs.length) return;
+      const sid = String(q.id);
+      const tax = curr ? curr.detectTaxonomy(q) : { gradeLevel: "unclassified", subject: "" };
+      map[sid] = true;
+      out.push(Object.assign({}, q, {
+        id: sid,
+        gradeLevel: q.gradeLevel || q.grade_level || q.grade || tax.gradeLevel,
+        subject: q.subject || tax.subject || "",
+        questions: qs
+      }));
     });
     decks.forEach(function (d) {
-      if (!d || !d.id || !Array.isArray(d.questions) || !d.questions.length) return;
-      const id = "deck_" + d.id;
-      if (!map[id]) out.push({ id: id, title: d.title, tag: d.tag || "Tổng hợp", questions: d.questions });
+      if (!d || d.id == null || !Array.isArray(d.questions) || !d.questions.length) return;
+      const id = "deck_" + String(d.id);
+      if (!map[id]) {
+        const tax = curr ? curr.detectTaxonomy(d) : { gradeLevel: "unclassified", subject: "" };
+        out.push({
+          id: id,
+          title: d.title,
+          tag: d.tag || "T\u1ed5ng h\u1ee3p",
+          gradeLevel: d.gradeLevel || tax.gradeLevel,
+          subject: d.subject || tax.subject || "",
+          questions: d.questions
+        });
+      }
     });
     return out;
+  }
+
+  function resolveAssignmentQuestions(assign) {
+    if (!assign) return [];
+    if (assign.quizSnapshot && Array.isArray(assign.quizSnapshot.questions) && assign.quizSnapshot.questions.length) {
+      return assign.quizSnapshot.questions;
+    }
+    const allQ = getAllAvailableQuizzes();
+    const match = allQ.find(function (q) { return String(q.id) === String(assign.quizId || ""); });
+    if (match && Array.isArray(match.questions)) return match.questions;
+    return [];
   }
 
   function getAssignmentStatus(a) {
@@ -1192,26 +1223,73 @@
     });
   }
 
+  function openBatchCreatedSummaryModal(createdItems) {
+    const host = U().$("extraModals");
+    if (!host || !createdItems || !createdItems.length) return;
+    host.innerHTML =
+      '<div class="modal-overlay" id="lmsBatchSummaryModal" role="dialog" aria-modal="true"><div class="modal modal-lg">' +
+        '<h3 style="margin-top:0">✅ ' + esc(tr("Đã tạo thành công ")) + createdItems.length + ' ' + esc(tr("bài giao")) + '</h3>' +
+        '<p class="muted" style="font-size:.84rem;margin-top:0">' + esc(tr("Mỗi bộ đề đã được cấp mã bài và đường dẫn làm bài riêng biệt:")) + '</p>' +
+        '<div class="lms-table-wrap" style="max-height:280px;overflow:auto;margin:10px 0"><table class="lms-table">' +
+          '<thead><tr><th>' + esc(tr("Bài giao")) + '</th><th>' + esc(tr("Mã bài")) + '</th><th style="text-align:right">' + esc(tr("Liên kết")) + '</th></tr></thead><tbody>' +
+          createdItems.map(function (it) {
+            return '<tr>' +
+              '<td><strong>' + esc(it.title) + '</strong></td>' +
+              '<td><code class="lms-pin">' + esc(it.code) + '</code></td>' +
+              '<td style="text-align:right"><button type="button" class="btn btn-outline btn-sm" data-batch-copy="' + esc(it.code) + '">🔗 ' + esc(tr("Sao chép link")) + '</button></td>' +
+            '</tr>';
+          }).join("") +
+        '</tbody></table></div>' +
+        '<div class="modal-actions">' +
+          '<button type="button" class="btn btn-outline btn-sm" id="lmsBatchCopyAll">📋 ' + esc(tr("Sao chép tất cả link")) + '</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" id="lmsBatchClose">' + esc(tr("Đóng")) + '</button>' +
+        '</div>' +
+      '</div></div>';
+
+    host.addEventListener("click", function (ev) {
+      const cb = ev.target.closest ? ev.target.closest("[data-batch-copy]") : null;
+      if (cb) {
+        U().copyText(buildAssignmentUrl(cb.getAttribute("data-batch-copy")), tr("liên kết bài tập"));
+      }
+    });
+    U().on("lmsBatchCopyAll", "click", function () {
+      const txt = createdItems.map(function (it) {
+        return it.title + " (" + it.code + "): " + buildAssignmentUrl(it.code);
+      }).join("\n");
+      U().copyText(txt, tr("danh sách liên kết bài tập"));
+    });
+    U().on("lmsBatchClose", "click", function () { host.innerHTML = ""; });
+  }
+
   function openAssignmentModal(preset) {
     const p = preset || {};
-    const existing = p.editId ? loadAssignments().find(function (a) { return a.id === p.editId; }) : null;
+    const existing = p.editId ? loadAssignments().find(function (a) { return String(a.id) === String(p.editId); }) : null;
     const isEdit = !!existing;
     const quizzes = getAllAvailableQuizzes();
     if (!quizzes.length && !isEdit) {
       U().showToast("H\u00e3y t\u1ea1o \u00edt nh\u1ea5t 1 b\u1ed9 \u0111\u1ec1 trong Th\u01b0 vi\u1ec7n tr\u01b0\u1edbc khi giao b\u00e0i.", "warning");
       return;
     }
-    if (isEdit && existing.quizSnapshot && !quizzes.some(function (q) { return q.id === existing.quizId; })) {
-      quizzes.unshift(Object.assign({ id: existing.quizId || ("snap_" + existing.id) }, existing.quizSnapshot));
+    if (isEdit && existing.quizSnapshot && !quizzes.some(function (q) { return String(q.id) === String(existing.quizId); })) {
+      quizzes.unshift(Object.assign({ id: String(existing.quizId || ("snap_" + existing.id)) }, existing.quizSnapshot));
     }
 
     const students = loadStudents();
     const classes = Array.from(new Set(students.map(function (s) { return s.className || "Ch\u01b0a ph\u00e2n l\u1edbp"; }))).sort();
-    const defaultDead = new Date(Date.now() + 2 * 86400000);
-    defaultDead.setHours(21, 0, 0, 0);
 
-    const selectedQuizId = isEdit ? (existing.quizId || (quizzes[0] && quizzes[0].id) || "") : (p.quizId || (quizzes[0] && quizzes[0].id) || "");
-    const selQuizObj = quizzes.find(function (q) { return q.id === selectedQuizId; }) || quizzes[0];
+    // Smart Defaults for Create Mode:
+    // 1. openAt = now; 2. deadline = now + 7 days at 23:59 (end of day / 24:00);
+    // 3. maxAttempts = 1; 4. scorePolicy = "first"; 5. durationMinutes = 60;
+    // 6. teacherNote = "Đọc kỹ đề trước khi chọn đáp án."
+    const nowDate = new Date();
+    const defaultDead = new Date(nowDate.getTime() + 7 * 86400000);
+    defaultDead.setHours(23, 59, 0, 0);
+
+    const selectedQuizId = isEdit
+      ? String(existing.quizId || (quizzes[0] && quizzes[0].id) || "")
+      : String(p.quizId || (quizzes[0] && quizzes[0].id) || "");
+    const preselectedQuizIds = new Set(isEdit ? [selectedQuizId] : (Array.isArray(p.quizIds) && p.quizIds.length ? p.quizIds.map(String) : (selectedQuizId ? [selectedQuizId] : [])));
+    const selQuizObj = quizzes.find(function (q) { return String(q.id) === selectedQuizId; }) || quizzes[0];
     const curr = U().CURRICULUM;
     const baseTax = curr
       ? curr.detectTaxonomy(isEdit ? existing : (selQuizObj || {}))
@@ -1219,13 +1297,13 @@
     const initGrade = isEdit ? (existing.gradeLevel || baseTax.gradeLevel || "unclassified") : (p.gradeLevel || baseTax.gradeLevel || "unclassified");
     const initSubject = isEdit ? (existing.subject || baseTax.subject || "") : (p.subject || baseTax.subject || "");
 
-    const targetMode = isEdit
-      ? (existing.targetMode || "students")
-      : ((p.targetStudentIds || students.length === 0) ? "students" : "class");
+    const targetMode = isEdit ? (existing.targetMode || "students") : "students";
     const initTargetClass = isEdit ? (existing.targetClass || "") : "";
-    const initTargetIds = isEdit ? (Array.isArray(existing.targetStudentIds) ? existing.targetStudentIds.slice() : []) : (p.targetStudentIds || []);
+    const initTargetIds = isEdit
+      ? (Array.isArray(existing.targetStudentIds) ? existing.targetStudentIds.slice() : [])
+      : (Array.isArray(p.targetStudentIds) ? p.targetStudentIds.slice() : []);
     const existingSubsCount = isEdit
-      ? loadSubmissions().filter(function (s) { return s.assignmentId === existing.id; }).length
+      ? loadSubmissions().filter(function (s) { return String(s.assignmentId) === String(existing.id); }).length
       : 0;
 
     const renderSubjectFieldInner = function (gradeId, curSubj) {
@@ -1238,11 +1316,39 @@
         '<input type="text" id="lmsAsSubjectCustom" class="hidden" value="" placeholder="' + esc(tr("Nhập tên môn học mới...")) + '" maxlength="100" style="margin-top:6px">';
     };
 
-    const renderStudentChecks = function (stList, precheckedIds) {
-      if (!stList.length) {
-        return '<div class="muted" style="font-size:.82rem;padding:6px 0">Ch\u01b0a c\u00f3 h\u1ecdc sinh n\u00e0o trong danh b\u1ea1. D\u00f9ng n\u00fat <strong>+ Th\u00eam h\u1ecdc sinh nhanh</strong> b\u00ean d\u01b0\u1edbi \u0111\u1ec3 th\u00eam ngay!</div>';
+    const renderMultiQuizItems = function (qFilter, gFilter, sFilter) {
+      const qLower = String(qFilter || "").trim().toLowerCase();
+      const filtered = quizzes.filter(function (q) {
+        const tx = curr ? curr.detectTaxonomy(q) : { gradeLevel: "unclassified", gradeLabel: "Ch\u01b0a ph\u00e2n lo\u1ea1i", subject: "" };
+        if (gFilter && gFilter !== "all" && tx.gradeLevel !== gFilter) return false;
+        if (sFilter && sFilter !== "all" && (tx.subject || "") !== sFilter) return false;
+        if (qLower && (String(q.title || "") + " " + tx.gradeLabel + " " + tx.subject).toLowerCase().indexOf(qLower) === -1) return false;
+        return true;
+      });
+      if (!filtered.length) {
+        return '<div class="muted" style="font-size:.82rem;padding:8px 0">' + esc(tr("Không có bộ đề nào khớp bộ lọc.")) + '</div>';
       }
-      return stList.map(function (s) {
+      return filtered.map(function (q) {
+        const sid = String(q.id);
+        const tx = curr ? curr.detectTaxonomy(q) : { gradeLevel: "unclassified", gradeLabel: "Ch\u01b0a ph\u00e2n lo\u1ea1i", subject: "" };
+        const chk = preselectedQuizIds.has(sid);
+        return '<label class="lms-quiz-pick-row">' +
+          '<input type="checkbox" name="lmsAsQuizPick" value="' + esc(sid) + '"' + (chk ? " checked" : "") + '>' +
+          '<span class="lms-qp-title">' + esc(q.title) + '</span>' +
+          '<span class="badge tax-badge-grade">' + esc(tx.gradeLabel) + '</span>' +
+          (tx.subject ? '<span class="badge tax-badge-subj">' + esc(tx.subject) + '</span>' : '') +
+          '<span class="muted" style="font-size:.76rem;white-space:nowrap">(' + (q.questions ? q.questions.length : 0) + ' c\u00e2u)</span>' +
+        '</label>';
+      }).join("");
+    };
+
+    const renderStudentChecks = function (stList, precheckedIds, classFilter) {
+      const cf = classFilter && classFilter !== "all" ? classFilter : "";
+      const visibleSt = cf ? stList.filter(function (s) { return (s.className || "Ch\u01b0a ph\u00e2n l\u1edbp") === cf; }) : stList;
+      if (!visibleSt.length) {
+        return '<div class="muted" style="font-size:.82rem;padding:6px 0">Ch\u01b0a c\u00f3 h\u1ecdc sinh n\u00e0o. D\u00f9ng n\u00fat <strong>+ Th\u00eam h\u1ecdc sinh nhanh</strong> b\u00ean d\u01b0\u1edbi \u0111\u1ec3 th\u00eam ngay!</div>';
+      }
+      return visibleSt.map(function (s) {
         const chk = precheckedIds && precheckedIds.indexOf(s.id) !== -1;
         const em = getStudentParentEmail(s);
         return '<div class="lms-pick-row" data-st-row="' + esc(s.id) + '">' +
@@ -1263,19 +1369,44 @@
       }).join("");
     };
 
+    const allQuizGrades = Array.from(new Set(quizzes.map(function (q) {
+      return curr ? curr.detectTaxonomy(q).gradeLevel : "unclassified";
+    })));
+    const allQuizSubjects = Array.from(new Set(quizzes.map(function (q) {
+      return curr ? curr.detectTaxonomy(q).subject : "";
+    }).filter(Boolean))).sort();
+
     const host = U().$("extraModals");
     if (!host) return;
     host.innerHTML =
       '<div class="modal-overlay" id="lmsAssignModal" role="dialog" aria-modal="true"><div class="modal modal-lg">' +
         '<h3>' + (isEdit ? (esc(tr("Chỉnh sửa bài giao & Học sinh")) + ' <code class="lms-pin">' + esc(existing.code) + '</code>') : (p.isRemedial ? "Giao b\u00e0i t\u1eadp b\u1ed5 tr\u1ee3 (Remedial)" : "T\u1ea1o b\u00e0i giao m\u1edbi")) + '</h3>' +
-        '<div class="lms-form-grid">' +
-          '<label class="field">' + (isEdit ? "B\u1ed9 \u0111\u1ec1 li\u00ean k\u1ebft (\u0110\u1ed5i \u0111\u1ec1 thi)" : "Ch\u1ecdn b\u1ed9 \u0111\u1ec1") + '<select id="lmsAsQuiz">' +
-            quizzes.map(function (q) {
-              return '<option value="' + esc(q.id) + '"' + (q.id === selectedQuizId ? " selected" : "") + '>' + esc(q.title) + ' (' + (q.questions ? q.questions.length : 0) + ' c\u00e2u)</option>';
-            }).join("") +
-          '</select></label>' +
-          '<label class="field">Ti\u00eau \u0111\u1ec1 b\u00e0i giao<input type="text" id="lmsAsTitle" value="' + esc(isEdit ? existing.title : (p.title || "")) + '" placeholder="VD: B\u00e0i t\u1eadp tu\u1ea7n 5 - Ch\u01b0\u01a1ng 2" maxlength="120"></label>' +
-        '</div>' +
+
+        (isEdit
+          ? '<div class="lms-form-grid">' +
+              '<label class="field">B\u1ed9 \u0111\u1ec1 li\u00ean k\u1ebft (\u0110\u1ed5i \u0111\u1ec1 thi)<select id="lmsAsQuiz">' +
+                quizzes.map(function (q) {
+                  return '<option value="' + esc(q.id) + '"' + (String(q.id) === selectedQuizId ? " selected" : "") + '>' + esc(q.title) + ' (' + (q.questions ? q.questions.length : 0) + ' c\u00e2u)</option>';
+                }).join("") +
+              '</select></label>' +
+              '<label class="field">Ti\u00eau \u0111\u1ec1 b\u00e0i giao<input type="text" id="lmsAsTitle" value="' + esc(existing.title) + '" placeholder="VD: B\u00e0i t\u1eadp tu\u1ea7n 5 - Ch\u01b0\u01a1ng 2" maxlength="120"></label>' +
+            '</div>'
+          : '<div class="lms-multi-picker-box">' +
+              '<div class="lms-mp-head">' +
+                '<label class="check-row" style="margin:0;font-weight:700"><input type="checkbox" id="lmsAsSelectAllQuizzes"> ☑️ ' + esc(tr("Chọn tất cả đề hiển thị")) + ' <span class="badge" id="lmsAsQuizCntBadge">' + preselectedQuizIds.size + '</span></label>' +
+                '<div class="lms-mp-filters">' +
+                  '<input type="search" id="lmsAsQuizSearch" placeholder="' + esc(tr("Tìm tên đề...")) + '" style="width:150px">' +
+                  '<select id="lmsAsQuizGradeFilter"><option value="all">' + esc(tr("Mọi khối")) + '</option>' +
+                    allQuizGrades.map(function (g) { return '<option value="' + esc(g) + '">' + esc(curr ? curr.getGradeLabel(g) : g) + '</option>'; }).join("") +
+                  '</select>' +
+                  '<select id="lmsAsQuizSubjFilter"><option value="all">' + esc(tr("Mọi môn")) + '</option>' +
+                    allQuizSubjects.map(function (s) { return '<option value="' + esc(s) + '">' + esc(s) + '</option>'; }).join("") +
+                  '</select>' +
+                '</div>' +
+              '</div>' +
+              '<div id="lmsAsQuizListWrap" class="lms-quiz-pick-list">' + renderMultiQuizItems("", "all", "all") + '</div>' +
+              '<label class="field" style="margin:8px 0 0">Ti\u00eau \u0111\u1ec1 b\u00e0i giao (b\u1ecf tr\u1ed1ng \u0111\u1ec3 d\u00f9ng t\u00ean t\u1eebng \u0111\u1ec1 khi giao nhi\u1ec1u \u0111\u1ec1)<input type="text" id="lmsAsTitle" value="' + esc(p.title || "") + '" placeholder="T\u1ef1 \u0111\u1ed9ng l\u1ea5y theo t\u00ean \u0111\u1ec1 \u0111\u00e3 ch\u1ecdn" maxlength="120"></label>' +
+            '</div>') +
 
         (isEdit && existingSubsCount > 0
           ? '<div id="lmsAsQuizSwitchWarn" class="hidden" style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);font-size:.82rem;color:#92400e">' +
@@ -1292,17 +1423,22 @@
 
         '<div class="lms-form-grid" style="margin-top:8px">' +
           '<label class="field">\u0110\u1ed1i t\u01b0\u1ee3ng giao b\u00e0i<select id="lmsAsTargetMode">' +
-            '<option value="class"' + (targetMode === "class" ? " selected" : "") + '>C\u1ea3 l\u1edbp h\u1ecdc</option>' +
-            '<option value="students"' + (targetMode === "students" ? " selected" : "") + '>Ch\u1ecdn t\u1eebng h\u1ecdc sinh</option>' +
+            '<option value="students"' + (targetMode === "students" ? " selected" : "") + '>Ch\u1ecdn h\u1ecdc sinh (T\u1ea5t c\u1ea3 / T\u1eebng em)</option>' +
+            '<option value="class"' + (targetMode === "class" ? " selected" : "") + '>Theo c\u1ea3 l\u1edbp h\u1ecdc</option>' +
           '</select></label>' +
           '<label class="field" id="lmsAsClassWrap"' + (targetMode === "students" ? ' style="display:none"' : '') + '>Ch\u1ecdn l\u1edbp<select id="lmsAsClass">' +
             (classes.length ? classes.map(function (c) { return '<option value="' + esc(c) + '"' + (c === initTargetClass ? " selected" : "") + '>' + esc(c) + '</option>'; }).join("") : '<option value="">-- Ch\u01b0a c\u00f3 l\u1edbp --</option>') +
           '</select></label>' +
         '</div>' +
 
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap">' +
-          '<span class="muted" style="font-size:.78rem">Danh s\u00e1ch h\u1ecdc sinh (b\u1ea5m <strong>S\u1eeda nhanh</strong> \u0111\u1ec3 s\u1eeda t\u00ean, l\u1edbp, email PH v\u00e0 \u0111\u1ed3ng b\u1ed9 danh b\u1ea1)</span>' +
-          '<button type="button" class="btn btn-outline btn-sm" id="lmsQuickAddToggle">+ Th\u00eam h\u1ecdc sinh nhanh</button>' +
+        '<div class="lms-mp-head" id="lmsAsStToolbar" style="margin-top:8px' + (targetMode === "students" ? "" : ";display:none") + '">' +
+          '<label class="check-row" style="margin:0;font-weight:700"><input type="checkbox" id="lmsAsSelectAllStudents"> ☑️ ' + esc(tr("Chọn tất cả học sinh")) + ' <span class="badge" id="lmsAsStCntBadge">' + initTargetIds.length + '</span></label>' +
+          '<div class="lms-mp-filters">' +
+            '<select id="lmsAsStClassFilter"><option value="all">' + esc(tr("Mọi lớp")) + '</option>' +
+              classes.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join("") +
+            '</select>' +
+            '<button type="button" class="btn btn-outline btn-sm" id="lmsQuickAddToggle">+ Th\u00eam h\u1ecdc sinh nhanh</button>' +
+          '</div>' +
         '</div>' +
 
         '<div id="lmsQuickAddBox" class="' + (students.length === 0 ? "" : "hidden") + '" style="margin-top:8px;padding:10px 12px;border-radius:10px;border:1px dashed var(--brand);background:var(--bg2)">' +
@@ -1318,30 +1454,30 @@
         '</div>' +
 
         '<div id="lmsAsStudentsWrap" class="lms-pick-box' + (targetMode === "students" ? "" : " hidden") + '">' +
-          renderStudentChecks(students, initTargetIds) +
+          renderStudentChecks(students, initTargetIds, "all") +
         '</div>' +
 
         '<div class="lms-form-grid" style="margin-top:8px">' +
-          '<label class="field">Th\u1eddi gian m\u1edf \u0111\u1ec1 (t\u00f9y ch\u1ecdn)<input type="datetime-local" id="lmsAsOpen" value="' + esc(isEdit && existing.openAt ? toLocalInputVal(existing.openAt) : "") + '"></label>' +
-          '<label class="field">H\u1ea1n n\u1ed9p b\u00e0i (b\u1eaft bu\u1ed9c)<input type="datetime-local" id="lmsAsDeadline" value="' + esc(isEdit && existing.deadline ? toLocalInputVal(existing.deadline) : toLocalInputVal(defaultDead.toISOString())) + '"></label>' +
+          '<label class="field">Th\u1eddi gian m\u1edf \u0111\u1ec1<input type="datetime-local" id="lmsAsOpen" value="' + esc(isEdit ? (existing.openAt ? toLocalInputVal(existing.openAt) : "") : toLocalInputVal(nowDate.toISOString())) + '"></label>' +
+          '<label class="field">H\u1ea1n n\u1ed9p b\u00e0i (m\u1eb7c \u0111\u1ecbnh +7 ng\u00e0y, 24:00)<input type="datetime-local" id="lmsAsDeadline" value="' + esc(isEdit && existing.deadline ? toLocalInputVal(existing.deadline) : toLocalInputVal(defaultDead.toISOString())) + '"></label>' +
           '<label class="field">S\u1ed1 l\u1ea7n l\u00e0m b\u00e0i t\u1ed1i \u0111a<select id="lmsAsAttempts">' +
-            '<option value="1"' + (isEdit && existing.maxAttempts === 1 ? " selected" : "") + '>Ch\u1ec9 1 l\u1ea7n duy nh\u1ea5t</option>' +
+            '<option value="1"' + (!isEdit || existing.maxAttempts === 1 ? " selected" : "") + '>Ch\u1ec9 1 l\u1ea7n duy nh\u1ea5t</option>' +
             '<option value="2"' + (isEdit && existing.maxAttempts === 2 ? " selected" : "") + '>T\u1ed1i \u0111a 2 l\u1ea7n</option>' +
             '<option value="3"' + (isEdit && existing.maxAttempts === 3 ? " selected" : "") + '>T\u1ed1i \u0111a 3 l\u1ea7n</option>' +
             '<option value="0"' + (isEdit && existing.maxAttempts === 0 ? " selected" : "") + '>Kh\u00f4ng gi\u1edbi h\u1ea1n tr\u01b0\u1edbc h\u1ea1n n\u1ed9p</option>' +
           '</select></label>' +
           '<label class="field">Quy t\u1eafc t\u00ednh \u0111i\u1ec3m<select id="lmsAsScorePolicy">' +
-            '<option value="highest"' + (!isEdit || existing.scorePolicy !== "first" ? " selected" : "") + '>L\u1ea5y \u0111i\u1ec3m cao nh\u1ea5t</option>' +
-            '<option value="first"' + (isEdit && existing.scorePolicy === "first" ? " selected" : "") + '>L\u1ea5y \u0111i\u1ec3m l\u1ea7n \u0111\u1ea7u ti\u00ean</option>' +
+            '<option value="first"' + (!isEdit || existing.scorePolicy === "first" ? " selected" : "") + '>L\u1ea5y \u0111i\u1ec3m l\u1ea7n \u0111\u1ea7u ti\u00ean</option>' +
+            '<option value="highest"' + (isEdit && existing.scorePolicy !== "first" ? " selected" : "") + '>L\u1ea5y \u0111i\u1ec3m cao nh\u1ea5t</option>' +
           '</select></label>' +
           '<label class="field">Hi\u1ec3n th\u1ecb \u0111\u00e1p \u00e1n sau khi n\u1ed9p<select id="lmsAsReveal">' +
             '<option value="immediate"' + (!isEdit || existing.revealMode !== "after_deadline" ? " selected" : "") + '>Hi\u1ec3n th\u1ecb ngay sau khi n\u1ed9p b\u00e0i</option>' +
             '<option value="after_deadline"' + (isEdit && existing.revealMode === "after_deadline" ? " selected" : "") + '>Ch\u1ec9 hi\u1ec3n th\u1ecb sau khi h\u1ebft h\u1ea1n n\u1ed9p c\u1ee7a l\u1edbp</option>' +
           '</select></label>' +
-          '<label class="field">Th\u1eddi gian l\u00e0m b\u00e0i (ph\u00fat, 0 = kh\u00f4ng gi\u1edbi h\u1ea1n)<input type="number" id="lmsAsMinutes" min="0" max="300" value="' + esc(isEdit ? String(existing.durationMinutes || 0) : "30") + '"></label>' +
+          '<label class="field">Th\u1eddi gian l\u00e0m b\u00e0i (ph\u00fat, 0 = kh\u00f4ng gi\u1edbi h\u1ea1n)<input type="number" id="lmsAsMinutes" min="0" max="300" value="' + esc(isEdit ? String(existing.durationMinutes || 0) : "60") + '"></label>' +
         '</div>' +
 
-        '<label class="field" style="margin-top:8px">Ghi ch\u00fa c\u1ee7a gi\u00e1o vi\u00ean (h\u01b0\u1edbng d\u1eabn, c\u00f4ng th\u1ee9c, link t\u00e0i li\u1ec7u)<textarea id="lmsAsNote" rows="2" maxlength="600" placeholder="VD: \u0110\u1ecdc k\u1ef9 \u0111\u1ec1 tr\u01b0\u1edbc khi ch\u1ecdn \u0111\u00e1p \u00e1n. \u00d4n l\u1ea1i c\u00f4ng th\u1ee9c trang 42.">' + esc(isEdit ? (existing.teacherNote || "") : (p.note || "")) + '</textarea></label>' +
+        '<label class="field" style="margin-top:8px">Ghi ch\u00fa c\u1ee7a gi\u00e1o vi\u00ean (h\u01b0\u1edbng d\u1eabn, c\u00f4ng th\u1ee9c, link t\u00e0i li\u1ec7u)<textarea id="lmsAsNote" rows="2" maxlength="600" placeholder="VD: \u0110\u1ecdc k\u1ef9 \u0111\u1ec1 tr\u01b0\u1edbc khi ch\u1ecdn \u0111\u00e1p \u00e1n.">' + esc(isEdit ? (existing.teacherNote || "") : (p.note != null ? p.note : "\u0110\u1ecdc k\u1ef9 \u0111\u1ec1 tr\u01b0\u1edbc khi ch\u1ecdn \u0111\u00e1p \u00e1n.")) + '</textarea></label>' +
 
         '<div class="lms-checks-row">' +
           '<label class="check-row"><input type="checkbox" id="lmsAsShuffleQ"' + (!isEdit || existing.shuffleQ ? " checked" : "") + '> \u0110\u1ea3o th\u1ee9 t\u1ef1 c\u00e2u h\u1ecfi ri\u00eang cho t\u1eebng h\u1ecdc sinh</label>' +
@@ -1370,21 +1506,12 @@
     };
     bindSubjectEvents();
 
-    U().on("lmsAsGrade", "change", function (e) {
-      const hostEl = U().$("lmsAsSubjectHost");
-      if (hostEl) {
-        hostEl.innerHTML = renderSubjectFieldInner(e.target.value, "");
-        bindSubjectEvents();
-      }
-    });
-
-    U().on("lmsAsQuiz", "change", function (e) {
-      const warnEl = U().$("lmsAsQuizSwitchWarn");
-      if (warnEl && isEdit) {
-        warnEl.classList.toggle("hidden", e.target.value === existing.quizId);
-      }
-      if (!isEdit && curr) {
-        const pickedQ = quizzes.find(function (q) { return q.id === e.target.value; });
+    const syncQuizBadgeAndTaxonomy = function () {
+      const badge = U().$("lmsAsQuizCntBadge");
+      if (badge) badge.textContent = String(preselectedQuizIds.size);
+      const firstId = Array.from(preselectedQuizIds)[0];
+      if (!isEdit && firstId && curr) {
+        const pickedQ = quizzes.find(function (q) { return String(q.id) === firstId; });
         if (pickedQ) {
           const tx = curr.detectTaxonomy(pickedQ);
           const grEl = U().$("lmsAsGrade");
@@ -1396,11 +1523,88 @@
           }
         }
       }
+    };
+
+    const refreshMultiQuizList = function () {
+      const wrap = U().$("lmsAsQuizListWrap");
+      if (!wrap) return;
+      const qVal = U().$("lmsAsQuizSearch") ? U().$("lmsAsQuizSearch").value : "";
+      const gVal = U().$("lmsAsQuizGradeFilter") ? U().$("lmsAsQuizGradeFilter").value : "all";
+      const sVal = U().$("lmsAsQuizSubjFilter") ? U().$("lmsAsQuizSubjFilter").value : "all";
+      wrap.innerHTML = renderMultiQuizItems(qVal, gVal, sVal);
+      const selAll = U().$("lmsAsSelectAllQuizzes");
+      if (selAll) {
+        const visBoxes = wrap.querySelectorAll('input[name="lmsAsQuizPick"]');
+        selAll.checked = visBoxes.length > 0 && Array.from(visBoxes).every(function (b) { return b.checked; });
+      }
+    };
+
+    if (!isEdit) {
+      U().on("lmsAsQuizSearch", "input", refreshMultiQuizList);
+      U().on("lmsAsQuizGradeFilter", "change", refreshMultiQuizList);
+      U().on("lmsAsQuizSubjFilter", "change", refreshMultiQuizList);
+      U().on("lmsAsSelectAllQuizzes", "change", function (e) {
+        const checked = !!e.target.checked;
+        const wrap = U().$("lmsAsQuizListWrap");
+        if (!wrap) return;
+        wrap.querySelectorAll('input[name="lmsAsQuizPick"]').forEach(function (cb) {
+          cb.checked = checked;
+          if (checked) preselectedQuizIds.add(cb.value);
+          else preselectedQuizIds.delete(cb.value);
+        });
+        syncQuizBadgeAndTaxonomy();
+      });
+      const qWrap = U().$("lmsAsQuizListWrap");
+      if (qWrap) {
+        qWrap.addEventListener("change", function (e) {
+          if (e.target && e.target.name === "lmsAsQuizPick") {
+            if (e.target.checked) preselectedQuizIds.add(e.target.value);
+            else preselectedQuizIds.delete(e.target.value);
+            syncQuizBadgeAndTaxonomy();
+          }
+        });
+      }
+    }
+
+    const updateStBadge = function () {
+      const badge = U().$("lmsAsStCntBadge");
+      if (badge) badge.textContent = String(host.querySelectorAll('input[name="lmsAsStPick"]:checked').length);
+    };
+
+    U().on("lmsAsSelectAllStudents", "change", function (e) {
+      const checked = !!e.target.checked;
+      host.querySelectorAll('input[name="lmsAsStPick"]').forEach(function (cb) { cb.checked = checked; });
+      updateStBadge();
     });
 
-    // Inline Quick-Edit Student Info inside the modal (syncs back to master roster!)
+    U().on("lmsAsStClassFilter", "change", function (e) {
+      const checkedIds = [];
+      host.querySelectorAll('input[name="lmsAsStPick"]:checked').forEach(function (cb) { checkedIds.push(cb.value); });
+      const sw = U().$("lmsAsStudentsWrap");
+      if (sw) sw.innerHTML = renderStudentChecks(loadStudents(), checkedIds, e.target.value);
+      updateStBadge();
+    });
+
+    U().on("lmsAsGrade", "change", function (e) {
+      const hostEl = U().$("lmsAsSubjectHost");
+      if (hostEl) {
+        hostEl.innerHTML = renderSubjectFieldInner(e.target.value, "");
+        bindSubjectEvents();
+      }
+    });
+
+    if (isEdit) {
+      U().on("lmsAsQuiz", "change", function (e) {
+        const warnEl = U().$("lmsAsQuizSwitchWarn");
+        if (warnEl) warnEl.classList.toggle("hidden", String(e.target.value) === String(existing.quizId));
+      });
+    }
+
     const swEl = U().$("lmsAsStudentsWrap");
     if (swEl) {
+      swEl.addEventListener("change", function (ev) {
+        if (ev.target && ev.target.name === "lmsAsStPick") updateStBadge();
+      });
       swEl.addEventListener("click", function (ev) {
         const editBtn = ev.target.closest ? ev.target.closest("[data-qedit-st]") : null;
         if (editBtn) {
@@ -1427,7 +1631,8 @@
           }
           const checkedIds = [];
           host.querySelectorAll('input[name="lmsAsStPick"]:checked').forEach(function (cb) { checkedIds.push(cb.value); });
-          swEl.innerHTML = renderStudentChecks(allSt, checkedIds);
+          const cf = U().$("lmsAsStClassFilter") ? U().$("lmsAsStClassFilter").value : "all";
+          swEl.innerHTML = renderStudentChecks(allSt, checkedIds, cf);
           const clSel = U().$("lmsAsClass");
           if (clSel) {
             const curClsVal = clSel.value;
@@ -1460,18 +1665,10 @@
       checkedIds.push(newSt.id);
       const sw = U().$("lmsAsStudentsWrap");
       if (sw) {
-        sw.innerHTML = renderStudentChecks(curList, checkedIds);
+        sw.innerHTML = renderStudentChecks(curList, checkedIds, "all");
         sw.classList.remove("hidden");
       }
-      const tm = U().$("lmsAsTargetMode");
-      if (tm) tm.value = "students";
-      const cw = U().$("lmsAsClassWrap");
-      if (cw) cw.style.display = "none";
-      const clSel = U().$("lmsAsClass");
-      if (clSel) {
-        const nextClasses = Array.from(new Set(curList.map(function (s) { return s.className || "Ch\u01b0a ph\u00e2n l\u1edbp"; }))).sort();
-        clSel.innerHTML = nextClasses.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join("");
-      }
+      updateStBadge();
       if (U().$("lmsQaName")) U().$("lmsQaName").value = "";
       if (U().$("lmsQaEmail")) U().$("lmsQaEmail").value = "";
       if (U().$("lmsQaPin")) U().$("lmsQaPin").value = genPin();
@@ -1481,15 +1678,13 @@
       const isSt = e.target.value === "students";
       const cw = U().$("lmsAsClassWrap");
       const sw = U().$("lmsAsStudentsWrap");
+      const tb = U().$("lmsAsStToolbar");
       if (cw) cw.style.display = isSt ? "none" : "";
       if (sw) sw.classList.toggle("hidden", !isSt);
+      if (tb) tb.style.display = isSt ? "" : "none";
     });
     U().on("lmsAsCancel", "click", function () { host.innerHTML = ""; });
     U().on("lmsAsSave", "click", function () {
-      const qId = U().$("lmsAsQuiz").value;
-      const quizObj = quizzes.find(function (q) { return q.id === qId; });
-      if (!quizObj) return;
-      const title = (U().$("lmsAsTitle").value || "").trim() || quizObj.title;
       const deadlineVal = U().$("lmsAsDeadline").value;
       if (!deadlineVal) { U().showToast("Vui l\u00f2ng ch\u1ecdn h\u1ea1n n\u1ed9p b\u00e0i.", "warning"); return; }
       const openVal = U().$("lmsAsOpen").value;
@@ -1520,11 +1715,15 @@
 
       const list = loadAssignments();
       if (isEdit) {
-        const idx = list.findIndex(function (a) { return a.id === existing.id; });
+        const qId = U().$("lmsAsQuiz").value;
+        const quizObj = quizzes.find(function (q) { return String(q.id) === String(qId); });
+        if (!quizObj) return;
+        const title = (U().$("lmsAsTitle").value || "").trim() || quizObj.title;
+        const idx = list.findIndex(function (a) { return String(a.id) === String(existing.id); });
         if (idx !== -1) {
-          const quizChanged = existing.quizId !== quizObj.id;
+          const quizChanged = String(existing.quizId) !== String(quizObj.id);
           list[idx] = Object.assign({}, list[idx], {
-            quizId: quizObj.id,
+            quizId: String(quizObj.id),
             title: title,
             gradeLevel: gradeLevel,
             subject: subject,
@@ -1535,7 +1734,7 @@
             openAt: openVal ? new Date(openVal).toISOString() : "",
             deadline: new Date(deadlineVal).toISOString(),
             maxAttempts: parseInt(U().$("lmsAsAttempts").value, 10) || 0,
-            scorePolicy: U().$("lmsAsScorePolicy").value || "highest",
+            scorePolicy: U().$("lmsAsScorePolicy").value || "first",
             revealMode: U().$("lmsAsReveal").value || "immediate",
             durationMinutes: Math.max(0, parseInt(U().$("lmsAsMinutes").value, 10) || 0),
             teacherNote: (U().$("lmsAsNote").value || "").trim(),
@@ -1552,40 +1751,65 @@
         return;
       }
 
-      const item = {
-        id: "as_" + Date.now(),
-        code: genAssignCode(),
-        quizId: quizObj.id,
-        title: title,
-        gradeLevel: gradeLevel,
-        subject: subject,
-        quizSnapshot: JSON.parse(JSON.stringify(quizObj)),
-        targetMode: tMode,
-        targetClass: targetClass,
-        targetStudentIds: targetStudentIds,
-        openAt: openVal ? new Date(openVal).toISOString() : "",
-        deadline: new Date(deadlineVal).toISOString(),
-        maxAttempts: parseInt(U().$("lmsAsAttempts").value, 10) || 0,
-        scorePolicy: U().$("lmsAsScorePolicy").value || "highest",
-        revealMode: U().$("lmsAsReveal").value || "immediate",
-        durationMinutes: Math.max(0, parseInt(U().$("lmsAsMinutes").value, 10) || 0),
-        teacherNote: (U().$("lmsAsNote").value || "").trim(),
-        shuffleQ: !!U().$("lmsAsShuffleQ").checked,
-        shuffleO: !!U().$("lmsAsShuffleO").checked,
-        parentEmailEnabled: !!U().$("lmsAsParentEmail").checked,
-        parentEmailOverrides: {},
-        isRemedial: !!p.isRemedial,
-        createdAt: new Date().toISOString()
-      };
-      list.unshift(item);
+      // Create Mode: Batch Multi-Quiz Assignment
+      const pickedQuizIds = Array.from(preselectedQuizIds);
+      const pickedQuizzes = pickedQuizIds
+        .map(function (id) { return quizzes.find(function (q) { return String(q.id) === String(id); }); })
+        .filter(Boolean);
+      if (!pickedQuizzes.length) {
+        U().showToast(tr("Vui lòng chọn ít nhất 1 bộ đề để giao."), "warning");
+        return;
+      }
+
+      const customTitle = (U().$("lmsAsTitle").value || "").trim();
+      const created = [];
+      pickedQuizzes.forEach(function (quizObj, idx) {
+        const qTax = curr ? curr.detectTaxonomy(quizObj) : { gradeLevel: "unclassified", subject: "" };
+        const effGrade = pickedQuizzes.length > 1 ? (quizObj.gradeLevel || qTax.gradeLevel || gradeLevel) : gradeLevel;
+        const effSubj = pickedQuizzes.length > 1 ? (quizObj.subject || qTax.subject || subject) : (subject || qTax.subject || "");
+        const item = {
+          id: "as_" + (Date.now() + idx),
+          code: genAssignCode(),
+          quizId: String(quizObj.id),
+          title: (pickedQuizzes.length === 1 && customTitle) ? customTitle : quizObj.title,
+          gradeLevel: effGrade,
+          subject: effSubj,
+          quizSnapshot: JSON.parse(JSON.stringify(quizObj)),
+          targetMode: tMode,
+          targetClass: targetClass,
+          targetStudentIds: targetStudentIds.slice(),
+          openAt: openVal ? new Date(openVal).toISOString() : "",
+          deadline: new Date(deadlineVal).toISOString(),
+          maxAttempts: parseInt(U().$("lmsAsAttempts").value, 10) || 0,
+          scorePolicy: U().$("lmsAsScorePolicy").value || "first",
+          revealMode: U().$("lmsAsReveal").value || "immediate",
+          durationMinutes: Math.max(0, parseInt(U().$("lmsAsMinutes").value, 10) || 0),
+          teacherNote: (U().$("lmsAsNote").value || "").trim(),
+          shuffleQ: !!U().$("lmsAsShuffleQ").checked,
+          shuffleO: !!U().$("lmsAsShuffleO").checked,
+          parentEmailEnabled: !!U().$("lmsAsParentEmail").checked,
+          parentEmailOverrides: {},
+          isRemedial: !!p.isRemedial,
+          createdAt: new Date().toISOString()
+        };
+        list.unshift(item);
+        created.push(item);
+      });
+
       saveAssignments(list);
-      lmsState.selectedAssignmentId = item.id;
+      lmsState.selectedAssignmentId = created[0].id;
       host.innerHTML = "";
-      U().showToast("\u0110\u00e3 t\u1ea1o b\u00e0i giao th\u00e0nh c\u00f4ng! M\u00e3 b\u00e0i: " + item.code, "success");
       if (window.UETStudio && typeof window.UETStudio.openLmsScreen === "function") {
         window.UETStudio.openLmsScreen("assignments");
       } else {
         refreshStudio();
+      }
+
+      if (created.length === 1) {
+        U().showToast("\u0110\u00e3 t\u1ea1o b\u00e0i giao th\u00e0nh c\u00f4ng! M\u00e3 b\u00e0i: " + created[0].code, "success");
+      } else {
+        U().showToast("\u0110\u00e3 t\u1ea1o th\u00e0nh c\u00f4ng " + created.length + " b\u00e0i giao!", "success");
+        openBatchCreatedSummaryModal(created);
       }
     });
   }
@@ -2638,11 +2862,12 @@
       return;
     }
 
+    const qCount = resolveAssignmentQuestions(assign).length;
     root.innerHTML = '<div class="ql-wrap"><div class="ql-card">' +
       '<div class="ql-header">' +
         '<div>' +
           '<h2 class="ql-title">' + esc(assign.title) + '</h2>' +
-          '<p class="ql-subtitle"><span>' + (assign.quizSnapshot.questions.length) + ' câu hỏi</span><span>·</span><span>Hạn nộp: ' + esc(dl.full) + '</span></p>' +
+          '<p class="ql-subtitle"><span>' + qCount + ' câu hỏi</span><span>·</span><span>Hạn nộp: ' + esc(dl.full) + '</span></p>' +
         '</div>' +
         '<button type="button" class="ql-back-btn" data-lms-nav="assignments">' + ICONS.arrowLeft + '<span>Quay lại</span></button>' +
       '</div>' +
@@ -2708,7 +2933,7 @@
     if (sess && Array.isArray(sess.questions) && sess.questions.length) {
       U().showToast("Đã khôi phục bài làm đang dang dở của bạn.", "info");
     } else {
-      let qs = (assign.quizSnapshot.questions || []).map(function (q) {
+      let qs = resolveAssignmentQuestions(assign).map(function (q) {
         let opts = q.options.slice();
         let corr = q.correct.slice();
         if (assign.shuffleO) {
