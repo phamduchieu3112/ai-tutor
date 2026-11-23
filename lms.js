@@ -56,7 +56,65 @@
   function saveStudents(list) { return U().saveJSON(LMS_KEYS.students, list); }
 
   function loadAssignments() { return U().loadArr(LMS_KEYS.assignments); }
-  function saveAssignments(list) { return U().saveJSON(LMS_KEYS.assignments, list); }
+  function saveAssignments(list, skipCloudSync) {
+    const res = U().saveJSON(LMS_KEYS.assignments, list);
+    if (!skipCloudSync) {
+      syncAssignmentsToCloud(list).catch(function () { /* best-effort background sync */ });
+    }
+    return res;
+  }
+
+  let lastCloudSyncTs = 0;
+  async function syncAssignmentsToCloud(explicitList, force) {
+    if (typeof fetch !== "function") return;
+    const now = Date.now();
+    if (!force && !explicitList && now - lastCloudSyncTs < 15000) return;
+    const list = Array.isArray(explicitList) ? explicitList : loadAssignments();
+    if (!list.length) return;
+    lastCloudSyncTs = now;
+    const bundles = list.map(function (a) {
+      const qs = resolveAssignmentQuestions(a);
+      const roster = getAssignedStudentsFor(a);
+      return Object.assign({}, a, {
+        quizSnapshot: a.quizSnapshot && Array.isArray(a.quizSnapshot.questions) && a.quizSnapshot.questions.length
+          ? a.quizSnapshot
+          : { id: a.quizId || "", title: a.title, questions: qs },
+        assignedStudents: roster.map(function (st) {
+          return {
+            id: st.id,
+            fullName: st.fullName,
+            className: st.className || "",
+            school: st.school || "",
+            pin: st.pin || "",
+            parentEmail: getStudentParentEmail(st)
+          };
+        })
+      });
+    });
+    const resp = await fetch("/api/lms/assignments/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assignments: bundles })
+    });
+    if (!resp.ok) return;
+    const data = await resp.json().catch(function () { return {}; });
+    if (data && Array.isArray(data.submissions) && data.submissions.length) {
+      const localSubs = loadSubmissions();
+      const existingIds = new Set(localSubs.map(function (s) { return String(s.id); }));
+      let added = 0;
+      data.submissions.forEach(function (cs) {
+        if (cs && cs.id && !existingIds.has(String(cs.id))) {
+          localSubs.push(cs);
+          existingIds.add(String(cs.id));
+          added++;
+        }
+      });
+      if (added > 0) {
+        saveSubmissions(localSubs);
+        refreshStudio();
+      }
+    }
+  }
 
   function loadSubmissions() { return U().loadArr(LMS_KEYS.submissions); }
   function saveSubmissions(list) { return U().saveJSON(LMS_KEYS.submissions, list); }
@@ -206,291 +264,70 @@
   function buildSubmissionReviewUrl(code, subId) {
     let url = (window.location.origin || "") + "/creator-studio?assign=" + encodeURIComponent(code || "");
     if (subId) url += "&attempt=" + encodeURIComponent(subId);
-    url += "&review=1";
     return url;
   }
 
-  /* ======================== LOCAL ZERO-DEPENDENCY SVG QR GENERATOR (ISO/IEC 18004, EC-L, V1-V10) ======================== */
-  const QR_EC_L_SPECS = [
-    null,
-    { ver: 1,  size: 21, dataBytes: 19,  ecPerBlock: 7,  blocks: [1],       align: [] },
-    { ver: 2,  size: 25, dataBytes: 34,  ecPerBlock: 10, blocks: [1],       align: [6, 18] },
-    { ver: 3,  size: 29, dataBytes: 55,  ecPerBlock: 15, blocks: [1],       align: [6, 22] },
-    { ver: 4,  size: 33, dataBytes: 80,  ecPerBlock: 20, blocks: [1],       align: [6, 26] },
-    { ver: 5,  size: 37, dataBytes: 108, ecPerBlock: 26, blocks: [1],       align: [6, 30] },
-    { ver: 6,  size: 41, dataBytes: 136, ecPerBlock: 18, blocks: [2],       align: [6, 34] },
-    { ver: 7,  size: 45, dataBytes: 156, ecPerBlock: 20, blocks: [2],       align: [6, 22, 38] },
-    { ver: 8,  size: 49, dataBytes: 194, ecPerBlock: 24, blocks: [2],       align: [6, 24, 42] },
-    { ver: 9,  size: 53, dataBytes: 232, ecPerBlock: 30, blocks: [2],       align: [6, 26, 46] },
-    { ver: 10, size: 57, dataBytes: 274, ecPerBlock: 18, blocks: [2, 2],    align: [6, 28, 50], g1Data: 68, g2Data: 69 }
-  ];
-
-  const QR_GF_EXP = new Uint8Array(512);
-  const QR_GF_LOG = new Uint8Array(256);
-  (function initQrGf() {
-    let x = 1;
-    for (let i = 0; i < 255; i++) {
-      QR_GF_EXP[i] = x;
-      QR_GF_LOG[x] = i;
-      x <<= 1;
-      if (x & 0x100) x ^= 0x11d;
+  /* ======================== ISO/IEC 18004 QR RENDERER (DUAL-TARGET: VECTOR SVG + 400px CRISP PNG) ======================== */
+  function buildQrMatrix(text, ecLevel) {
+    const payload = String(text || "").trim() || (window.location.origin || "https://ai-tutor.phamduchieu.site");
+    const ec = ecLevel || "M";
+    if (typeof window.qrcode === "function") {
+      const qr = window.qrcode(0, ec);
+      qr.addData(payload, "Byte");
+      qr.make();
+      const count = qr.getModuleCount();
+      return {
+        count: count,
+        isDark: function (r, c) { return qr.isDark(r, c); }
+      };
     }
-    for (let i = 255; i < 512; i++) QR_GF_EXP[i] = QR_GF_EXP[i - 255];
-  })();
-
-  function qrGfMul(a, b) {
-    if (a === 0 || b === 0) return 0;
-    return QR_GF_EXP[QR_GF_LOG[a] + QR_GF_LOG[b]];
-  }
-
-  function qrRsPoly(deg) {
-    let poly = [1];
-    for (let i = 0; i < deg; i++) {
-      const next = new Array(poly.length + 1).fill(0);
-      const factor = QR_GF_EXP[i];
-      for (let j = 0; j < poly.length; j++) {
-        next[j] ^= poly[j];
-        next[j + 1] ^= qrGfMul(poly[j], factor);
-      }
-      poly = next;
-    }
-    return poly;
-  }
-
-  function qrRsRemainder(data, ecLen) {
-    const gen = qrRsPoly(ecLen);
-    const rem = new Uint8Array(ecLen);
-    for (let i = 0; i < data.length; i++) {
-      const factor = data[i] ^ rem[0];
-      for (let j = 0; j < ecLen - 1; j++) rem[j] = rem[j + 1];
-      rem[ecLen - 1] = 0;
-      if (factor !== 0) {
-        for (let j = 0; j < ecLen; j++) rem[j] ^= qrGfMul(gen[j + 1], factor);
-      }
-    }
-    return rem;
-  }
-
-  function qrUtf8Bytes(str) {
-    if (typeof TextEncoder !== "undefined") {
-      return Array.from(new TextEncoder().encode(String(str || "")));
-    }
-    const out = [];
-    const s = unescape(encodeURIComponent(String(str || "")));
-    for (let i = 0; i < s.length; i++) out.push(s.charCodeAt(i));
-    return out;
-  }
-
-  function encodeQrMatrix(text) {
-    const bytes = qrUtf8Bytes(text);
-    let spec = null;
-    for (let v = 1; v < QR_EC_L_SPECS.length; v++) {
-      const sp = QR_EC_L_SPECS[v];
-      const countBits = v <= 9 ? 8 : 16;
-      const capBits = sp.dataBytes * 8;
-      if (4 + countBits + bytes.length * 8 <= capBits) {
-        spec = sp;
-        break;
-      }
-    }
-    if (!spec) {
-      // Truncate safely to max v10 capacity if URL is unusually long
-      spec = QR_EC_L_SPECS[10];
-      bytes.length = Math.min(bytes.length, spec.dataBytes - 3);
-    }
-
-    // 1. Build data bit stream (Byte mode: 0100)
-    const bits = [];
-    const pushBits = function (val, len) {
-      for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1);
-    };
-    pushBits(0x4, 4);
-    pushBits(bytes.length, spec.ver <= 9 ? 8 : 16);
-    for (let i = 0; i < bytes.length; i++) pushBits(bytes[i], 8);
-    const totalBits = spec.dataBytes * 8;
-    const termLen = Math.min(4, totalBits - bits.length);
-    pushBits(0, termLen);
-    while (bits.length % 8 !== 0) bits.push(0);
-    let padIdx = 0;
-    while (bits.length < totalBits) {
-      pushBits(padIdx % 2 === 0 ? 0xec : 0x11, 8);
-      padIdx++;
-    }
-    const dataCw = [];
-    for (let i = 0; i < bits.length; i += 8) {
-      let b = 0;
-      for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
-      dataCw.push(b);
-    }
-
-    // 2. Split into RS blocks & interleave
-    const dataBlocks = [];
-    const ecBlocks = [];
-    let offset = 0;
-    if (spec.blocks.length === 1) {
-      const nBlk = spec.blocks[0];
-      const blkLen = Math.floor(spec.dataBytes / nBlk);
-      for (let b = 0; b < nBlk; b++) {
-        const chunk = dataCw.slice(offset, offset + blkLen);
-        offset += blkLen;
-        dataBlocks.push(chunk);
-        ecBlocks.push(qrRsRemainder(chunk, spec.ecPerBlock));
-      }
-    } else {
-      for (let b = 0; b < spec.blocks[0]; b++) {
-        const chunk = dataCw.slice(offset, offset + spec.g1Data);
-        offset += spec.g1Data;
-        dataBlocks.push(chunk);
-        ecBlocks.push(qrRsRemainder(chunk, spec.ecPerBlock));
-      }
-      for (let b = 0; b < spec.blocks[1]; b++) {
-        const chunk = dataCw.slice(offset, offset + spec.g2Data);
-        offset += spec.g2Data;
-        dataBlocks.push(chunk);
-        ecBlocks.push(qrRsRemainder(chunk, spec.ecPerBlock));
-      }
-    }
-
-    const codewords = [];
-    const maxDataLen = Math.max.apply(null, dataBlocks.map(function (b) { return b.length; }));
-    for (let i = 0; i < maxDataLen; i++) {
-      for (let b = 0; b < dataBlocks.length; b++) {
-        if (i < dataBlocks[b].length) codewords.push(dataBlocks[b][i]);
-      }
-    }
-    for (let i = 0; i < spec.ecPerBlock; i++) {
-      for (let b = 0; b < ecBlocks.length; b++) codewords.push(ecBlocks[b][i]);
-    }
-
-    // 3. Matrix & Function patterns
-    const N = spec.size;
-    const mat = Array.from({ length: N }, function () { return new Uint8Array(N); });
-    const isFunc = Array.from({ length: N }, function () { return new Uint8Array(N); });
-    const setFunc = function (r, c, dark) {
-      if (r < 0 || c < 0 || r >= N || c >= N) return;
-      mat[r][c] = dark ? 1 : 0;
-      isFunc[r][c] = 1;
-    };
-
-    const drawFinder = function (r0, c0) {
-      for (let dr = -1; dr <= 7; dr++) {
-        for (let dc = -1; dc <= 7; dc++) {
-          const r = r0 + dr, c = c0 + dc;
-          if (r < 0 || c < 0 || r >= N || c >= N) continue;
-          const dark = (dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6) &&
-            (dr === 0 || dr === 6 || dc === 0 || dc === 6 || (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4));
-          setFunc(r, c, dark);
-        }
-      }
-    };
-    drawFinder(0, 0);
-    drawFinder(0, N - 7);
-    drawFinder(N - 7, 0);
-
-    // Timing patterns
-    for (let i = 8; i < N - 8; i++) {
-      setFunc(6, i, i % 2 === 0);
-      setFunc(i, 6, i % 2 === 0);
-    }
-
-    // Alignment patterns
-    const al = spec.align;
-    for (let i = 0; i < al.length; i++) {
-      for (let j = 0; j < al.length; j++) {
-        if ((i === 0 && j === 0) || (i === 0 && j === al.length - 1) || (i === al.length - 1 && j === 0)) continue;
-        const cr = al[i], cc = al[j];
-        for (let dr = -2; dr <= 2; dr++) {
-          for (let dc = -2; dc <= 2; dc++) {
-            const dark = Math.max(Math.abs(dr), Math.abs(dc)) !== 1;
-            setFunc(cr + dr, cc + dc, dark);
-          }
-        }
-      }
-    }
-
-    // Reserve format info + dark module
-    for (let i = 0; i <= 8; i++) {
-      if (!isFunc[8][i]) setFunc(8, i, false);
-      if (!isFunc[i][8]) setFunc(i, 8, false);
-    }
-    for (let i = N - 8; i < N; i++) {
-      if (!isFunc[8][i]) setFunc(8, i, false);
-      if (!isFunc[i][8]) setFunc(i, 8, false);
-    }
-    setFunc(N - 8, 8, true);
-
-    // Version info for v >= 7
-    if (spec.ver >= 7) {
-      let rem = spec.ver;
-      for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
-      const vBits = (spec.ver << 12) | rem;
-      for (let i = 0; i < 18; i++) {
-        const bit = ((vBits >>> i) & 1) === 1;
-        const a = N - 11 + (i % 3);
-        const b = Math.floor(i / 3);
-        setFunc(a, b, bit);
-        setFunc(b, a, bit);
-      }
-    }
-
-    // 4. Place data bits in zigzag
-    const allBits = [];
-    for (let i = 0; i < codewords.length; i++) {
-      for (let b = 7; b >= 0; b--) allBits.push((codewords[i] >>> b) & 1);
-    }
-    let bitIdx = 0;
-    for (let right = N - 1; right >= 1; right -= 2) {
-      if (right === 6) right = 5;
-      const upward = ((right + 1) & 2) === 0;
-      for (let v = 0; v < N; v++) {
-        const r = upward ? (N - 1 - v) : v;
-        for (let j = 0; j < 2; j++) {
-          const c = right - j;
-          if (!isFunc[r][c]) {
-            mat[r][c] = bitIdx < allBits.length ? allBits[bitIdx++] : 0;
-          }
-        }
-      }
-    }
-
-    // 5. Apply Mask 0 ((r + c) % 2 === 0) and write EC-L Format Info (EC-L = 01, Mask 0 = 000 -> 01000)
-    for (let r = 0; r < N; r++) {
-      for (let c = 0; c < N; c++) {
-        if (!isFunc[r][c] && ((r + c) % 2 === 0)) mat[r][c] ^= 1;
-      }
-    }
-    const fmtData = (1 << 3) | 0; // EC-L (01) + Mask 0 (000)
-    let fmtRem = fmtData;
-    for (let i = 0; i < 10; i++) fmtRem = (fmtRem << 1) ^ ((fmtRem >>> 9) * 0x537);
-    const fmtBits = ((fmtData << 10) | fmtRem) ^ 0x5412;
-    for (let i = 0; i <= 5; i++) setFunc(8, i, ((fmtBits >>> i) & 1) === 1);
-    setFunc(8, 7, ((fmtBits >>> 6) & 1) === 1);
-    setFunc(8, 8, ((fmtBits >>> 7) & 1) === 1);
-    setFunc(7, 8, ((fmtBits >>> 8) & 1) === 1);
-    for (let i = 9; i < 15; i++) setFunc(14 - i, 8, ((fmtBits >>> i) & 1) === 1);
-    for (let i = 0; i < 8; i++) setFunc(N - 1 - i, 8, ((fmtBits >>> i) & 1) === 1);
-    for (let i = 8; i < 15; i++) setFunc(8, N - 15 + i, ((fmtBits >>> i) & 1) === 1);
-    setFunc(N - 8, 8, true);
-
-    return mat;
+    throw new Error("QR library (vendor/qrcode.min.js) is not loaded.");
   }
 
   function generateQrSvg(text, sizePx) {
-    const px = Number(sizePx) || 104;
-    const mat = encodeQrMatrix(text);
-    const N = mat.length;
-    const quiet = 3;
+    const px = Math.max(120, Number(sizePx) || 160);
+    const qm = buildQrMatrix(text, "M");
+    const N = qm.count;
+    const quiet = 4; // Mandatory ISO/IEC 18004 4-module white quiet zone
     const dim = N + quiet * 2;
     const paths = [];
     for (let r = 0; r < N; r++) {
       for (let c = 0; c < N; c++) {
-        if (mat[r][c]) paths.push("M" + (c + quiet) + "," + (r + quiet) + "h1v1h-1z");
+        if (qm.isDark(r, c)) paths.push("M" + (c + quiet) + "," + (r + quiet) + "h1v1h-1z");
       }
     }
-    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + dim + ' ' + dim + '" width="' + px + '" height="' + px + '" shape-rendering="crispEdges" role="img" aria-label="QR Code">' +
-      '<rect width="' + dim + '" height="' + dim + '" fill="#ffffff"/>' +
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + dim + ' ' + dim + '" width="' + px + '" height="' + px + '" shape-rendering="crispEdges" role="img" aria-label="QR Code" style="display:block;background:#ffffff">' +
+      '<rect x="0" y="0" width="' + dim + '" height="' + dim + '" fill="#ffffff"/>' +
       '<path d="' + paths.join("") + '" fill="#000000"/>' +
     '</svg>';
+  }
+
+  function generateQrPngDataUrl(text, targetPx) {
+    const minPx = Math.max(360, Number(targetPx) || 400);
+    const qm = buildQrMatrix(text, "M");
+    const N = qm.count;
+    const quiet = 4;
+    const dim = N + quiet * 2;
+    const scale = Math.max(1, Math.ceil(minPx / dim));
+    const canvasSize = dim * scale;
+    if (typeof document === "undefined" || !document.createElement) return "";
+    const canvas = document.createElement("canvas");
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, canvasSize, canvasSize);
+    ctx.fillStyle = "#000000";
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        if (qm.isDark(r, c)) {
+          ctx.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+        }
+      }
+    }
+    return canvas.toDataURL("image/png");
   }
 
   /* ======================== LMS UI STATE ======================== */
@@ -502,9 +339,13 @@
     assignGradeFilter: "all",
     assignSubjectFilter: "all",
     expandedRecipients: {},
-    // Student exam runner state
+    // Student exam runner state (supports both local & Incognito cloud mode)
     activeAssignCode: null,
-    studentSession: null, // { assignId, studentId, attemptNo, questions, answers, idx, remainingSec, totalSec, startedAt, tabSwitches, blurHandler, visHandler, timerId }
+    remoteAssignment: null,
+    remoteStudents: [],
+    remoteLoading: false,
+    remoteError: null,
+    studentSession: null,
     lastSubmissionId: null,
     activeReceiptId: null,
     mounted: false
@@ -737,6 +578,7 @@
   }
 
   function renderAssignmentsView(root) {
+    syncAssignmentsToCloud(null, false).catch(function () { /* background sync */ });
     const assignments = loadAssignments().slice().sort(function (a, b) {
       return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     });
@@ -872,6 +714,7 @@
 
   /* ======================== VIEW 3: GRADEBOOK & ANALYTICS ======================== */
   function renderGradebookView(root) {
+    syncAssignmentsToCloud(null, false).catch(function () { /* background sync */ });
     const assignments = loadAssignments();
     if (!assignments.length) {
       root.innerHTML = renderStudioSubnav("gradebook") +
@@ -2013,6 +1856,33 @@
     });
   }
 
+  function buildSubmissionEmailBreakdown(sub) {
+    const letters = (U() && U().LETTERS) || ["A", "B", "C", "D", "E", "F"];
+    return (sub && Array.isArray(sub.records) ? sub.records : []).map(function (r, idx) {
+      const q = r.q || {};
+      const opts = Array.isArray(q.options) ? q.options : [];
+      const pickedArr = Array.isArray(r.picked) ? r.picked : [];
+      const corrArr = Array.isArray(q.correct) ? q.correct : [];
+      const fmtList = function (arr) {
+        if (!arr.length) return "";
+        return arr.map(function (i) {
+          const l = letters[i] || String(i + 1);
+          const txt = opts[i] ? (": " + String(opts[i]).replace(/<[^>]+>/g, "").trim().slice(0, 120)) : "";
+          return l + txt;
+        }).join("; ");
+      };
+      const pickedText = r.userAnswerText || fmtList(pickedArr) || tr("Chưa trả lời");
+      const correctText = q.answerText || fmtList(corrArr) || "—";
+      return {
+        index: idx + 1,
+        prompt: String(q.text || "").replace(/<[^>]+>/g, "").trim(),
+        pickedText: pickedText,
+        correctText: correctText,
+        ok: !!r.ok
+      };
+    });
+  }
+
   /* ======================== UNIFIED PARENT EMAIL DISPATCHER ======================== */
   async function sendParentEmailBatch(opts) {
     const assign = opts.assign;
@@ -2042,9 +1912,15 @@
           className: r.className || "",
           to: String(r.to || "").trim(),
           score10: r.score10,
+          correctCount: r.correctCount,
+          totalQuestions: r.totalQuestions,
           durationSec: r.durationSec,
+          tabSwitches: r.tabSwitches,
+          submittedAt: r.submittedAt,
           feedback: r.feedback,
-          receiptUrl: r.receiptUrl
+          receiptUrl: r.receiptUrl,
+          reviewUrl: r.reviewUrl,
+          breakdown: r.breakdown
         };
       })
     };
@@ -2100,11 +1976,13 @@
           sentAt: ts
         });
 
-        if (emailType === "result_report" && r.studentId && subIdMap[r.studentId]) {
-          const targetSub = subs.find(function (x) { return x.id === subIdMap[r.studentId]; });
+        if ((emailType === "result" || emailType === "result_report") && r.studentId && subIdMap[r.studentId]) {
+          const targetSub = subs.find(function (x) { return String(x.id) === String(subIdMap[r.studentId]); });
           if (targetSub) {
             targetSub.parentEmailStatus = verifiedSent ? "sent" : "failed";
+            targetSub.parentEmailTarget = r.to || targetSub.parentEmailTarget || "";
             targetSub.parentEmailSentAt = verifiedSent ? ts : "";
+            targetSub.parentReportSentAt = verifiedSent ? ts : "";
             targetSub.parentEmailMessageId = verifiedSent ? (r.messageId || "") : "";
             targetSub.parentEmailError = verifiedSent ? "" : (r.error || fallbackErr || "Email delivery failed");
             subsChanged = true;
@@ -2123,7 +2001,7 @@
       saveEmailLogs(logs);
       if (targetAssign) saveAssignments(assignments);
       if (subsChanged) saveSubmissions(subs);
-      if (!silent) refreshStudio();
+      if (!silent || subsChanged) refreshStudio();
     };
 
     try {
@@ -2216,35 +2094,87 @@
     }
   }
 
-  function dispatchParentReportEmail(assign, student, sub) {
-    if (!assign.parentEmailEnabled) return { sent: false, reason: "disabled" };
-    if (assign.parentEmailOverrides && assign.parentEmailOverrides[student.id] === false) return { sent: false, reason: "override_off" };
-    const toEmail = getStudentParentEmail(student);
-    if (!toEmail || !isValidEmailList(toEmail)) return { sent: false, reason: "missing_email" };
+  function dispatchParentReportEmail(assign, student, sub, opts) {
+    const o = opts || {};
+    if (!o.force && (sub.parentReportSentAt || sub.parentEmailSentAt)) {
+      return { sent: true, alreadySent: true };
+    }
+    if (!o.force && (assign.parentEmailEnabled === false || assign.notifyParent === false)) {
+      return { sent: false, reason: "disabled" };
+    }
+    if (!o.force && assign.parentEmailOverrides && student && assign.parentEmailOverrides[student.id] === false) {
+      return { sent: false, reason: "override_off" };
+    }
+    const toEmail = (o.overrideEmail && String(o.overrideEmail).trim())
+      || getStudentParentEmail(student)
+      || String(sub.parentEmail || sub.parentEmailTarget || "").trim();
+    if (!toEmail || !isValidEmailList(toEmail)) {
+      return { sent: false, reason: "missing_email" };
+    }
 
     const feedback = computeDynamicFeedback(sub.score10);
     const receiptUrl = buildReceiptUrl(sub.id);
+    const reviewUrl = buildSubmissionReviewUrl(assign.code, sub.id);
+    const breakdown = buildSubmissionEmailBreakdown(sub);
+    const stuId = (student && student.id) || sub.studentId || "student";
     const subIdMap = {};
-    subIdMap[student.id] = sub.id;
+    subIdMap[stuId] = sub.id;
 
-    sendParentEmailBatch({
+    // Mark sending state immediately so completion screen shows live progress
+    const subs = loadSubmissions();
+    const targetSub = subs.find(function (x) { return String(x.id) === String(sub.id); });
+    if (targetSub) {
+      targetSub.parentEmailStatus = "sending";
+      targetSub.parentEmailTarget = toEmail;
+      saveSubmissions(subs);
+    }
+
+    const promise = sendParentEmailBatch({
       assign: assign,
-      type: "result_report",
-      silent: true,
+      type: "result",
+      silent: !o.interactive,
       subIdMap: subIdMap,
       recipients: [{
-        studentId: student.id,
-        studentName: student.fullName,
-        className: student.className || "",
+        studentId: stuId,
+        studentName: (student && student.fullName) || sub.studentName || tr("Học sinh"),
+        className: (student && student.className) || "",
         to: toEmail,
         score10: sub.score10,
+        correctCount: sub.correctCount,
+        totalQuestions: sub.totalQuestions,
         durationSec: sub.durationSec,
+        tabSwitches: sub.tabSwitches,
+        submittedAt: sub.submittedAt,
         feedback: feedback,
-        receiptUrl: receiptUrl
+        receiptUrl: receiptUrl,
+        reviewUrl: reviewUrl,
+        breakdown: breakdown
       }]
     });
 
-    return { sent: false, queued: true };
+    return { sent: false, queued: true, to: toEmail, promise: promise };
+  }
+
+  function retrySubmissionParentEmail(subId) {
+    const ctx = getSubContextById(subId);
+    if (!ctx) return;
+    const student = ctx.student || { id: ctx.sub.studentId || ("st_" + ctx.sub.id), fullName: ctx.sub.studentName || tr("Học sinh"), className: "" };
+    const em = getStudentParentEmail(student) || String(ctx.sub.parentEmailTarget || "").trim();
+    if (!em || !isValidEmailList(em)) {
+      openMissingParentEmailModal({
+        assign: ctx.assign,
+        missingStudents: [student],
+        readyStudents: [],
+        onConfirm: function (list) {
+          const picked = list[0];
+          if (picked) {
+            dispatchParentReportEmail(ctx.assign, picked, ctx.sub, { force: true, interactive: true, overrideEmail: getStudentParentEmail(picked) });
+          }
+        }
+      });
+      return;
+    }
+    dispatchParentReportEmail(ctx.assign, student, ctx.sub, { force: true, interactive: true, overrideEmail: em });
   }
 
   function sendDeadlineReminders(assignId) {
@@ -2311,7 +2241,7 @@
         subIdMap[st.id] = eff.id;
         return sendParentEmailBatch({
           assign: assign,
-          type: "result_report",
+          type: "result",
           silent: false,
           subIdMap: subIdMap,
           recipients: [{
@@ -2320,9 +2250,15 @@
             className: st.className || "",
             to: getStudentParentEmail(st),
             score10: eff.score10,
+            correctCount: eff.correctCount,
+            totalQuestions: eff.totalQuestions,
             durationSec: eff.durationSec,
+            tabSwitches: eff.tabSwitches,
+            submittedAt: eff.submittedAt,
             feedback: computeDynamicFeedback(eff.score10),
-            receiptUrl: buildReceiptUrl(eff.id)
+            receiptUrl: buildReceiptUrl(eff.id),
+            reviewUrl: buildSubmissionReviewUrl(assign.code, eff.id),
+            breakdown: buildSubmissionEmailBreakdown(eff)
           }]
         });
       }
@@ -2452,7 +2388,7 @@
     if (!sheet) return;
     const qs = assign.quizSnapshot.questions || [];
     const url = buildAssignmentUrl(assign.code);
-    const qrSvg = generateQrSvg(url, 96);
+    const qrSvg = generateQrSvg(url, 140);
     const letters = U().LETTERS || ["A", "B", "C", "D", "E"];
 
     const qHtml = qs.map(function (q, i) {
@@ -2499,14 +2435,23 @@
     return "MCQ";
   }
 
-  function buildStudentA4SheetHtml(assign, sub, student) {
+  function buildStudentA4SheetHtml(assign, sub, student, opts) {
+    const renderOpts = opts || {};
     const now = Date.now();
     const deadMs = assign && assign.deadline ? new Date(assign.deadline).getTime() : 0;
     const canReveal = !assign || assign.revealMode === "immediate" || (deadMs && now > deadMs);
     const letters = (U() && U().LETTERS) || ["A", "B", "C", "D", "E", "F"];
     const askedSet = new Set((sub && sub.askTeacherIds) || []);
     const reviewUrl = buildSubmissionReviewUrl(assign ? assign.code : "", sub ? sub.id : "");
-    const qrSvg = generateQrSvg(reviewUrl, 102);
+    let qrMarkup = "";
+    if (renderOpts.forPdf) {
+      const pngUrl = generateQrPngDataUrl(reviewUrl, 400);
+      qrMarkup = pngUrl
+        ? '<img src="' + pngUrl + '" alt="QR Code" width="132" height="132" style="display:block;width:132px;height:132px;background:#ffffff;image-rendering:pixelated">'
+        : generateQrSvg(reviewUrl, 160);
+    } else {
+      qrMarkup = generateQrSvg(reviewUrl, 160);
+    }
     const stuName = (student && student.fullName) || tr("Học sinh");
     const stuClass = (student && student.className) || "";
     const stuSchool = (student && student.school) || "";
@@ -2627,7 +2572,7 @@
           '</div>' +
         '</div>' +
         '<div class="a4-qr-box">' +
-          '<div class="a4-qr-svg">' + qrSvg + '</div>' +
+          '<div class="a4-qr-svg">' + qrMarkup + '</div>' +
           '<div class="a4-qr-caption">' + esc(tr("Quét mã QR để xem lại đề & bài làm chi tiết trực tuyến")) + '</div>' +
         '</div>' +
       '</div>' +
@@ -2653,15 +2598,19 @@
   }
 
   function getSubContextById(subId) {
-    const sub = loadSubmissions().find(function (s) { return s.id === subId; });
+    const sub = loadSubmissions().find(function (s) { return String(s.id) === String(subId); });
     if (!sub) return null;
-    const assign = loadAssignments().find(function (a) { return a.id === sub.assignmentId; }) || {
-      id: sub.assignmentId,
-      code: lmsState.activeAssignCode || "",
-      title: sub.quizTitle || tr("Bài tập"),
-      revealMode: "immediate"
-    };
-    const student = loadStudents().find(function (st) { return st.id === sub.studentId; }) || null;
+    const assign = loadAssignments().find(function (a) { return String(a.id) === String(sub.assignmentId); })
+      || (lmsState.remoteAssignment && String(lmsState.remoteAssignment.id) === String(sub.assignmentId) ? lmsState.remoteAssignment : null)
+      || {
+        id: sub.assignmentId,
+        code: sub.assignCode || lmsState.activeAssignCode || "",
+        title: sub.quizTitle || tr("Bài tập"),
+        revealMode: "immediate"
+      };
+    const student = loadStudents().find(function (st) { return String(st.id) === String(sub.studentId); })
+      || (lmsState.remoteStudents || []).find(function (st) { return String(st.id) === String(sub.studentId); })
+      || (sub.studentName ? { id: sub.studentId, fullName: sub.studentName, className: "" } : null);
     return { sub: sub, assign: assign, student: student };
   }
 
@@ -2715,7 +2664,7 @@
     const ctx = getSubContextById(subId);
     if (!ctx) return;
     const filename = buildStudentPdfFilename(ctx.assign, ctx.student);
-    const sheetHtml = buildStudentA4SheetHtml(ctx.assign, ctx.sub, ctx.student);
+    const sheetHtml = buildStudentA4SheetHtml(ctx.assign, ctx.sub, ctx.student, { forPdf: true });
     U().showToast(tr("Đang tạo file PDF A4 kèm mã QR..."), "info");
     try {
       const h2p = await loadHtml2PdfLib();
@@ -2777,21 +2726,79 @@
   }
 
   /* ======================== STUDENT ASSIGNMENT ENTRY & EXAM RUNNER ======================== */
+  function getActiveAssignmentForStudent() {
+    const local = loadAssignments().find(function (a) { return String(a.code || "").toUpperCase() === lmsState.activeAssignCode; });
+    if (local) return { assign: local, isRemote: false, roster: getAssignedStudentsFor(local) };
+    if (lmsState.remoteAssignment && String(lmsState.remoteAssignment.code || "").toUpperCase() === lmsState.activeAssignCode) {
+      return { assign: lmsState.remoteAssignment, isRemote: true, roster: lmsState.remoteStudents || [] };
+    }
+    return null;
+  }
+
   function openStudentAssignment(code, opts) {
-    lmsState.activeAssignCode = String(code || "").trim().toUpperCase();
+    const normCode = String(code || "").trim().toUpperCase();
+    lmsState.activeAssignCode = normCode;
     lmsState.studentSession = null;
     lmsState.lastSubmissionId = null;
+    lmsState.remoteAssignment = null;
+    lmsState.remoteStudents = [];
+    lmsState.remoteError = null;
+    lmsState.remoteLoading = false;
 
-    if (opts && (opts.attemptId || opts.review)) {
-      const assign = loadAssignments().find(function (a) { return a.code === lmsState.activeAssignCode; });
+    const localAssign = loadAssignments().find(function (a) { return String(a.code || "").toUpperCase() === normCode; });
+    if (localAssign && opts && (opts.attemptId || opts.review)) {
       const allSubs = loadSubmissions();
       if (opts.attemptId) {
-        const found = allSubs.find(function (s) { return s.id === opts.attemptId; });
+        const found = allSubs.find(function (s) { return String(s.id) === String(opts.attemptId); });
         if (found) lmsState.lastSubmissionId = found.id;
-      } else if (opts.review && assign) {
-        const assignSubs = allSubs.filter(function (s) { return s.assignmentId === assign.id; });
+      } else if (opts.review) {
+        const assignSubs = allSubs.filter(function (s) { return String(s.assignmentId) === String(localAssign.id); });
         if (assignSubs.length) lmsState.lastSubmissionId = assignSubs[assignSubs.length - 1].id;
       }
+    }
+
+    if (!localAssign && normCode && typeof fetch === "function") {
+      lmsState.remoteLoading = true;
+      const attemptParam = (opts && opts.attemptId) ? ("&attempt=" + encodeURIComponent(opts.attemptId)) : "";
+      fetch("/api/lms/public-assignment?code=" + encodeURIComponent(normCode) + attemptParam)
+        .then(function (resp) {
+          return resp.json().catch(function () { return {}; }).then(function (data) {
+            return { ok: resp.ok, status: resp.status, data: data };
+          });
+        })
+        .then(function (r) {
+          if (lmsState.activeAssignCode !== normCode) return;
+          lmsState.remoteLoading = false;
+          if (r.ok && r.data && r.data.assignment) {
+            lmsState.remoteAssignment = r.data.assignment;
+            lmsState.remoteStudents = Array.isArray(r.data.students) ? r.data.students : [];
+            if (r.data.submission) {
+              const localSubs = loadSubmissions();
+              if (!localSubs.some(function (s) { return String(s.id) === String(r.data.submission.id); })) {
+                localSubs.push(r.data.submission);
+                saveSubmissions(localSubs);
+              }
+              lmsState.lastSubmissionId = r.data.submission.id;
+            }
+          } else {
+            lmsState.remoteError = {
+              code: (r.data && r.data.code) || ("HTTP_" + r.status),
+              title: (r.data && r.data.title) || "",
+              deadline: (r.data && r.data.deadline) || "",
+              message: (r.data && r.data.error) || tr("Mã bài tập không tồn tại hoặc chưa được giáo viên đồng bộ lên đám mây.")
+            };
+          }
+          refreshStudio();
+        })
+        .catch(function (err) {
+          if (lmsState.activeAssignCode !== normCode) return;
+          lmsState.remoteLoading = false;
+          lmsState.remoteError = {
+            code: "NETWORK_ERROR",
+            message: (err && err.message) || tr("Không thể kết nối máy chủ để tải bài tập.")
+          };
+          refreshStudio();
+        });
     }
 
     if (window.UETStudio && typeof window.UETStudio.openLmsScreen === "function") {
@@ -2807,17 +2814,37 @@
   }
 
   function renderStudentAssignmentView(root) {
-    const assign = loadAssignments().find(function (a) { return a.code === lmsState.activeAssignCode; });
-    if (!assign) {
+    if (lmsState.remoteLoading) {
+      root.innerHTML = '<div class="ql-wrap"><div class="ql-card"><div class="ql-section" style="text-align:center;padding:48px 24px">' +
+        '<h3>' + esc(tr("Đang tải đề bài...")) + '</h3>' +
+        '<p class="muted">' + esc(tr("Đang kết nối máy chủ AI Tutor để tải bài tập ")) + '<code>' + esc(lmsState.activeAssignCode || "") + '</code></p>' +
+      '</div></div></div>';
+      return;
+    }
+
+    const active = getActiveAssignmentForStudent();
+    if (!active) {
+      const err = lmsState.remoteError;
+      if (err && err.code === "ASSIGNMENT_CLOSED") {
+        root.innerHTML = '<div class="ql-wrap"><div class="ql-card"><div class="ql-section" style="text-align:center;padding:40px 24px">' +
+          '<div class="lms-lock-circle">' + ICONS.lock + '</div>' +
+          '<h2 class="ql-title" style="margin-top:12px">' + esc(err.title || lmsState.activeAssignCode) + '</h2>' +
+          '<p class="muted" style="max-width:460px;margin:10px auto 18px">' + esc(err.message) + '</p>' +
+        '</div></div></div>';
+        return;
+      }
       root.innerHTML = '<div class="ql-wrap"><div class="ql-card"><div class="ql-section" style="text-align:center;padding:36px 24px">' +
         '<h3>Không tìm thấy bài tập</h3>' +
-        '<p class="muted">Mã bài tập không tồn tại hoặc đã bị giáo viên xóa.</p>' +
+        '<p class="muted">' + esc((err && err.message) || "Mã bài tập không tồn tại hoặc đã bị giáo viên xóa.") + '</p>' +
         '<button type="button" class="btn btn-outline btn-sm" data-lms-nav="assignments">Quay lại</button>' +
       '</div></div></div>';
       return;
     }
 
-    if (lmsState.studentSession && lmsState.studentSession.assignId === assign.id) {
+    const assign = active.assign;
+    const roster = active.roster;
+
+    if (lmsState.studentSession && String(lmsState.studentSession.assignId) === String(assign.id)) {
       renderStudentExamActive(root, assign);
       return;
     }
@@ -2829,7 +2856,6 @@
     const status = getAssignmentStatus(assign);
     const dl = fmtDeadlineParts(assign.deadline);
     const op = fmtDeadlineParts(assign.openAt);
-    const roster = getAssignedStudentsFor(assign);
 
     // Post-Deadline Auto-Lock Screen
     if (status === "closed") {
@@ -2905,25 +2931,63 @@
     '</div></div>';
   }
 
-  function startStudentExam(assignId) {
-    const assign = loadAssignments().find(function (a) { return a.id === assignId; });
+  async function startStudentExam(assignId) {
+    const active = getActiveAssignmentForStudent();
+    const assign = (active && String(active.assign.id) === String(assignId))
+      ? active.assign
+      : loadAssignments().find(function (a) { return String(a.id) === String(assignId); });
     if (!assign) return;
+    const isRemote = !!(active && active.isRemote && String(active.assign.id) === String(assign.id));
     if (getAssignmentStatus(assign) === "closed") { refreshStudio(); return; }
     const stId = U().$("lmsEntryStudent") ? U().$("lmsEntryStudent").value : "";
     const pin = U().$("lmsEntryPin") ? U().$("lmsEntryPin").value.trim() : "";
     if (!stId) { U().showToast("Vui lòng chọn tên của bạn trong danh sách.", "warning"); return; }
-    const student = loadStudents().find(function (s) { return s.id === stId; });
-    if (!student || student.pin !== pin) {
-      U().showToast("Mã PIN 4 số không chính xác. Vui lòng thử lại.", "error");
-      return;
-    }
 
-    const prevSubs = getStudentSubmissions(assign.id, student.id);
-    if (assign.maxAttempts > 0 && prevSubs.length >= assign.maxAttempts) {
-      U().showToast("Bạn đã hết lượt làm bài cho bài tập này.", "warning");
-      lmsState.lastSubmissionId = prevSubs[prevSubs.length - 1].id;
-      refreshStudio();
-      return;
+    let student = null;
+    let attemptNo = 1;
+    if (isRemote) {
+      try {
+        const resp = await fetch("/api/lms/verify-pin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: assign.code, studentId: stId, pin: pin })
+        });
+        const data = await resp.json().catch(function () { return {}; });
+        if (!resp.ok || !data.ok) {
+          if (data && data.code === "MAX_ATTEMPTS_REACHED" && data.latestSubmission) {
+            U().showToast(data.error || "Bạn đã hết lượt làm bài cho bài tập này.", "warning");
+            const localSubs = loadSubmissions();
+            if (!localSubs.some(function (s) { return String(s.id) === String(data.latestSubmission.id); })) {
+              localSubs.push(data.latestSubmission);
+              saveSubmissions(localSubs);
+            }
+            lmsState.lastSubmissionId = data.latestSubmission.id;
+            refreshStudio();
+            return;
+          }
+          U().showToast((data && data.error) || "Mã PIN 4 số không chính xác. Vui lòng thử lại.", "error");
+          return;
+        }
+        student = data.student;
+        attemptNo = Number(data.attemptNo) || 1;
+      } catch (err) {
+        U().showToast("Không thể xác thực mã PIN với máy chủ. Vui lòng thử lại.", "error");
+        return;
+      }
+    } else {
+      student = loadStudents().find(function (s) { return String(s.id) === String(stId); });
+      if (!student || String(student.pin || "") !== pin) {
+        U().showToast("Mã PIN 4 số không chính xác. Vui lòng thử lại.", "error");
+        return;
+      }
+      const prevSubs = getStudentSubmissions(assign.id, student.id);
+      if (assign.maxAttempts > 0 && prevSubs.length >= assign.maxAttempts) {
+        U().showToast("Bạn đã hết lượt làm bài cho bài tập này.", "warning");
+        lmsState.lastSubmissionId = prevSubs[prevSubs.length - 1].id;
+        refreshStudio();
+        return;
+      }
+      attemptNo = prevSubs.length + 1;
     }
 
     // Check for auto-saved draft (Auto-Save & Resume on F5 / drop)
@@ -2931,26 +2995,33 @@
     const drafts = loadDrafts();
     let sess = drafts[draftKey];
     if (sess && Array.isArray(sess.questions) && sess.questions.length) {
+      sess.isRemote = isRemote;
+      sess.verifiedPin = pin;
       U().showToast("Đã khôi phục bài làm đang dang dở của bạn.", "info");
     } else {
       let qs = resolveAssignmentQuestions(assign).map(function (q) {
-        let opts = q.options.slice();
-        let corr = q.correct.slice();
-        if (assign.shuffleO) {
-          const paired = opts.map(function (o, idx) { return { o: o, ok: corr.indexOf(idx) !== -1 }; });
+        let opts = Array.isArray(q.options) ? q.options.slice() : [];
+        let corr = Array.isArray(q.correct) ? q.correct.slice() : [];
+        let optOrder = opts.map(function (_, idx) { return idx; });
+        if (assign.shuffleO && opts.length > 1) {
+          const paired = opts.map(function (o, idx) { return { o: o, origIdx: idx, ok: corr.indexOf(idx) !== -1 }; });
           const sh = U().shuffleArray(paired);
           opts = sh.map(function (x) { return x.o; });
+          optOrder = sh.map(function (x) { return x.origIdx; });
           corr = [];
           sh.forEach(function (x, i) { if (x.ok) corr.push(i); });
         }
-        return Object.assign({}, q, { options: opts, correct: corr });
+        return Object.assign({}, q, { options: opts, correct: corr, optOrder: optOrder });
       });
       if (assign.shuffleQ) qs = U().shuffleArray(qs);
       const totalSec = assign.durationMinutes > 0 ? assign.durationMinutes * 60 : 0;
       sess = {
         assignId: assign.id,
+        assignCode: assign.code,
+        isRemote: isRemote,
+        verifiedPin: pin,
         studentId: student.id,
-        attemptNo: prevSubs.length + 1,
+        attemptNo: attemptNo,
         questions: qs,
         answers: {},
         idx: 0,
@@ -3079,11 +3150,67 @@
     '</div></div>';
   }
 
-  function finishStudentExam(assignId, isTimeout) {
-    const assign = loadAssignments().find(function (a) { return a.id === assignId; });
+  async function finishStudentExam(assignId, isTimeout) {
+    const active = getActiveAssignmentForStudent();
+    const assign = (active && String(active.assign.id) === String(assignId))
+      ? active.assign
+      : loadAssignments().find(function (a) { return String(a.id) === String(assignId); });
     const sess = lmsState.studentSession;
     if (!assign || !sess) return;
     detachExamMonitors();
+
+    const durationSec = Math.max(1, Math.round((Date.now() - sess.startedAt) / 1000));
+
+    // Incognito / Remote Cloud Submission (server-side grading + server-side parent email)
+    if (sess.isRemote) {
+      U().showToast(tr("Đang nộp bài và chấm điểm trên máy chủ..."), "info");
+      const mappedAnswers = {};
+      (sess.questions || []).forEach(function (q) {
+        const pickedShuffled = Array.isArray(sess.answers[q.id]) ? sess.answers[q.id] : [];
+        const order = Array.isArray(q.optOrder) ? q.optOrder : null;
+        mappedAnswers[String(q.id)] = order
+          ? pickedShuffled.map(function (idx) { return order[idx] != null ? order[idx] : idx; })
+          : pickedShuffled;
+      });
+      try {
+        const resp = await fetch("/api/lms/public-submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            code: assign.code,
+            studentId: sess.studentId,
+            pin: sess.verifiedPin || "",
+            answers: mappedAnswers,
+            durationSeconds: durationSec,
+            tabSwitches: sess.tabSwitches || 0,
+            lang: U().getLang ? U().getLang() : "vi"
+          })
+        });
+        const data = await resp.json().catch(function () { return {}; });
+        if (!resp.ok || !data.ok || !data.submission) {
+          U().showToast((data && data.error) || tr("Nộp bài thất bại. Vui lòng thử lại."), "error");
+          attachExamMonitors(assign);
+          return;
+        }
+        const subs = loadSubmissions();
+        subs.push(data.submission);
+        saveSubmissions(subs);
+
+        const drafts = loadDrafts();
+        delete drafts[sess.assignId + "__" + sess.studentId];
+        saveDrafts(drafts);
+
+        lmsState.studentSession = null;
+        lmsState.lastSubmissionId = data.submission.id;
+        U().showToast(isTimeout ? "Đã hết giờ! Bài làm của bạn đã được nộp tự động." : "Đã nộp bài thành công!", "success");
+        refreshStudio();
+        return;
+      } catch (err) {
+        U().showToast(tr("Lỗi kết nối khi nộp bài. Vui lòng thử lại."), "error");
+        attachExamMonitors(assign);
+        return;
+      }
+    }
 
     const records = sess.questions.map(function (q) {
       const picked = (sess.answers[q.id] || []).slice().sort(function (a, b) { return a - b; });
@@ -3094,14 +3221,16 @@
     const correctCount = records.filter(function (r) { return r.ok; }).length;
     const total = records.length || 1;
     const score10 = Math.round((correctCount / total) * 100) / 10;
-    const durationSec = Math.max(1, Math.round((Date.now() - sess.startedAt) / 1000));
 
-    const student = loadStudents().find(function (s) { return s.id === sess.studentId; });
+    const student = loadStudents().find(function (s) { return String(s.id) === String(sess.studentId); })
+      || getAssignedStudentsFor(assign).find(function (s) { return String(s.id) === String(sess.studentId); });
+    const resolvedParentEmail = getStudentParentEmail(student);
     const sub = {
       id: "sub_" + Date.now(),
       assignmentId: assign.id,
       quizTitle: assign.title,
       studentId: sess.studentId,
+      studentName: student ? student.fullName : "",
       attemptNo: sess.attemptNo,
       score10: score10,
       correctCount: correctCount,
@@ -3111,18 +3240,21 @@
       records: records,
       askTeacherIds: [],
       submittedAt: new Date().toISOString(),
+      parentEmailTarget: resolvedParentEmail,
+      parentEmailStatus: "",
       parentEmailSentAt: "",
+      parentReportSentAt: "",
       parentReadAt: ""
     };
 
-    if (student) {
-      const mailRes = dispatchParentReportEmail(assign, student, sub);
-      if (mailRes.sent) sub.parentEmailSentAt = new Date().toISOString();
-    }
-
+    // Persist submission FIRST so async email status updates always find the saved record
     const subs = loadSubmissions();
     subs.push(sub);
     saveSubmissions(subs);
+
+    if (student && resolvedParentEmail && assign.parentEmailEnabled !== false && assign.notifyParent !== false) {
+      dispatchParentReportEmail(assign, student, sub, { interactive: false });
+    }
 
     // Clear draft
     const drafts = loadDrafts();
@@ -3145,6 +3277,21 @@
     const letters = U().LETTERS || ["A", "B", "C", "D", "E"];
     const askedSet = new Set(sub.askTeacherIds || []);
 
+    const stuObj = loadStudents().find(function (s) { return String(s.id) === String(sub.studentId); });
+    const parentEmailAddr = sub.parentEmailTarget || getStudentParentEmail(stuObj);
+    let emailStatusBanner = "";
+    if (sub.parentReportSentAt || sub.parentEmailSentAt) {
+      emailStatusBanner = '<div class="lms-email-status-bar is-ok">📧 ' + esc(tr("Đã tự động gửi báo cáo kết quả tới ")) + '<strong>' + esc(parentEmailAddr || tr("phụ huynh")) + '</strong></div>';
+    } else if (sub.parentEmailStatus === "sending") {
+      emailStatusBanner = '<div class="lms-email-status-bar is-info">⏳ ' + esc(tr("Đang tự động gửi báo cáo kết quả tới ")) + '<strong>' + esc(parentEmailAddr || tr("phụ huynh")) + '</strong>...</div>';
+    } else if (assign.parentEmailEnabled !== false && assign.notifyParent !== false) {
+      const errHint = sub.parentEmailError ? (' (' + esc(sub.parentEmailError.slice(0, 90)) + ')') : (!parentEmailAddr ? (' (' + esc(tr("Chưa có email phụ huynh")) + ')') : '');
+      emailStatusBanner = '<div class="lms-email-status-bar is-warn">' +
+        '<span>⚠️ ' + esc(tr("Chưa gửi được email báo cáo")) + errHint + '</span>' +
+        '<button type="button" class="btn btn-outline btn-sm" data-lms="retry-sub-email" data-sub="' + esc(sub.id) + '">✉️ ' + esc(tr("Gửi lại / Nhập email")) + '</button>' +
+      '</div>';
+    }
+
     root.innerHTML = '<div class="ql-wrap"><div class="ql-card">' +
       '<div class="ql-header" style="flex-wrap:wrap;gap:10px">' +
         '<div>' +
@@ -3163,6 +3310,7 @@
         '<div class="lms-kpi"><span class="lms-kpi-k">Số câu đúng</span><span class="lms-kpi-v">' + sub.correctCount + ' / ' + sub.totalQuestions + '</span></div>' +
         '<div class="lms-kpi"><span class="lms-kpi-k">Chuyển tab</span><span class="lms-kpi-v">' + sub.tabSwitches + '</span></div>' +
       '</div>' +
+      emailStatusBanner +
 
       '<div class="ql-section">' +
         (!canReveal
@@ -3322,6 +3470,7 @@
     else if (act === "export-worksheet-pdf") exportWorksheetA4Pdf(b.getAttribute("data-id"));
     else if (act === "preview-sub-a4") openStudentA4PreviewModal(b.getAttribute("data-sub"));
     else if (act === "export-sub-pdf-qr") exportStudentA4Pdf(b.getAttribute("data-sub"));
+    else if (act === "retry-sub-email") retrySubmissionParentEmail(b.getAttribute("data-sub"));
     else if (act === "make-remedial") createRemedialFromSubmission(b.getAttribute("data-sub"));
     else if (act === "toggle-student-email") {
       const aid = b.getAttribute("data-assign"), sid = b.getAttribute("data-student");
@@ -3444,8 +3593,11 @@
     openParentReceipt: openParentReceipt,
     openAssignModalForQuiz: openAssignModalForQuiz,
     generateQrSvg: generateQrSvg,
+    generateQrPngDataUrl: generateQrPngDataUrl,
     buildSubmissionReviewUrl: buildSubmissionReviewUrl,
     buildStudentA4SheetHtml: buildStudentA4SheetHtml,
+    buildSubmissionEmailBreakdown: buildSubmissionEmailBreakdown,
+    dispatchParentReportEmail: dispatchParentReportEmail,
     getStudentParentEmail: getStudentParentEmail,
     sendParentEmailBatch: sendParentEmailBatch,
     sendDeadlineReminders: sendDeadlineReminders,

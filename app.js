@@ -7150,8 +7150,18 @@ function init() {
   initGoogle();
   const stored = loadStoredAuth();
   const curPth = (window.location.pathname || "").toLowerCase();
+  const bootQs = window.location.search || "";
+  const bootHash = window.location.hash || "";
+  const bootParams = typeof URLSearchParams === "function" ? new URLSearchParams(bootQs) : null;
+  const hashAssignMatch = bootHash.match(/(?:^|[#&])assign=([^&]+)/i);
+  const bootAssignCode = (bootParams && bootParams.get("assign")) || (hashAssignMatch ? decodeURIComponent(hashAssignMatch[1]) : "");
+  const bootReceiptId = (bootParams && bootParams.get("receipt")) || "";
+
   if (stored) onAuthenticated(stored);
-  else if (curPth === "/vocab" || curPth === "/vocab.html") {
+  else if (bootAssignCode || bootReceiptId) {
+    // Immediate Incognito / Student Device bypass BEFORE any login wall
+    enterGuestShareMode();
+  } else if (curPth === "/vocab" || curPth === "/vocab.html") {
     enterGuestShareMode();
     navigateTo("/vocab", { replace: true });
   } else {
@@ -7159,32 +7169,31 @@ function init() {
     document.title = "\u0110\u0103ng nh\u1eadp | AI Tutor";
   }
 
-  // Check if opened via Share Link (/quiz?code=..., /quiz/<CODE>, ?quiz=..., ?share=..., or #d=...) — works even in Incognito!
+  // Check if opened via Assignment Link (?assign=... / #assign=...) or Share Link — works even in Incognito!
   setTimeout(function () {
     const qs = window.location.search || "";
     const pth = (window.location.pathname || "").toLowerCase();
     const params = typeof URLSearchParams === "function" ? new URLSearchParams(qs) : null;
-    if (params && window.UETLms) {
-      const assignCode = params.get("assign");
-      const receiptId = params.get("receipt");
-      if (assignCode) {
+    if (window.UETLms && (bootAssignCode || bootReceiptId)) {
+      if (bootAssignCode) {
         if (!state.user) enterGuestShareMode();
-        window.UETLms.openStudentAssignment(assignCode, {
-          attemptId: params.get("attempt") || "",
-          review: params.get("review") === "1" || params.get("review") === "true"
+        const att = (params && params.get("attempt")) || "";
+        window.UETLms.openStudentAssignment(bootAssignCode, {
+          attemptId: att,
+          review: Boolean(att) || (params && (params.get("review") === "1" || params.get("review") === "true"))
         });
         return;
       }
-      if (receiptId) {
+      if (bootReceiptId) {
         if (!state.user) enterGuestShareMode();
-        window.UETLms.openParentReceipt(receiptId);
+        window.UETLms.openParentReceipt(bootReceiptId);
         return;
       }
     }
     if (window.UETCloud && (pth === "/quiz" || pth.indexOf("/quiz/") === 0 || qs.indexOf("quiz=") !== -1 || qs.indexOf("share=") !== -1 || qs.indexOf("code=") !== -1 || window.location.hash.indexOf("d=") !== -1)) {
       window.UETCloud.resolveAndOpenShare("");
     }
-  }, 150);
+  }, 80);
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

@@ -19,6 +19,7 @@ const STATIC_FILES = [
   "lms.js",
   "vocab.js",
   "cloud-share-pdf.js",
+  "vendor/qrcode.min.js",
   "data/manifest.json",
   "data/vocab/default-vocab.json"
 ];
