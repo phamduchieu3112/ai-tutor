@@ -403,6 +403,295 @@ async function sendAdminNotificationEmail(notification) {
   return logEntry;
 }
 
+const REQUIRED_EMAIL_ENV_KEYS = [
+  "RESEND_API_KEY",
+  "EMAIL_FROM",
+  "SMTP_HOST",
+  "SMTP_PORT",
+  "SMTP_USER",
+  "SMTP_PASS"
+];
+
+function parseEmailAddresses(input) {
+  const rawList = Array.isArray(input)
+    ? input
+    : String(input || "").split(/[,;\n]+/);
+  const valid = [];
+  const invalid = [];
+  const seen = new Set();
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  for (let i = 0; i < rawList.length; i++) {
+    const addr = String(rawList[i] || "").replace(/[\r\n<>]/g, "").trim();
+    if (!addr) continue;
+    const lower = addr.toLowerCase();
+    if (!re.test(addr)) {
+      invalid.push(addr);
+      continue;
+    }
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      valid.push(addr);
+    }
+  }
+  return { valid: valid, invalid: invalid };
+}
+
+function getEmailProviderHealth() {
+  const resendKey = String(process.env.RESEND_API_KEY || "").replace(/\s+/g, "").trim();
+  const smtpUser = String(process.env.SMTP_USER || "").replace(/[\r\n<>]/g, "").trim();
+  const smtpPass = String(process.env.SMTP_PASS || "").trim();
+  const webhookUrl = String(process.env.EMAIL_WEBHOOK_URL || "").trim();
+  const fromAddress = String(process.env.EMAIL_FROM || (smtpUser ? ("AI Tutor <" + smtpUser + ">") : "AI Tutor <onboarding@resend.dev>"))
+    .replace(/[\r\n]+/g, "")
+    .trim();
+
+  if (resendKey) {
+    return { configured: true, provider: "resend", fromAddress: fromAddress };
+  }
+  if (smtpUser && smtpPass) {
+    return { configured: true, provider: "smtp", fromAddress: fromAddress };
+  }
+  if (webhookUrl) {
+    return { configured: true, provider: "webhook", fromAddress: fromAddress };
+  }
+  return { configured: false, provider: "none", fromAddress: fromAddress };
+}
+
+function hasConfiguredEmailProvider() {
+  return getEmailProviderHealth().configured;
+}
+
+async function sendTransactionalEmail(opts) {
+  const parsed = parseEmailAddresses(opts && (opts.to || opts.parentEmail || opts.parent_email || opts.email));
+  if (!parsed.valid.length) {
+    return {
+      ok: false,
+      statusCode: 400,
+      code: "INVALID_RECIPIENT_EMAIL",
+      error: parsed.invalid.length
+        ? ("Invalid recipient email address: " + parsed.invalid.join(", "))
+        : "Recipient email address is required."
+    };
+  }
+  if (!hasConfiguredEmailProvider()) {
+    return {
+      ok: false,
+      statusCode: 503,
+      code: "EMAIL_PROVIDER_NOT_CONFIGURED",
+      requiredEnv: REQUIRED_EMAIL_ENV_KEYS,
+      error: "Email delivery provider is not configured on the server. Set RESEND_API_KEY (+ EMAIL_FROM) or SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS in Vercel Environment Variables."
+    };
+  }
+
+  const subject = String((opts && opts.subject) || "[AI Tutor] Notification").replace(/[\r\n]+/g, " ").trim();
+  const html = String((opts && opts.html) || "");
+  const text = String((opts && opts.text) || "");
+  const eventType = String((opts && opts.eventType) || "lms_email");
+  const errors = [];
+
+  // 1. Resend API
+  const resendKey = String(process.env.RESEND_API_KEY || "").replace(/\s+/g, "").trim();
+  if (resendKey && typeof fetch === "function") {
+    try {
+      const fromAddr = String(process.env.EMAIL_FROM || "AI Tutor <onboarding@resend.dev>").replace(/[\r\n]+/g, "").trim();
+      const resp = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + resendKey,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: fromAddr,
+          to: parsed.valid,
+          subject: subject,
+          html: html,
+          text: text
+        })
+      });
+      const bodyTxt = await resp.text().catch(function () { return ""; });
+      if (resp.ok) {
+        let data = {};
+        try { data = JSON.parse(bodyTxt || "{}"); } catch (e) { /* ignore */ }
+        if (data && data.id) {
+          return {
+            ok: true,
+            statusCode: 200,
+            provider: "resend",
+            to: parsed.valid,
+            messageId: String(data.id),
+            timestamp: new Date().toISOString()
+          };
+        }
+        errors.push("Resend returned 200 without message id: " + bodyTxt.slice(0, 200));
+      } else {
+        errors.push("Resend HTTP " + resp.status + ": " + bodyTxt.slice(0, 240));
+      }
+    } catch (err) {
+      errors.push("Resend error: " + ((err && err.message) || "Network failure"));
+    }
+  }
+
+  // 2. Direct SMTP (TLS 465 / STARTTLS 587)
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const sentIds = [];
+      for (let i = 0; i < parsed.valid.length; i++) {
+        await sendSmtpTlsEmail({ to: parsed.valid[i], subject: subject, html: html, text: text });
+        sentIds.push("smtp_" + Date.now() + "_" + i);
+      }
+      return {
+        ok: true,
+        statusCode: 200,
+        provider: "smtp",
+        to: parsed.valid,
+        messageId: sentIds.join(","),
+        timestamp: new Date().toISOString()
+      };
+    } catch (err) {
+      errors.push("SMTP error: " + ((err && err.message) || "SMTP delivery failed"));
+    }
+  }
+
+  // 3. Custom Webhook
+  if (process.env.EMAIL_WEBHOOK_URL && String(process.env.EMAIL_WEBHOOK_URL).trim() && typeof fetch === "function") {
+    try {
+      const resp = await fetch(String(process.env.EMAIL_WEBHOOK_URL).trim(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: parsed.valid,
+          subject: subject,
+          html: html,
+          text: text,
+          eventType: eventType,
+          payload: (opts && opts.payload) || {}
+        })
+      });
+      if (resp.ok) {
+        return {
+          ok: true,
+          statusCode: 200,
+          provider: "webhook",
+          to: parsed.valid,
+          messageId: "webhook_" + Date.now(),
+          timestamp: new Date().toISOString()
+        };
+      }
+      const errTxt = await resp.text().catch(function () { return ""; });
+      errors.push("Webhook HTTP " + resp.status + ": " + errTxt.slice(0, 200));
+    } catch (err) {
+      errors.push("Webhook error: " + ((err && err.message) || "Network failure"));
+    }
+  }
+
+  return {
+    ok: false,
+    statusCode: 502,
+    code: "EMAIL_PROVIDER_ERROR",
+    error: errors.join(" | ") || "Upstream email provider rejected the request."
+  };
+}
+
+function fmtIsoDisplay(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  const p = function (n) { return n < 10 ? "0" + n : String(n); };
+  return p(d.getHours()) + ":" + p(d.getMinutes()) + " " + p(d.getDate()) + "/" + p(d.getMonth() + 1) + "/" + d.getFullYear();
+}
+
+function buildLmsEmailTemplate(item, type, lang) {
+  const l = lang === "en" ? "en" : (lang === "ja" ? "ja" : "vi");
+  const studentName = String(item.studentName || "").trim() || (l === "en" ? "Student" : (l === "ja" ? "生徒" : "Học sinh"));
+  const quizTitle = String(item.quizTitle || "").trim() || (l === "en" ? "Assignment" : (l === "ja" ? "課題" : "Bài tập"));
+  const className = String(item.className || "").trim();
+  const dueStr = fmtIsoDisplay(item.deadline);
+  const assignUrl = String(item.assignmentUrl || "").trim();
+  const receiptUrl = String(item.receiptUrl || "").trim();
+  const teacherNote = String(item.teacherNote || "").trim();
+
+  if (type === "result_report") {
+    const scoreStr = (item.score10 != null && item.score10 !== "") ? (Number(item.score10).toFixed(1) + " / 10") : "—";
+    const feedback = String(item.feedback || "").trim();
+    const subject = l === "en"
+      ? ("[AI Tutor] Assignment Result: " + studentName + " – " + quizTitle)
+      : (l === "ja"
+        ? ("[AI Tutor] 課題結果通知: " + studentName + " – " + quizTitle)
+        : ("[AI Tutor] Báo cáo kết quả học tập: " + studentName + " – " + quizTitle));
+    const ctaUrl = receiptUrl || assignUrl;
+    const ctaLabel = l === "en" ? "View Detailed Report & Confirm" : (l === "ja" ? "詳細レポートを確認" : "Xem báo cáo chi tiết & Xác nhận");
+    const html =
+      '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#0f172a;background:#f8fafc;padding:20px;border-radius:12px">' +
+        '<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:24px">' +
+          '<div style="font-size:12px;font-weight:700;color:#5347cd;text-transform:uppercase;letter-spacing:.05em">AI Tutor · Creator Studio</div>' +
+          '<h2 style="margin:8px 0 14px;font-size:19px;color:#0f172a">' + escHtml(subject) + '</h2>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px">' +
+            '<tr><td style="padding:6px 0;color:#64748b;width:140px">' + (l === "en" ? "Student" : (l === "ja" ? "生徒名" : "Học sinh")) + '</td><td style="padding:6px 0;font-weight:700">' + escHtml(studentName) + '</td></tr>' +
+            (className ? '<tr><td style="padding:6px 0;color:#64748b">' + (l === "en" ? "Class" : (l === "ja" ? "クラス" : "Lớp")) + '</td><td style="padding:6px 0">' + escHtml(className) + '</td></tr>' : '') +
+            '<tr><td style="padding:6px 0;color:#64748b">' + (l === "en" ? "Assignment" : (l === "ja" ? "課題" : "Bài tập")) + '</td><td style="padding:6px 0;font-weight:600">' + escHtml(quizTitle) + '</td></tr>' +
+            '<tr><td style="padding:6px 0;color:#64748b">' + (l === "en" ? "Score" : (l === "ja" ? "スコア" : "Điểm số")) + '</td><td style="padding:6px 0;font-weight:800;color:#059669;font-size:16px">' + escHtml(scoreStr) + '</td></tr>' +
+          '</table>' +
+          (feedback ? '<div style="background:#f1f5f9;border-left:4px solid #5347cd;padding:12px 14px;border-radius:6px;font-size:14px;margin-bottom:16px"><strong>' + (l === "en" ? "Teacher Feedback:" : (l === "ja" ? "講師コメント:" : "Nhận xét:")) + '</strong><br>' + escHtml(feedback) + '</div>' : '') +
+          (ctaUrl ? '<p style="margin:20px 0 6px"><a href="' + escHtml(ctaUrl) + '" style="display:inline-block;background:#5347cd;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:8px;font-weight:700;font-size:14px">' + escHtml(ctaLabel) + '</a></p>' : '') +
+        '</div>' +
+      '</div>';
+    const text = subject + "\n" +
+      "Student: " + studentName + (className ? (" (" + className + ")") : "") + "\n" +
+      "Assignment: " + quizTitle + "\n" +
+      "Score: " + scoreStr + "\n" +
+      (feedback ? ("Feedback: " + feedback + "\n") : "") +
+      (ctaUrl ? ("Link: " + ctaUrl + "\n") : "");
+    return { subject: subject, html: html, text: text };
+  }
+
+  // Default: deadline_reminder
+  const subject = l === "en"
+    ? ("[AI Tutor] Assignment Reminder: " + quizTitle + " (" + studentName + ")")
+    : (l === "ja"
+      ? ("[AI Tutor] 課題提出リマインダー: " + quizTitle + " (" + studentName + ")")
+      : ("[AI Tutor] Nhắc hạn nộp bài: " + quizTitle + " – " + studentName));
+  const greeting = l === "en"
+    ? ("Dear Parent/Guardian of <strong>" + escHtml(studentName) + "</strong>,")
+    : (l === "ja"
+      ? ("<strong>" + escHtml(studentName) + "</strong> 様の保護者様、")
+      : ("Kính gửi Quý phụ huynh học sinh <strong>" + escHtml(studentName) + "</strong>,"));
+  const bodyLine = l === "en"
+    ? "This is a friendly reminder that the following assignment has not been submitted yet:"
+    : (l === "ja"
+      ? "以下の課題がまだ提出されていません。期限までにご提出をお願いいたします。"
+      : "Hệ thống xin nhắc nhở học sinh hiện chưa hoàn thành bài tập sau:");
+  const ctaLabel = l === "en" ? "Open Assignment Now" : (l === "ja" ? "課題を開く" : "Mở bài tập để làm ngay");
+
+  const html =
+    '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#0f172a;background:#f8fafc;padding:20px;border-radius:12px">' +
+      '<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:10px;padding:24px">' +
+        '<div style="font-size:12px;font-weight:700;color:#5347cd;text-transform:uppercase;letter-spacing:.05em">AI Tutor · Creator Studio</div>' +
+        '<h2 style="margin:8px 0 12px;font-size:19px;color:#0f172a">' + escHtml(subject) + '</h2>' +
+        '<p style="font-size:14px;line-height:1.6;margin:0 0 10px">' + greeting + '</p>' +
+        '<p style="font-size:14px;line-height:1.6;margin:0 0 16px;color:#334155">' + escHtml(bodyLine) + '</p>' +
+        '<table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:16px">' +
+          '<tr><td style="padding:6px 0;color:#64748b;width:140px">' + (l === "en" ? "Student" : (l === "ja" ? "生徒名" : "Học sinh")) + '</td><td style="padding:6px 0;font-weight:700">' + escHtml(studentName) + '</td></tr>' +
+          (className ? '<tr><td style="padding:6px 0;color:#64748b">' + (l === "en" ? "Class / Course" : (l === "ja" ? "クラス" : "Lớp / Khóa học")) + '</td><td style="padding:6px 0">' + escHtml(className) + '</td></tr>' : '') +
+          '<tr><td style="padding:6px 0;color:#64748b">' + (l === "en" ? "Assignment" : (l === "ja" ? "課題" : "Bài tập")) + '</td><td style="padding:6px 0;font-weight:700">' + escHtml(quizTitle) + '</td></tr>' +
+          (dueStr ? '<tr><td style="padding:6px 0;color:#64748b">' + (l === "en" ? "Due Date" : (l === "ja" ? "提出期限" : "Hạn nộp")) + '</td><td style="padding:6px 0;font-weight:700;color:#dc2626">' + escHtml(dueStr) + '</td></tr>' : '') +
+          '<tr><td style="padding:6px 0;color:#64748b">' + (l === "en" ? "Status" : (l === "ja" ? "状態" : "Trạng thái")) + '</td><td style="padding:6px 0;color:#d97706;font-weight:700">' + (l === "en" ? "Pending Submission" : (l === "ja" ? "未提出" : "Chưa nộp bài")) + '</td></tr>' +
+        '</table>' +
+        (teacherNote ? '<div style="background:#f1f5f9;border-left:4px solid #5347cd;padding:12px 14px;border-radius:6px;font-size:14px;margin-bottom:16px"><strong>' + (l === "en" ? "Teacher Note:" : (l === "ja" ? "講師メモ:" : "Ghi chú của giáo viên:")) + '</strong><br>' + escHtml(teacherNote) + '</div>' : '') +
+        (assignUrl ? '<p style="margin:18px 0 10px"><a href="' + escHtml(assignUrl) + '" style="display:inline-block;background:#5347cd;color:#ffffff;text-decoration:none;padding:11px 18px;border-radius:8px;font-weight:700;font-size:14px">' + escHtml(ctaLabel) + '</a></p><p style="font-size:12px;color:#64748b;word-break:break-all;margin:0">' + escHtml(assignUrl) + '</p>' : '') +
+      '</div>' +
+    '</div>';
+
+  const text = subject + "\n\n" +
+    bodyLine + "\n" +
+    "- Student: " + studentName + (className ? (" (" + className + ")") : "") + "\n" +
+    "- Assignment: " + quizTitle + "\n" +
+    (dueStr ? ("- Due Date: " + dueStr + "\n") : "") +
+    (teacherNote ? ("- Note: " + teacherNote + "\n") : "") +
+    (assignUrl ? ("- Link: " + assignUrl + "\n") : "");
+
+  return { subject: subject, html: html, text: text };
+}
+
 function appendNotificationLog(db, entry) {
   if (!db || !entry) return;
   if (!Array.isArray(db.notificationLogs)) db.notificationLogs = [];
@@ -1148,6 +1437,109 @@ module.exports = async function apiHandler(req, res) {
         ok: true,
         request: rec,
         emailStatus: emailNotification ? emailNotification.status : "skipped"
+      });
+    }
+
+    /* ---------- LMS Email Health Diagnostic (No Secrets Exposed) ---------- */
+    if (p === "/api/lms/email-health" && method === "GET") {
+      const health = getEmailProviderHealth();
+      return sendJson(res, 200, {
+        ok: true,
+        configured: health.configured,
+        provider: health.provider,
+        fromAddress: health.fromAddress
+      });
+    }
+
+    /* ---------- LMS Parent Reminder & Report Email Dispatch ---------- */
+    if ((p === "/api/lms/send-email" || p === "/api/lms/email") && method === "POST") {
+      const body = await readBody(req);
+      const emailType = String(body.type || "deadline_reminder").trim();
+      const lang = String(body.lang || "vi").trim().toLowerCase();
+      const health = getEmailProviderHealth();
+
+      if (!health.configured) {
+        return sendJson(res, 503, {
+          ok: false,
+          provider: "none",
+          sent: 0,
+          failed: 0,
+          code: "EMAIL_PROVIDER_NOT_CONFIGURED",
+          requiredEnv: REQUIRED_EMAIL_ENV_KEYS,
+          error: "Chưa cấu hình dịch vụ gửi email trên máy chủ (Vercel). Vui lòng thiết lập RESEND_API_KEY + EMAIL_FROM hoặc SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS trong Vercel Environment Variables."
+        });
+      }
+
+      const items = Array.isArray(body.recipients) && body.recipients.length
+        ? body.recipients
+        : [body];
+
+      const results = [];
+      let sentCount = 0;
+      let failedCount = 0;
+      let usedProvider = health.provider;
+
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i] || {};
+        const resolvedTo = it.to || it.parentEmail || it.parent_email || it.email || body.to || body.parentEmail || body.parent_email || "";
+        const merged = Object.assign({
+          quizTitle: body.quizTitle || "",
+          deadline: body.deadline || "",
+          assignmentUrl: body.assignmentUrl || "",
+          teacherNote: body.teacherNote || "",
+          className: body.className || ""
+        }, it, { to: resolvedTo });
+        const tpl = buildLmsEmailTemplate(merged, emailType, lang);
+        const sendRes = await sendTransactionalEmail({
+          to: merged.to,
+          subject: merged.subject || tpl.subject,
+          html: merged.html || tpl.html,
+          text: merged.text || tpl.text,
+          eventType: emailType,
+          payload: { studentId: merged.studentId || "", assignmentId: body.assignmentId || merged.assignmentId || "" }
+        });
+        if (sendRes.ok && sendRes.messageId) {
+          sentCount++;
+          if (sendRes.provider) usedProvider = sendRes.provider;
+          results.push({
+            studentId: merged.studentId || "",
+            studentName: merged.studentName || "",
+            to: sendRes.to.join(", "),
+            status: "sent",
+            provider: sendRes.provider,
+            messageId: sendRes.messageId,
+            timestamp: sendRes.timestamp
+          });
+        } else {
+          failedCount++;
+          results.push({
+            studentId: merged.studentId || "",
+            studentName: merged.studentName || "",
+            to: String(merged.to || ""),
+            status: "failed",
+            code: sendRes.code || "EMAIL_PROVIDER_ERROR",
+            error: sendRes.error || "Delivery failed",
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      const allFailed = sentCount === 0 && failedCount > 0;
+      const firstErr = results.find(function (r) { return r.status === "failed"; });
+      const statusCode = allFailed
+        ? (firstErr && firstErr.code === "INVALID_RECIPIENT_EMAIL" ? 400 : 502)
+        : 200;
+
+      return sendJson(res, statusCode, {
+        ok: !allFailed,
+        provider: usedProvider,
+        sent: sentCount,
+        failed: failedCount,
+        sentCount: sentCount,
+        failedCount: failedCount,
+        code: allFailed ? ((firstErr && firstErr.code) || "EMAIL_DELIVERY_FAILED") : "OK",
+        results: results,
+        error: allFailed && firstErr ? firstErr.error : undefined
       });
     }
 

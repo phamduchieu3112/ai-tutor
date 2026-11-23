@@ -172,6 +172,295 @@
   function buildReceiptUrl(subId) {
     return (window.location.origin || "") + "/creator-studio?receipt=" + encodeURIComponent(subId);
   }
+  function buildSubmissionReviewUrl(code, subId) {
+    let url = (window.location.origin || "") + "/creator-studio?assign=" + encodeURIComponent(code || "");
+    if (subId) url += "&attempt=" + encodeURIComponent(subId);
+    url += "&review=1";
+    return url;
+  }
+
+  /* ======================== LOCAL ZERO-DEPENDENCY SVG QR GENERATOR (ISO/IEC 18004, EC-L, V1-V10) ======================== */
+  const QR_EC_L_SPECS = [
+    null,
+    { ver: 1,  size: 21, dataBytes: 19,  ecPerBlock: 7,  blocks: [1],       align: [] },
+    { ver: 2,  size: 25, dataBytes: 34,  ecPerBlock: 10, blocks: [1],       align: [6, 18] },
+    { ver: 3,  size: 29, dataBytes: 55,  ecPerBlock: 15, blocks: [1],       align: [6, 22] },
+    { ver: 4,  size: 33, dataBytes: 80,  ecPerBlock: 20, blocks: [1],       align: [6, 26] },
+    { ver: 5,  size: 37, dataBytes: 108, ecPerBlock: 26, blocks: [1],       align: [6, 30] },
+    { ver: 6,  size: 41, dataBytes: 136, ecPerBlock: 18, blocks: [2],       align: [6, 34] },
+    { ver: 7,  size: 45, dataBytes: 156, ecPerBlock: 20, blocks: [2],       align: [6, 22, 38] },
+    { ver: 8,  size: 49, dataBytes: 194, ecPerBlock: 24, blocks: [2],       align: [6, 24, 42] },
+    { ver: 9,  size: 53, dataBytes: 232, ecPerBlock: 30, blocks: [2],       align: [6, 26, 46] },
+    { ver: 10, size: 57, dataBytes: 274, ecPerBlock: 18, blocks: [2, 2],    align: [6, 28, 50], g1Data: 68, g2Data: 69 }
+  ];
+
+  const QR_GF_EXP = new Uint8Array(512);
+  const QR_GF_LOG = new Uint8Array(256);
+  (function initQrGf() {
+    let x = 1;
+    for (let i = 0; i < 255; i++) {
+      QR_GF_EXP[i] = x;
+      QR_GF_LOG[x] = i;
+      x <<= 1;
+      if (x & 0x100) x ^= 0x11d;
+    }
+    for (let i = 255; i < 512; i++) QR_GF_EXP[i] = QR_GF_EXP[i - 255];
+  })();
+
+  function qrGfMul(a, b) {
+    if (a === 0 || b === 0) return 0;
+    return QR_GF_EXP[QR_GF_LOG[a] + QR_GF_LOG[b]];
+  }
+
+  function qrRsPoly(deg) {
+    let poly = [1];
+    for (let i = 0; i < deg; i++) {
+      const next = new Array(poly.length + 1).fill(0);
+      const factor = QR_GF_EXP[i];
+      for (let j = 0; j < poly.length; j++) {
+        next[j] ^= poly[j];
+        next[j + 1] ^= qrGfMul(poly[j], factor);
+      }
+      poly = next;
+    }
+    return poly;
+  }
+
+  function qrRsRemainder(data, ecLen) {
+    const gen = qrRsPoly(ecLen);
+    const rem = new Uint8Array(ecLen);
+    for (let i = 0; i < data.length; i++) {
+      const factor = data[i] ^ rem[0];
+      for (let j = 0; j < ecLen - 1; j++) rem[j] = rem[j + 1];
+      rem[ecLen - 1] = 0;
+      if (factor !== 0) {
+        for (let j = 0; j < ecLen; j++) rem[j] ^= qrGfMul(gen[j + 1], factor);
+      }
+    }
+    return rem;
+  }
+
+  function qrUtf8Bytes(str) {
+    if (typeof TextEncoder !== "undefined") {
+      return Array.from(new TextEncoder().encode(String(str || "")));
+    }
+    const out = [];
+    const s = unescape(encodeURIComponent(String(str || "")));
+    for (let i = 0; i < s.length; i++) out.push(s.charCodeAt(i));
+    return out;
+  }
+
+  function encodeQrMatrix(text) {
+    const bytes = qrUtf8Bytes(text);
+    let spec = null;
+    for (let v = 1; v < QR_EC_L_SPECS.length; v++) {
+      const sp = QR_EC_L_SPECS[v];
+      const countBits = v <= 9 ? 8 : 16;
+      const capBits = sp.dataBytes * 8;
+      if (4 + countBits + bytes.length * 8 <= capBits) {
+        spec = sp;
+        break;
+      }
+    }
+    if (!spec) {
+      // Truncate safely to max v10 capacity if URL is unusually long
+      spec = QR_EC_L_SPECS[10];
+      bytes.length = Math.min(bytes.length, spec.dataBytes - 3);
+    }
+
+    // 1. Build data bit stream (Byte mode: 0100)
+    const bits = [];
+    const pushBits = function (val, len) {
+      for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1);
+    };
+    pushBits(0x4, 4);
+    pushBits(bytes.length, spec.ver <= 9 ? 8 : 16);
+    for (let i = 0; i < bytes.length; i++) pushBits(bytes[i], 8);
+    const totalBits = spec.dataBytes * 8;
+    const termLen = Math.min(4, totalBits - bits.length);
+    pushBits(0, termLen);
+    while (bits.length % 8 !== 0) bits.push(0);
+    let padIdx = 0;
+    while (bits.length < totalBits) {
+      pushBits(padIdx % 2 === 0 ? 0xec : 0x11, 8);
+      padIdx++;
+    }
+    const dataCw = [];
+    for (let i = 0; i < bits.length; i += 8) {
+      let b = 0;
+      for (let j = 0; j < 8; j++) b = (b << 1) | bits[i + j];
+      dataCw.push(b);
+    }
+
+    // 2. Split into RS blocks & interleave
+    const dataBlocks = [];
+    const ecBlocks = [];
+    let offset = 0;
+    if (spec.blocks.length === 1) {
+      const nBlk = spec.blocks[0];
+      const blkLen = Math.floor(spec.dataBytes / nBlk);
+      for (let b = 0; b < nBlk; b++) {
+        const chunk = dataCw.slice(offset, offset + blkLen);
+        offset += blkLen;
+        dataBlocks.push(chunk);
+        ecBlocks.push(qrRsRemainder(chunk, spec.ecPerBlock));
+      }
+    } else {
+      for (let b = 0; b < spec.blocks[0]; b++) {
+        const chunk = dataCw.slice(offset, offset + spec.g1Data);
+        offset += spec.g1Data;
+        dataBlocks.push(chunk);
+        ecBlocks.push(qrRsRemainder(chunk, spec.ecPerBlock));
+      }
+      for (let b = 0; b < spec.blocks[1]; b++) {
+        const chunk = dataCw.slice(offset, offset + spec.g2Data);
+        offset += spec.g2Data;
+        dataBlocks.push(chunk);
+        ecBlocks.push(qrRsRemainder(chunk, spec.ecPerBlock));
+      }
+    }
+
+    const codewords = [];
+    const maxDataLen = Math.max.apply(null, dataBlocks.map(function (b) { return b.length; }));
+    for (let i = 0; i < maxDataLen; i++) {
+      for (let b = 0; b < dataBlocks.length; b++) {
+        if (i < dataBlocks[b].length) codewords.push(dataBlocks[b][i]);
+      }
+    }
+    for (let i = 0; i < spec.ecPerBlock; i++) {
+      for (let b = 0; b < ecBlocks.length; b++) codewords.push(ecBlocks[b][i]);
+    }
+
+    // 3. Matrix & Function patterns
+    const N = spec.size;
+    const mat = Array.from({ length: N }, function () { return new Uint8Array(N); });
+    const isFunc = Array.from({ length: N }, function () { return new Uint8Array(N); });
+    const setFunc = function (r, c, dark) {
+      if (r < 0 || c < 0 || r >= N || c >= N) return;
+      mat[r][c] = dark ? 1 : 0;
+      isFunc[r][c] = 1;
+    };
+
+    const drawFinder = function (r0, c0) {
+      for (let dr = -1; dr <= 7; dr++) {
+        for (let dc = -1; dc <= 7; dc++) {
+          const r = r0 + dr, c = c0 + dc;
+          if (r < 0 || c < 0 || r >= N || c >= N) continue;
+          const dark = (dr >= 0 && dr <= 6 && dc >= 0 && dc <= 6) &&
+            (dr === 0 || dr === 6 || dc === 0 || dc === 6 || (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4));
+          setFunc(r, c, dark);
+        }
+      }
+    };
+    drawFinder(0, 0);
+    drawFinder(0, N - 7);
+    drawFinder(N - 7, 0);
+
+    // Timing patterns
+    for (let i = 8; i < N - 8; i++) {
+      setFunc(6, i, i % 2 === 0);
+      setFunc(i, 6, i % 2 === 0);
+    }
+
+    // Alignment patterns
+    const al = spec.align;
+    for (let i = 0; i < al.length; i++) {
+      for (let j = 0; j < al.length; j++) {
+        if ((i === 0 && j === 0) || (i === 0 && j === al.length - 1) || (i === al.length - 1 && j === 0)) continue;
+        const cr = al[i], cc = al[j];
+        for (let dr = -2; dr <= 2; dr++) {
+          for (let dc = -2; dc <= 2; dc++) {
+            const dark = Math.max(Math.abs(dr), Math.abs(dc)) !== 1;
+            setFunc(cr + dr, cc + dc, dark);
+          }
+        }
+      }
+    }
+
+    // Reserve format info + dark module
+    for (let i = 0; i <= 8; i++) {
+      if (!isFunc[8][i]) setFunc(8, i, false);
+      if (!isFunc[i][8]) setFunc(i, 8, false);
+    }
+    for (let i = N - 8; i < N; i++) {
+      if (!isFunc[8][i]) setFunc(8, i, false);
+      if (!isFunc[i][8]) setFunc(i, 8, false);
+    }
+    setFunc(N - 8, 8, true);
+
+    // Version info for v >= 7
+    if (spec.ver >= 7) {
+      let rem = spec.ver;
+      for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1f25);
+      const vBits = (spec.ver << 12) | rem;
+      for (let i = 0; i < 18; i++) {
+        const bit = ((vBits >>> i) & 1) === 1;
+        const a = N - 11 + (i % 3);
+        const b = Math.floor(i / 3);
+        setFunc(a, b, bit);
+        setFunc(b, a, bit);
+      }
+    }
+
+    // 4. Place data bits in zigzag
+    const allBits = [];
+    for (let i = 0; i < codewords.length; i++) {
+      for (let b = 7; b >= 0; b--) allBits.push((codewords[i] >>> b) & 1);
+    }
+    let bitIdx = 0;
+    for (let right = N - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      const upward = ((right + 1) & 2) === 0;
+      for (let v = 0; v < N; v++) {
+        const r = upward ? (N - 1 - v) : v;
+        for (let j = 0; j < 2; j++) {
+          const c = right - j;
+          if (!isFunc[r][c]) {
+            mat[r][c] = bitIdx < allBits.length ? allBits[bitIdx++] : 0;
+          }
+        }
+      }
+    }
+
+    // 5. Apply Mask 0 ((r + c) % 2 === 0) and write EC-L Format Info (EC-L = 01, Mask 0 = 000 -> 01000)
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        if (!isFunc[r][c] && ((r + c) % 2 === 0)) mat[r][c] ^= 1;
+      }
+    }
+    const fmtData = (1 << 3) | 0; // EC-L (01) + Mask 0 (000)
+    let fmtRem = fmtData;
+    for (let i = 0; i < 10; i++) fmtRem = (fmtRem << 1) ^ ((fmtRem >>> 9) * 0x537);
+    const fmtBits = ((fmtData << 10) | fmtRem) ^ 0x5412;
+    for (let i = 0; i <= 5; i++) setFunc(8, i, ((fmtBits >>> i) & 1) === 1);
+    setFunc(8, 7, ((fmtBits >>> 6) & 1) === 1);
+    setFunc(8, 8, ((fmtBits >>> 7) & 1) === 1);
+    setFunc(7, 8, ((fmtBits >>> 8) & 1) === 1);
+    for (let i = 9; i < 15; i++) setFunc(14 - i, 8, ((fmtBits >>> i) & 1) === 1);
+    for (let i = 0; i < 8; i++) setFunc(N - 1 - i, 8, ((fmtBits >>> i) & 1) === 1);
+    for (let i = 8; i < 15; i++) setFunc(8, N - 15 + i, ((fmtBits >>> i) & 1) === 1);
+    setFunc(N - 8, 8, true);
+
+    return mat;
+  }
+
+  function generateQrSvg(text, sizePx) {
+    const px = Number(sizePx) || 104;
+    const mat = encodeQrMatrix(text);
+    const N = mat.length;
+    const quiet = 3;
+    const dim = N + quiet * 2;
+    const paths = [];
+    for (let r = 0; r < N; r++) {
+      for (let c = 0; c < N; c++) {
+        if (mat[r][c]) paths.push("M" + (c + quiet) + "," + (r + quiet) + "h1v1h-1z");
+      }
+    }
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + dim + ' ' + dim + '" width="' + px + '" height="' + px + '" shape-rendering="crispEdges" role="img" aria-label="QR Code">' +
+      '<rect width="' + dim + '" height="' + dim + '" fill="#ffffff"/>' +
+      '<path d="' + paths.join("") + '" fill="#000000"/>' +
+    '</svg>';
+  }
 
   /* ======================== LMS UI STATE ======================== */
   const lmsState = {
@@ -561,13 +850,20 @@
             rows.map(function (r) {
               const eff = r.eff;
               const wrongCnt = eff ? (eff.records || []).filter(function (x) { return !x.ok; }).length : 0;
+              const remState = assign.reminderDelivery && assign.reminderDelivery[r.student.id];
               let emailCell = '<span class="muted">Chưa gửi</span>';
               if (!assign.parentEmailEnabled || r.overrideOff) {
                 emailCell = '<span class="muted">Đang tắt</span>';
-              } else if (!r.student.parentEmail) {
+              } else if (!getStudentParentEmail(r.student)) {
                 emailCell = '<span class="lms-badge-warn">Thiếu email</span>';
+              } else if (eff && eff.parentEmailStatus === "failed") {
+                emailCell = '<span class="lms-badge-closed" title="' + esc(eff.parentEmailError || "Gửi email thất bại") + '">Lỗi gửi</span>';
               } else if (eff && eff.parentEmailSentAt) {
-                emailCell = '<span class="lms-badge-ok">Đã gửi</span>';
+                emailCell = '<span class="lms-badge-ok" title="' + esc(fmtDeadlineParts(eff.parentEmailSentAt).full) + '">Đã gửi KQ</span>';
+              } else if (remState && remState.status === "sent") {
+                emailCell = '<span class="lms-badge-ok" title="' + esc(fmtDeadlineParts(remState.timestamp).full + (remState.messageId ? (" · ID: " + remState.messageId) : "")) + '">Đã nhắc</span>';
+              } else if (remState && remState.status === "failed") {
+                emailCell = '<span class="lms-badge-closed" title="' + esc(remState.error || "Gửi nhắc nhở thất bại") + '">Lỗi nhắc</span>';
               }
               let readCell = '<span class="muted">—</span>';
               if (eff) {
@@ -584,6 +880,7 @@
                 '<td>' + (eff ? (eff.tabSwitches > 0 ? '<span class="lms-badge-warn">' + eff.tabSwitches + '</span>' : '<span class="muted">0</span>') : '<span class="muted">—</span>') + '</td>' +
                 '<td>' + emailCell +
                   ' <button type="button" class="lms-mini-toggle" data-lms="toggle-student-email" data-assign="' + esc(assign.id) + '" data-student="' + esc(r.student.id) + '" title="Bật/tắt gửi email cho học sinh này">' + (r.overrideOff ? "Bật" : "Tắt") + '</button>' +
+                  ' <button type="button" class="lms-mini-toggle" data-lms="send-student-email" data-assign="' + esc(assign.id) + '" data-student="' + esc(r.student.id) + '" title="' + esc(eff ? tr("Gửi email báo cáo kết quả cho phụ huynh") : tr("Gửi email nhắc hạn nộp cho phụ huynh")) + '">✉️ ' + esc(tr("Gửi")) + '</button>' +
                 '</td>' +
                 '<td>' + readCell + '</td>' +
                 '<td style="text-align:right;white-space:nowrap">' +
@@ -1040,40 +1337,405 @@
   }
 
   /* ======================== PARENT EMAIL & REMINDER SERVICE ======================== */
+  function buildReminderPlainText(assign, pendingList) {
+    const dl = fmtDeadlineParts(assign.deadline);
+    const link = buildAssignmentUrl(assign.code);
+    const names = pendingList.map(function (st) { return st.fullName + (st.className ? (" (" + st.className + ")") : ""); }).join(", ");
+    return "[AI Tutor] " + tr("Nhắc hạn nộp bài") + ": " + assign.title + "\n" +
+      tr("Học sinh chưa nộp") + ": " + names + "\n" +
+      tr("Hạn nộp") + ": " + dl.full + "\n" +
+      (assign.teacherNote ? (tr("Ghi chú của giáo viên") + ": " + assign.teacherNote + "\n") : "") +
+      tr("Liên kết làm bài") + ": " + link;
+  }
+
+  function openEmailDeliveryFallbackModal(opts) {
+    const host = U().$("extraModals");
+    if (!host) return;
+    const assign = opts.assign;
+    const pendingWithEmail = opts.pendingWithEmail || [];
+    const results = opts.results || [];
+    const isNotConfigured = opts.code === "EMAIL_PROVIDER_NOT_CONFIGURED";
+    const requiredEnv = Array.isArray(opts.requiredEnv) && opts.requiredEnv.length
+      ? opts.requiredEnv
+      : ["RESEND_API_KEY", "EMAIL_FROM", "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS"];
+    const errMsg = opts.error || tr("Không thể gửi email từ máy chủ.");
+    const plainMsg = buildReminderPlainText(assign, pendingWithEmail);
+    const toEmails = pendingWithEmail.map(function (st) { return st.parentEmail; }).filter(Boolean).join(",");
+    const mailtoSubject = "[AI Tutor] " + tr("Nhắc hạn nộp bài") + ": " + assign.title;
+    const mailtoHref = "mailto:" + encodeURIComponent(toEmails) + "?subject=" + encodeURIComponent(mailtoSubject) + "&body=" + encodeURIComponent(plainMsg);
+
+    const rowsHtml = results.length
+      ? '<div class="lms-table-wrap" style="max-height:180px;overflow:auto;margin:10px 0"><table class="lms-table"><thead><tr><th>' + esc(tr("Học sinh")) + '</th><th>Email</th><th>' + esc(tr("Trạng thái")) + '</th></tr></thead><tbody>' +
+          results.map(function (r) {
+            return '<tr><td>' + esc(r.studentName || "") + '</td><td><code>' + esc(r.to || "") + '</code></td><td>' +
+              (r.status === "sent"
+                ? '<span class="lms-badge-ok">' + esc(tr("Đã gửi")) + '</span>'
+                : '<span class="lms-badge-closed" title="' + esc(r.error || "") + '">' + esc(tr("Thất bại")) + ': ' + esc((r.error || "").slice(0, 80)) + '</span>') +
+            '</td></tr>';
+          }).join("") +
+        '</tbody></table></div>'
+      : '';
+
+    host.innerHTML =
+      '<div class="modal-overlay" id="lmsEmailFallbackModal" role="dialog" aria-modal="true"><div class="modal" style="max-width:600px">' +
+        '<h3 style="margin-top:0">' + esc(isNotConfigured ? tr("Chưa cấu hình dịch vụ gửi Email trên máy chủ") : tr("Gửi email nhắc nộp bài chưa thành công")) + '</h3>' +
+        '<div style="background:rgba(239,68,68,.09);border:1px solid rgba(239,68,68,.35);color:#b91c1c;padding:10px 12px;border-radius:10px;font-size:.84rem;line-height:1.5;margin-bottom:12px">' +
+          '<strong>' + esc(tr("Chi tiết lỗi")) + ':</strong> ' + esc(errMsg) +
+        '</div>' +
+        (isNotConfigured
+          ? '<div style="background:var(--bg2);border:1px solid var(--border);padding:10px 12px;border-radius:10px;font-size:.82rem;margin-bottom:12px">' +
+              '<div style="font-weight:700;margin-bottom:4px">' + esc(tr("Biến môi trường cần cấu hình trên Vercel")) + ':</div>' +
+              '<code>' + esc(requiredEnv.join(", ")) + '</code>' +
+              '<div class="muted" style="margin-top:4px">' + esc(tr("Cấu hình Resend (RESEND_API_KEY + EMAIL_FROM) hoặc Gmail/SMTP (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS) rồi Redeploy.")) + '</div>' +
+            '</div>'
+          : '') +
+        rowsHtml +
+        '<label class="field" style="margin-bottom:12px">' + esc(tr("Nội dung nhắc nhở (dự phòng gửi thủ công)")) +
+          '<textarea id="lmsReminderFallbackText" rows="5" readonly style="font-size:.82rem">' + esc(plainMsg) + '</textarea>' +
+        '</label>' +
+        '<div class="modal-actions" style="flex-wrap:wrap;gap:8px">' +
+          '<button type="button" class="btn btn-outline btn-sm" id="lmsRemCopyBtn">📋 ' + esc(tr("Sao chép nội dung nhắc nhở")) + '</button>' +
+          '<a class="btn btn-primary btn-sm" id="lmsRemMailtoBtn" href="' + esc(mailtoHref) + '" style="text-decoration:none">✉️ ' + esc(tr("Mở ứng dụng Email (mailto:)")) + '</a>' +
+          '<button type="button" class="btn btn-outline btn-sm" id="lmsRemCloseBtn">' + esc(tr("Đóng")) + '</button>' +
+        '</div>' +
+      '</div></div>';
+
+    if (typeof U().applyI18n === "function") U().applyI18n(host);
+    U().on("lmsRemCopyBtn", "click", function () {
+      U().copyText(plainMsg, tr("nội dung nhắc nộp bài"));
+    });
+    U().on("lmsRemCloseBtn", "click", function () { host.innerHTML = ""; });
+  }
+
+  function getStudentParentEmail(student) {
+    if (!student || typeof student !== "object") return "";
+    const raw = student.parentEmail || student.parent_email || student.email || "";
+    return String(raw).trim();
+  }
+
+  function isValidEmailList(raw) {
+    const parts = String(raw || "").split(/[,;\n]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!parts.length) return false;
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    return parts.every(function (addr) { return re.test(addr); });
+  }
+
+  function openMissingParentEmailModal(opts) {
+    const host = U().$("extraModals");
+    const assign = opts.assign;
+    const missingStudents = opts.missingStudents || [];
+    const readyStudents = opts.readyStudents || [];
+    const onConfirm = opts.onConfirm;
+
+    if (!host) {
+      if (readyStudents.length && typeof onConfirm === "function") onConfirm(readyStudents);
+      return;
+    }
+
+    host.innerHTML =
+      '<div class="modal-overlay" id="lmsMissingEmailModal" role="dialog" aria-modal="true"><div class="modal" style="max-width:560px">' +
+        '<h3 style="margin-top:0">' + esc(tr("Nhập Email phụ huynh trước khi gửi")) + '</h3>' +
+        '<p class="muted" style="font-size:.84rem;margin-top:0">' +
+          esc(tr("Các học sinh sau chưa có địa chỉ email phụ huynh hợp lệ. Hãy nhập email bên dưới để gửi ngay (có thể phân tách nhiều email bằng dấu phẩy):")) +
+        '</p>' +
+        '<div style="max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:10px;margin:12px 0">' +
+          missingStudents.map(function (st, idx) {
+            return '<label class="field" style="margin:0">' +
+              '<span><strong>' + esc(st.fullName) + '</strong>' + (st.className ? (' <span class="muted">(' + esc(st.className) + ')</span>') : '') + '</span>' +
+              '<input type="email" id="lmsMissEm_' + idx + '" data-st-id="' + esc(st.id) + '" value="' + esc(getStudentParentEmail(st)) + '" placeholder="phuhuynh@email.com" maxlength="160">' +
+            '</label>';
+          }).join("") +
+        '</div>' +
+        '<label style="display:flex;align-items:center;gap:8px;font-size:.84rem;margin-bottom:14px;cursor:pointer">' +
+          '<input type="checkbox" id="lmsMissEmSave" checked>' +
+          '<span>' + esc(tr("Lưu email này vào hồ sơ học sinh cho các lần gửi sau")) + '</span>' +
+        '</label>' +
+        '<div class="modal-actions">' +
+          '<button type="button" class="btn btn-outline btn-sm" id="lmsMissEmCancel">' + esc(tr("Hủy")) + '</button>' +
+          (readyStudents.length
+            ? '<button type="button" class="btn btn-outline btn-sm" id="lmsMissEmSkip">' + esc(tr("Bỏ qua & chỉ gửi ")) + readyStudents.length + ' HS</button>'
+            : '') +
+          '<button type="button" class="btn btn-primary btn-sm" id="lmsMissEmSend">✉️ ' + esc(tr("Xác nhận & Gửi email")) + '</button>' +
+        '</div>' +
+      '</div></div>';
+
+    if (typeof U().applyI18n === "function") U().applyI18n(host);
+    U().on("lmsMissEmCancel", "click", function () { host.innerHTML = ""; });
+    if (readyStudents.length) {
+      U().on("lmsMissEmSkip", "click", function () {
+        host.innerHTML = "";
+        if (typeof onConfirm === "function") onConfirm(readyStudents);
+      });
+    }
+    U().on("lmsMissEmSend", "click", function () {
+      const saveBack = !!(U().$("lmsMissEmSave") && U().$("lmsMissEmSave").checked);
+      const updatedStudents = [];
+      const allStudents = loadStudents();
+      let changedRoster = false;
+
+      for (let i = 0; i < missingStudents.length; i++) {
+        const inp = U().$("lmsMissEm_" + i);
+        const val = inp ? inp.value.trim() : "";
+        if (!val) continue;
+        if (!isValidEmailList(val)) {
+          U().showToast(tr("Địa chỉ email không hợp lệ cho học sinh ") + missingStudents[i].fullName + ": " + val, "warning");
+          if (inp) inp.focus();
+          return;
+        }
+        const clone = Object.assign({}, missingStudents[i], { parentEmail: val });
+        updatedStudents.push(clone);
+        if (saveBack) {
+          const idx = allStudents.findIndex(function (x) { return x.id === clone.id; });
+          if (idx !== -1) {
+            allStudents[idx].parentEmail = val;
+            changedRoster = true;
+          }
+        }
+      }
+
+      if (changedRoster) saveStudents(allStudents);
+      const finalList = readyStudents.concat(updatedStudents);
+      if (!finalList.length) {
+        U().showToast(tr("Vui lòng nhập ít nhất 1 địa chỉ email phụ huynh hợp lệ."), "warning");
+        return;
+      }
+      host.innerHTML = "";
+      if (typeof onConfirm === "function") onConfirm(finalList);
+    });
+  }
+
+  /* ======================== UNIFIED PARENT EMAIL DISPATCHER ======================== */
+  async function sendParentEmailBatch(opts) {
+    const assign = opts.assign;
+    const emailType = opts.type || "deadline_reminder";
+    const recipients = Array.isArray(opts.recipients) ? opts.recipients : [];
+    const silent = !!opts.silent;
+    const subIdMap = opts.subIdMap || {};
+
+    if (!assign || !recipients.length) {
+      return { ok: false, sent: 0, failed: 0, results: [], error: "No recipients" };
+    }
+
+    const lang = U().getLang ? U().getLang() : "vi";
+    const assignmentUrl = buildAssignmentUrl(assign.code);
+    const reqBody = {
+      type: emailType,
+      assignmentId: assign.id,
+      quizTitle: assign.title,
+      deadline: assign.deadline || "",
+      assignmentUrl: assignmentUrl,
+      teacherNote: assign.teacherNote || "",
+      lang: lang,
+      recipients: recipients.map(function (r) {
+        return {
+          studentId: r.studentId || "",
+          studentName: r.studentName || "",
+          className: r.className || "",
+          to: String(r.to || "").trim(),
+          score10: r.score10,
+          durationSec: r.durationSec,
+          feedback: r.feedback,
+          receiptUrl: r.receiptUrl
+        };
+      })
+    };
+
+    if (!silent) {
+      const targetPreview = recipients.length === 1
+        ? recipients[0].to
+        : (recipients.length + " " + tr("phụ huynh"));
+      U().showToast(tr("Đang gửi email tới ") + targetPreview + "...", "info");
+    }
+
+    const persistDeliveryLogs = function (resultsList, fallbackCode, fallbackErr) {
+      const nowIso = new Date().toISOString();
+      const logs = loadEmailLogs();
+      const assignments = loadAssignments();
+      const targetAssign = assignments.find(function (a) { return a.id === assign.id; });
+      if (targetAssign && (!targetAssign.reminderDelivery || typeof targetAssign.reminderDelivery !== "object")) {
+        targetAssign.reminderDelivery = {};
+      }
+      const subs = loadSubmissions();
+      let subsChanged = false;
+
+      const list = resultsList.length
+        ? resultsList
+        : recipients.map(function (r) {
+            return {
+              studentId: r.studentId,
+              studentName: r.studentName,
+              to: r.to,
+              status: "failed",
+              code: fallbackCode || "EMAIL_DELIVERY_FAILED",
+              error: fallbackErr || "Delivery failed",
+              timestamp: nowIso
+            };
+          });
+
+      list.forEach(function (r) {
+        const ts = r.timestamp || nowIso;
+        const verifiedSent = r.status === "sent" && Boolean(r.messageId);
+        logs.push({
+          id: "em_" + Date.now() + "_" + (r.studentId || Math.random().toString(36).slice(2, 6)),
+          type: emailType,
+          assignmentId: assign.id,
+          studentId: r.studentId || "",
+          to: r.to || "",
+          studentName: r.studentName || "",
+          quizTitle: assign.title,
+          deadline: assign.deadline || "",
+          status: verifiedSent ? "sent" : "failed",
+          provider: r.provider || "",
+          messageId: r.messageId || "",
+          error: verifiedSent ? "" : (r.error || fallbackErr || "Missing messageId"),
+          sentAt: ts
+        });
+
+        if (emailType === "result_report" && r.studentId && subIdMap[r.studentId]) {
+          const targetSub = subs.find(function (x) { return x.id === subIdMap[r.studentId]; });
+          if (targetSub) {
+            targetSub.parentEmailStatus = verifiedSent ? "sent" : "failed";
+            targetSub.parentEmailSentAt = verifiedSent ? ts : "";
+            targetSub.parentEmailMessageId = verifiedSent ? (r.messageId || "") : "";
+            targetSub.parentEmailError = verifiedSent ? "" : (r.error || fallbackErr || "Email delivery failed");
+            subsChanged = true;
+          }
+        } else if (targetAssign && r.studentId) {
+          targetAssign.reminderDelivery[r.studentId] = {
+            status: verifiedSent ? "sent" : "failed",
+            timestamp: ts,
+            provider: r.provider || "",
+            messageId: r.messageId || "",
+            error: verifiedSent ? "" : (r.error || fallbackErr || "Email delivery failed")
+          };
+        }
+      });
+
+      saveEmailLogs(logs);
+      if (targetAssign) saveAssignments(assignments);
+      if (subsChanged) saveSubmissions(subs);
+      if (!silent) refreshStudio();
+    };
+
+    try {
+      const resp = await fetch("/api/lms/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reqBody)
+      });
+      const data = await resp.json().catch(function () { return {}; });
+      const rawResults = Array.isArray(data.results) ? data.results : [];
+
+      if (resp.status === 503 || data.code === "EMAIL_PROVIDER_NOT_CONFIGURED") {
+        persistDeliveryLogs([], "EMAIL_PROVIDER_NOT_CONFIGURED", data.error || "Email provider not configured");
+        if (!silent) {
+          U().showToast(tr("Chưa cấu hình dịch vụ gửi email trên máy chủ (503). Đã mở tùy chọn gửi dự phòng."), "error");
+          openEmailDeliveryFallbackModal({
+            assign: assign,
+            pendingWithEmail: recipients.map(function (r) { return { fullName: r.studentName, className: r.className, parentEmail: r.to }; }),
+            results: [],
+            code: "EMAIL_PROVIDER_NOT_CONFIGURED",
+            requiredEnv: data.requiredEnv,
+            error: data.error
+          });
+        }
+        return { ok: false, status: 503, code: "EMAIL_PROVIDER_NOT_CONFIGURED", sent: 0, failed: recipients.length, results: [], error: data.error };
+      }
+
+      const verifiedResults = rawResults.map(function (r) {
+        if (r.status === "sent" && !r.messageId) {
+          return Object.assign({}, r, { status: "failed", error: "Server returned sent without messageId" });
+        }
+        return r;
+      });
+      const sentItems = verifiedResults.filter(function (r) { return r.status === "sent" && Boolean(r.messageId); });
+      const failedItems = verifiedResults.filter(function (r) { return !(r.status === "sent" && Boolean(r.messageId)); });
+
+      persistDeliveryLogs(verifiedResults, data.code || ("HTTP_" + resp.status), data.error || ("HTTP " + resp.status));
+
+      if (resp.ok && data.ok && sentItems.length > 0 && failedItems.length === 0) {
+        const sentEmails = sentItems.map(function (r) { return r.to; }).join(", ");
+        if (!silent) {
+          U().showToast("✅ " + tr("Đã gửi email tới ") + sentEmails, "success");
+        }
+        return { ok: true, provider: data.provider || "", sent: sentItems.length, failed: 0, results: verifiedResults };
+      }
+
+      if (sentItems.length > 0 && failedItems.length > 0) {
+        if (!silent) {
+          U().showToast(
+            tr("Đã gửi ") + sentItems.length + " email, " + tr("thất bại ") + failedItems.length + " email. Xem chi tiết lỗi.",
+            "warning"
+          );
+          openEmailDeliveryFallbackModal({
+            assign: assign,
+            pendingWithEmail: recipients.map(function (r) { return { fullName: r.studentName, className: r.className, parentEmail: r.to }; }),
+            results: verifiedResults,
+            code: "PARTIAL_DELIVERY",
+            error: tr("Một số email không thể gửi tới phụ huynh.")
+          });
+        }
+        return { ok: false, provider: data.provider || "", sent: sentItems.length, failed: failedItems.length, results: verifiedResults };
+      }
+
+      const errMsg = data.error || (failedItems[0] && failedItems[0].error) || ("HTTP " + resp.status);
+      if (!silent) {
+        U().showToast(tr("Gửi email thất bại: ") + errMsg, "error");
+        openEmailDeliveryFallbackModal({
+          assign: assign,
+          pendingWithEmail: recipients.map(function (r) { return { fullName: r.studentName, className: r.className, parentEmail: r.to }; }),
+          results: verifiedResults,
+          code: data.code || "EMAIL_DELIVERY_FAILED",
+          error: errMsg
+        });
+      }
+      return { ok: false, sent: 0, failed: recipients.length, results: verifiedResults, error: errMsg };
+    } catch (err) {
+      const msg = (err && err.message) || tr("Lỗi kết nối máy chủ gửi email.");
+      persistDeliveryLogs([], "NETWORK_ERROR", msg);
+      if (!silent) {
+        U().showToast(tr("Gửi email thất bại: ") + msg, "error");
+        openEmailDeliveryFallbackModal({
+          assign: assign,
+          pendingWithEmail: recipients.map(function (r) { return { fullName: r.studentName, className: r.className, parentEmail: r.to }; }),
+          results: [],
+          code: "NETWORK_ERROR",
+          error: msg
+        });
+      }
+      return { ok: false, sent: 0, failed: recipients.length, results: [], error: msg };
+    }
+  }
+
   function dispatchParentReportEmail(assign, student, sub) {
     if (!assign.parentEmailEnabled) return { sent: false, reason: "disabled" };
     if (assign.parentEmailOverrides && assign.parentEmailOverrides[student.id] === false) return { sent: false, reason: "override_off" };
-    if (!student.parentEmail) return { sent: false, reason: "missing_email" };
+    const toEmail = getStudentParentEmail(student);
+    if (!toEmail || !isValidEmailList(toEmail)) return { sent: false, reason: "missing_email" };
 
     const feedback = computeDynamicFeedback(sub.score10);
     const receiptUrl = buildReceiptUrl(sub.id);
-    const payload = {
-      id: "em_" + Date.now(),
+    const subIdMap = {};
+    subIdMap[student.id] = sub.id;
+
+    sendParentEmailBatch({
+      assign: assign,
       type: "result_report",
-      to: student.parentEmail,
-      studentName: student.fullName,
-      quizTitle: assign.title,
-      score10: sub.score10,
-      durationSec: sub.durationSec,
-      feedback: feedback,
-      receiptUrl: receiptUrl,
-      sentAt: new Date().toISOString()
-    };
+      silent: true,
+      subIdMap: subIdMap,
+      recipients: [{
+        studentId: student.id,
+        studentName: student.fullName,
+        className: student.className || "",
+        to: toEmail,
+        score10: sub.score10,
+        durationSec: sub.durationSec,
+        feedback: feedback,
+        receiptUrl: receiptUrl
+      }]
+    });
 
-    const logs = loadEmailLogs();
-    logs.push(payload);
-    saveEmailLogs(logs);
-
-    // Best-effort backend dispatch if server supports /api/lms/email
-    try {
-      fetch("/api/lms/email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      }).catch(function () { /* local fallback already recorded */ });
-    } catch (e) { /* ignore */ }
-
-    return { sent: true, payload: payload };
+    return { sent: false, queued: true };
   }
 
   function sendDeadlineReminders(assignId) {
@@ -1083,26 +1745,102 @@
     const submittedIds = new Set(loadSubmissions().filter(function (s) { return s.assignmentId === assign.id; }).map(function (s) { return s.studentId; }));
     const pending = roster.filter(function (st) { return !submittedIds.has(st.id); });
     if (!pending.length) {
-      U().showToast("Tất cả học sinh đã hoàn thành bài tập này.", "info");
+      U().showToast(tr("Tất cả học sinh đã hoàn thành bài tập này."), "info");
       return;
     }
-    let sent = 0, skipped = 0;
-    const logs = loadEmailLogs();
+
+    const ready = [];
+    const missing = [];
     pending.forEach(function (st) {
-      if (!st.parentEmail) { skipped++; return; }
-      sent++;
-      logs.push({
-        id: "rem_" + Date.now() + "_" + sent,
-        type: "deadline_reminder",
-        to: st.parentEmail,
-        studentName: st.fullName,
-        quizTitle: assign.title,
-        deadline: assign.deadline,
-        sentAt: new Date().toISOString()
-      });
+      const em = getStudentParentEmail(st);
+      if (em && isValidEmailList(em)) ready.push(Object.assign({}, st, { parentEmail: em }));
+      else missing.push(st);
     });
-    saveEmailLogs(logs);
-    U().showToast("Đã gửi " + sent + " email nhắc hạn nộp" + (skipped ? (" (bỏ qua " + skipped + " học sinh thiếu email)") : "") + ".", "success");
+
+    const dispatchList = function (studentList) {
+      return sendParentEmailBatch({
+        assign: assign,
+        type: "deadline_reminder",
+        silent: false,
+        recipients: studentList.map(function (st) {
+          return {
+            studentId: st.id,
+            studentName: st.fullName,
+            className: st.className || "",
+            to: getStudentParentEmail(st)
+          };
+        })
+      });
+    };
+
+    if (missing.length > 0) {
+      openMissingParentEmailModal({
+        assign: assign,
+        missingStudents: missing,
+        readyStudents: ready,
+        onConfirm: dispatchList
+      });
+      return;
+    }
+
+    return dispatchList(ready);
+  }
+
+  function sendStudentGradebookEmail(assignId, studentId) {
+    const assign = loadAssignments().find(function (a) { return a.id === assignId; });
+    const student = loadStudents().find(function (s) { return s.id === studentId; });
+    if (!assign || !student) return;
+
+    const stSubs = getStudentSubmissions(assign.id, student.id);
+    const eff = pickEffectiveSubmission(stSubs, assign.scorePolicy || "highest");
+
+    const dispatchSingle = function (studentList) {
+      const st = studentList[0];
+      if (!st) return;
+      if (eff) {
+        const subIdMap = {};
+        subIdMap[st.id] = eff.id;
+        return sendParentEmailBatch({
+          assign: assign,
+          type: "result_report",
+          silent: false,
+          subIdMap: subIdMap,
+          recipients: [{
+            studentId: st.id,
+            studentName: st.fullName,
+            className: st.className || "",
+            to: getStudentParentEmail(st),
+            score10: eff.score10,
+            durationSec: eff.durationSec,
+            feedback: computeDynamicFeedback(eff.score10),
+            receiptUrl: buildReceiptUrl(eff.id)
+          }]
+        });
+      }
+      return sendParentEmailBatch({
+        assign: assign,
+        type: "deadline_reminder",
+        silent: false,
+        recipients: [{
+          studentId: st.id,
+          studentName: st.fullName,
+          className: st.className || "",
+          to: getStudentParentEmail(st)
+        }]
+      });
+    };
+
+    const em = getStudentParentEmail(student);
+    if (!em || !isValidEmailList(em)) {
+      openMissingParentEmailModal({
+        assign: assign,
+        missingStudents: [student],
+        readyStudents: [],
+        onConfirm: dispatchSingle
+      });
+      return;
+    }
+    return dispatchSingle([student]);
   }
 
   /* ======================== REMEDIAL / REDEMPTION ASSIGNMENT ======================== */
@@ -1205,7 +1943,7 @@
     if (!sheet) return;
     const qs = assign.quizSnapshot.questions || [];
     const url = buildAssignmentUrl(assign.code);
-    const qrSrc = "https://api.qrserver.com/v1/create-qr-code/?size=110x110&margin=4&data=" + encodeURIComponent(url);
+    const qrSvg = generateQrSvg(url, 96);
     const letters = U().LETTERS || ["A", "B", "C", "D", "E"];
 
     const qHtml = qs.map(function (q, i) {
@@ -1229,7 +1967,7 @@
             (assign.teacherNote ? '<p style="margin:6px 0 0;font-size:9.5pt;color:#334155"><em>' + esc(assign.teacherNote) + '</em></p>' : '') +
           '</div>' +
           '<div class="ws-qr">' +
-            '<img src="' + qrSrc + '" alt="QR" width="88" height="88">' +
+            qrSvg +
             '<div style="font-size:7.5pt;color:#475569;margin-top:2px">' + esc(tr("Quét làm bài online")) + '</div>' +
           '</div>' +
         '</div>' +
@@ -1239,14 +1977,314 @@
           '<div class="ws-ans-grid">' + ansHtml + '</div>' +
         '</div>' +
       '</div>';
-    setTimeout(function () { window.print(); }, 250);
+    setTimeout(function () { window.print(); }, 120);
+  }
+
+  /* ======================== STUDENT POST-SUBMISSION A4 WORKSHEET + PDF + QR ======================== */
+  function normalizeQType(q) {
+    const raw = String((q && (q.qType || q.type)) || "MCQ").toUpperCase();
+    if (raw === "TF_GROUP" || raw === "TRUE_FALSE_GROUP") return "TF_GROUP";
+    if (raw === "SHORT_ANSWER" || raw === "SHORT") return "SHORT_ANSWER";
+    if (raw === "ORDERING" || raw === "ORDER") return "ORDERING";
+    if (raw === "ESSAY" || raw === "FREE_TEXT") return "ESSAY";
+    return "MCQ";
+  }
+
+  function buildStudentA4SheetHtml(assign, sub, student) {
+    const now = Date.now();
+    const deadMs = assign && assign.deadline ? new Date(assign.deadline).getTime() : 0;
+    const canReveal = !assign || assign.revealMode === "immediate" || (deadMs && now > deadMs);
+    const letters = (U() && U().LETTERS) || ["A", "B", "C", "D", "E", "F"];
+    const askedSet = new Set((sub && sub.askTeacherIds) || []);
+    const reviewUrl = buildSubmissionReviewUrl(assign ? assign.code : "", sub ? sub.id : "");
+    const qrSvg = generateQrSvg(reviewUrl, 102);
+    const stuName = (student && student.fullName) || tr("Học sinh");
+    const stuClass = (student && student.className) || "";
+    const stuSchool = (student && student.school) || "";
+    const subTimeStr = fmtDeadlineParts(sub.submittedAt).full || "";
+    const durStr = fmtDuration(sub.durationSec);
+    const scoreStr = Number(sub.score10 || 0).toFixed(1) + " / 10";
+    const correctStr = (sub.correctCount || 0) + " / " + (sub.totalQuestions || (sub.records ? sub.records.length : 0));
+    const tabStr = String(sub.tabSwitches || 0);
+    const renderRich = (U() && typeof U().renderRich === "function") ? U().renderRich : esc;
+
+    let lastCtx = "";
+    let lastInstr = "";
+    const qCardsHtml = (sub.records || []).map(function (r, idx) {
+      const q = r.q || {};
+      const qType = normalizeQType(q);
+      const isAsked = askedSet.has(r.qId || q.id);
+      const pickedArr = Array.isArray(r.picked) ? r.picked : [];
+      const corrArr = Array.isArray(q.correct) ? q.correct : [];
+
+      let sharedHtml = "";
+      const instrTxt = String(q.instruction || "").trim();
+      const ctxTxt = String(q.context || "").trim();
+      if (instrTxt && instrTxt !== lastInstr) {
+        lastInstr = instrTxt;
+        sharedHtml += '<div class="a4-instr-box"><strong>' + esc(tr("Yêu cầu nhóm câu")) + ':</strong> ' + renderRich(instrTxt) + '</div>';
+      }
+      if (ctxTxt && ctxTxt !== lastCtx) {
+        lastCtx = ctxTxt;
+        sharedHtml += '<div class="a4-ctx-box"><div class="a4-ctx-label">' + esc(tr("Đoạn văn / Ngữ liệu dùng chung")) + '</div><div class="rich-text">' + renderRich(ctxTxt) + '</div></div>';
+      }
+
+      let bodyHtml = "";
+      let studentAnsTxt = "";
+      let correctAnsTxt = "";
+
+      if (qType === "TF_GROUP") {
+        const stmts = Array.isArray(q.statements) && q.statements.length ? q.statements : (q.options || []);
+        const subLetters = ["a", "b", "c", "d", "e", "f"];
+        bodyHtml = '<div class="a4-opts">' + stmts.map(function (st, si) {
+          const text = typeof st === "string" ? st : (st.text || "");
+          const isT = typeof st === "object" && st !== null ? !!st.answer : (corrArr.indexOf(si) !== -1);
+          return '<div class="a4-opt"><strong>' + (subLetters[si] || (si + 1)) + ')</strong> ' + renderRich(text) +
+            (canReveal ? (' <span class="a4-tf-ans">[' + (isT ? tr("Đúng") : tr("Sai")) + ']</span>') : '') + '</div>';
+        }).join("") + '</div>';
+        studentAnsTxt = r.userAnswerText || (pickedArr.length ? pickedArr.map(function (c) { return subLetters[c] || String(c + 1); }).join(", ") : tr("Chưa trả lời"));
+        correctAnsTxt = stmts.map(function (st, si) {
+          const isT = typeof st === "object" && st !== null ? !!st.answer : (corrArr.indexOf(si) !== -1);
+          return (subLetters[si] || (si + 1)) + ":" + (isT ? "Đ" : "S");
+        }).join(", ");
+      } else if (qType === "SHORT_ANSWER") {
+        studentAnsTxt = String(r.userAnswerText != null ? r.userAnswerText : (pickedArr.length ? pickedArr.join(", ") : "")).trim() || tr("Chưa trả lời");
+        correctAnsTxt = String(q.answerText || (Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers.join(" / ") : "") || (q.options && q.options[0]) || "—");
+      } else if (qType === "ORDERING") {
+        const items = Array.isArray(q.items) && q.items.length ? q.items : (q.options || []);
+        bodyHtml = '<div class="a4-opts">' + items.map(function (it, ii) {
+          return '<div class="a4-opt"><strong>' + (ii + 1) + '.</strong> ' + renderRich(typeof it === "string" ? it : (it.text || "")) + '</div>';
+        }).join("") + '</div>';
+        studentAnsTxt = String(r.userAnswerText || (pickedArr.length ? pickedArr.map(function (x) { return Number(x) + 1; }).join(" → ") : "")).trim() || tr("Chưa trả lời");
+        correctAnsTxt = String(q.correctOrderText || (Array.isArray(q.correctOrder) ? q.correctOrder.join(" → ") : "") || "—");
+      } else if (qType === "ESSAY") {
+        studentAnsTxt = String(r.userAnswerText || "").trim() || tr("Chưa trả lời");
+        correctAnsTxt = String(q.rubric || q.answerText || q.explanation || tr("Tự luận (giáo viên chấm)"));
+      } else {
+        // MCQ (single / multiple)
+        const opts = Array.isArray(q.options) ? q.options : [];
+        bodyHtml = '<div class="a4-opts">' + opts.map(function (o, oi) {
+          const isPicked = pickedArr.indexOf(oi) !== -1;
+          const isCorr = canReveal && corrArr.indexOf(oi) !== -1;
+          const cls = "a4-opt" + (isCorr ? " is-correct" : "") + (isPicked && !isCorr && canReveal ? " is-wrong" : "") + (isPicked ? " is-picked" : "");
+          return '<div class="' + cls + '"><strong>' + (letters[oi] || String(oi + 1)) + '.</strong> ' + renderRich(o) +
+            (isPicked ? (' <span class="a4-tag-pick">(' + esc(tr("Bạn chọn")) + ')</span>') : '') +
+            (isCorr ? (' <span class="a4-tag-ok">✓</span>') : '') +
+          '</div>';
+        }).join("") + '</div>';
+        studentAnsTxt = pickedArr.length ? pickedArr.map(function (c) { return letters[c] || String(c + 1); }).join(", ") : tr("Chưa trả lời");
+        correctAnsTxt = corrArr.length ? corrArr.map(function (c) { return letters[c] || String(c + 1); }).join(", ") : "—";
+      }
+
+      const statusBadge = canReveal
+        ? (r.ok
+          ? '<span class="a4-badge a4-badge-ok">✓ ' + esc(tr("Đúng")) + '</span>'
+          : '<span class="a4-badge a4-badge-bad">✗ ' + esc(tr("Sai")) + '</span>')
+        : '<span class="a4-badge a4-badge-neutral">' + esc(tr("Đã nộp")) + '</span>';
+
+      const askedBadge = isAsked
+        ? ' <span class="a4-badge a4-badge-flag">⚑ ' + esc(tr("Cần hỏi giáo viên")) + '</span>'
+        : '';
+
+      return sharedHtml +
+        '<div class="a4-q-card">' +
+          '<div class="a4-q-head">' +
+            '<span class="a4-q-num">' + esc(tr("Câu")) + ' ' + (idx + 1) + (qType !== "MCQ" ? (' <span class="a4-q-type">[' + esc(qType) + ']</span>') : '') + '</span>' +
+            '<span class="a4-q-badges">' + statusBadge + askedBadge + '</span>' +
+          '</div>' +
+          '<div class="a4-q-stem rich-text">' + renderRich(q.text || "") + '</div>' +
+          (q.image ? '<div class="a4-q-img"><img src="' + esc(q.image) + '" alt="Question"></div>' : '') +
+          bodyHtml +
+          '<div class="a4-ans-summary">' +
+            '<span>' + esc(tr("Bài làm của bạn")) + ': <strong>' + esc(studentAnsTxt) + '</strong></span>' +
+            (canReveal ? ('<span> · ' + esc(tr("Đáp án đúng")) + ': <strong>' + esc(correctAnsTxt) + '</strong></span>') : '') +
+          '</div>' +
+          (canReveal && q.explanation
+            ? '<div class="a4-explain"><strong>' + esc(tr("Lời giải / Giải thích")) + ':</strong> <span class="rich-text">' + renderRich(q.explanation) + '</span></div>'
+            : '') +
+        '</div>';
+    }).join("");
+
+    return '<div class="print-doc a4-sheet" id="a4ResultSheet">' +
+      '<div class="a4-header">' +
+        '<div class="a4-header-info">' +
+          '<div class="a4-brand-line">AI TUTOR · ' + esc(tr("PHIẾU KẾT QUẢ & ÔN TẬP A4")) + (stuSchool ? (' · ' + esc(stuSchool)) : '') + '</div>' +
+          '<h1 class="a4-title">' + esc(assign ? assign.title : (sub.quizTitle || tr("Bài tập"))) + '</h1>' +
+          '<div class="a4-meta-grid">' +
+            '<div><span class="a4-meta-k">' + esc(tr("Học sinh")) + ':</span> <strong>' + esc(stuName) + '</strong>' + (stuClass ? (' (' + esc(stuClass) + ')') : '') + '</div>' +
+            '<div><span class="a4-meta-k">' + esc(tr("Thời điểm nộp")) + ':</span> <strong>' + esc(subTimeStr) + '</strong></div>' +
+            '<div><span class="a4-meta-k">' + esc(tr("Thời gian làm")) + ':</span> <strong>' + esc(durStr) + '</strong></div>' +
+            '<div><span class="a4-meta-k">' + esc(tr("Mã bài")) + ':</span> <strong>' + esc(assign ? assign.code : "") + '</strong></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="a4-qr-box">' +
+          '<div class="a4-qr-svg">' + qrSvg + '</div>' +
+          '<div class="a4-qr-caption">' + esc(tr("Quét mã QR để xem lại đề & bài làm chi tiết trực tuyến")) + '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="a4-kpi-grid">' +
+        '<div class="a4-kpi"><div class="a4-kpi-k">' + esc(tr("Điểm số")) + '</div><div class="a4-kpi-v">' + esc(scoreStr) + '</div></div>' +
+        '<div class="a4-kpi"><div class="a4-kpi-k">' + esc(tr("Số câu đúng")) + '</div><div class="a4-kpi-v">' + esc(correctStr) + '</div></div>' +
+        '<div class="a4-kpi"><div class="a4-kpi-k">' + esc(tr("Thời gian làm")) + '</div><div class="a4-kpi-v">' + esc(durStr) + '</div></div>' +
+        '<div class="a4-kpi"><div class="a4-kpi-k">' + esc(tr("Chuyển tab")) + '</div><div class="a4-kpi-v">' + esc(tabStr) + '</div></div>' +
+      '</div>' +
+
+      (!canReveal
+        ? '<div class="a4-lock-note">' + esc(tr("Đáp án chính thức sẽ được mở khóa sau hạn nộp")) + ' (' + esc(fmtDeadlineParts(assign.deadline).full) + ').</div>'
+        : '') +
+
+      '<div class="a4-body">' + qCardsHtml + '</div>' +
+
+      '<div class="a4-footer">' +
+        '<span>AI Tutor · Creator Studio</span>' +
+        '<span class="a4-footer-url">' + esc(reviewUrl) + '</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function getSubContextById(subId) {
+    const sub = loadSubmissions().find(function (s) { return s.id === subId; });
+    if (!sub) return null;
+    const assign = loadAssignments().find(function (a) { return a.id === sub.assignmentId; }) || {
+      id: sub.assignmentId,
+      code: lmsState.activeAssignCode || "",
+      title: sub.quizTitle || tr("Bài tập"),
+      revealMode: "immediate"
+    };
+    const student = loadStudents().find(function (st) { return st.id === sub.studentId; }) || null;
+    return { sub: sub, assign: assign, student: student };
+  }
+
+  function buildStudentPdfFilename(assign, student) {
+    const safe = (U() && typeof U().fileSafe === "function")
+      ? U().fileSafe
+      : function (s) { return String(s || "file").replace(/[^\w\-]+/g, "_"); };
+    const stPart = safe((student && student.fullName) || "Student");
+    const exPart = safe((assign && assign.title) || "Exam");
+    return stPart + "_" + exPart + "_A4_QR.pdf";
+  }
+
+  function printStudentA4Sheet(subId) {
+    const ctx = getSubContextById(subId);
+    if (!ctx) return;
+    const sheet = U().$("printSheet");
+    if (!sheet) return;
+    sheet.innerHTML = buildStudentA4SheetHtml(ctx.assign, ctx.sub, ctx.student);
+    const prevTitle = document.title;
+    const pdfBase = buildStudentPdfFilename(ctx.assign, ctx.student).replace(/\.pdf$/i, "");
+    document.title = pdfBase;
+    setTimeout(function () {
+      window.print();
+      setTimeout(function () { document.title = prevTitle; }, 600);
+    }, 100);
+  }
+
+  function loadHtml2PdfLib() {
+    if (typeof window.html2pdf === "function") return Promise.resolve(window.html2pdf);
+    return new Promise(function (resolve, reject) {
+      const existing = document.getElementById("uetHtml2PdfScript");
+      if (existing) {
+        existing.addEventListener("load", function () { resolve(window.html2pdf); });
+        existing.addEventListener("error", function () { reject(new Error("html2pdf load failed")); });
+        return;
+      }
+      const sc = document.createElement("script");
+      sc.id = "uetHtml2PdfScript";
+      sc.src = "https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js";
+      sc.async = true;
+      sc.onload = function () {
+        if (typeof window.html2pdf === "function") resolve(window.html2pdf);
+        else reject(new Error("html2pdf unavailable"));
+      };
+      sc.onerror = function () { reject(new Error("html2pdf load failed")); };
+      document.head.appendChild(sc);
+    });
+  }
+
+  async function exportStudentA4Pdf(subId) {
+    const ctx = getSubContextById(subId);
+    if (!ctx) return;
+    const filename = buildStudentPdfFilename(ctx.assign, ctx.student);
+    const sheetHtml = buildStudentA4SheetHtml(ctx.assign, ctx.sub, ctx.student);
+    U().showToast(tr("Đang tạo file PDF A4 kèm mã QR..."), "info");
+    try {
+      const h2p = await loadHtml2PdfLib();
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "position:fixed;left:-99999px;top:0;width:210mm;background:#ffffff;color:#0f172a;padding:12mm;box-sizing:border-box;z-index:-1;";
+      wrap.innerHTML = sheetHtml;
+      document.body.appendChild(wrap);
+      const targetEl = wrap.firstElementChild || wrap;
+      await h2p().set({
+        margin: [10, 10, 10, 10],
+        filename: filename,
+        image: { type: "jpeg", quality: 0.96 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["avoid-all", "css", "legacy"] }
+      }).from(targetEl).save();
+      document.body.removeChild(wrap);
+      U().showToast(tr("Đã tải xuống phiếu A4 PDF: ") + filename, "success");
+    } catch (err) {
+      // Offline / CDN fallback: crisp native browser Print-to-PDF with exact filename in document.title
+      U().showToast(tr("Đang mở hộp thoại In / Lưu PDF A4 của trình duyệt..."), "info");
+      printStudentA4Sheet(subId);
+    }
+  }
+
+  function openStudentA4PreviewModal(subId) {
+    const ctx = getSubContextById(subId);
+    if (!ctx) return;
+    const host = U().$("extraModals");
+    if (!host) { printStudentA4Sheet(subId); return; }
+    const reviewUrl = buildSubmissionReviewUrl(ctx.assign.code, ctx.sub.id);
+    const sheetHtml = buildStudentA4SheetHtml(ctx.assign, ctx.sub, ctx.student);
+
+    host.innerHTML =
+      '<div class="modal-overlay a4-preview-overlay" id="lmsA4PreviewModal" role="dialog" aria-modal="true">' +
+        '<div class="a4-preview-dialog">' +
+          '<div class="a4-preview-toolbar no-print">' +
+            '<div>' +
+              '<strong>' + esc(tr("Xem trước phiếu kết quả A4 + Mã QR")) + '</strong>' +
+              '<div class="muted" style="font-size:.76rem">' + esc(buildStudentPdfFilename(ctx.assign, ctx.student)) + '</div>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">' +
+              '<button type="button" class="btn btn-outline btn-sm" id="a4CopyLinkBtn">🔗 ' + esc(tr("Sao chép link QR")) + '</button>' +
+              '<button type="button" class="btn btn-outline btn-sm" id="a4PrintBtn">🖨️ ' + esc(tr("In phiếu A4")) + '</button>' +
+              '<button type="button" class="btn btn-primary btn-sm" id="a4DownloadPdfBtn">📄 ' + esc(tr("Tải PDF + QR")) + '</button>' +
+              '<button type="button" class="btn btn-outline btn-sm" id="a4CloseBtn">✕ ' + esc(tr("Đóng")) + '</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="a4-preview-canvas">' +
+            '<div class="a4-paper-frame">' + sheetHtml + '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    U().on("a4CopyLinkBtn", "click", function () { U().copyText(reviewUrl, tr("liên kết xem lại bài làm")); });
+    U().on("a4PrintBtn", "click", function () { printStudentA4Sheet(subId); });
+    U().on("a4DownloadPdfBtn", "click", function () { exportStudentA4Pdf(subId); });
+    U().on("a4CloseBtn", "click", function () { host.innerHTML = ""; });
   }
 
   /* ======================== STUDENT ASSIGNMENT ENTRY & EXAM RUNNER ======================== */
-  function openStudentAssignment(code) {
+  function openStudentAssignment(code, opts) {
     lmsState.activeAssignCode = String(code || "").trim().toUpperCase();
     lmsState.studentSession = null;
     lmsState.lastSubmissionId = null;
+
+    if (opts && (opts.attemptId || opts.review)) {
+      const assign = loadAssignments().find(function (a) { return a.code === lmsState.activeAssignCode; });
+      const allSubs = loadSubmissions();
+      if (opts.attemptId) {
+        const found = allSubs.find(function (s) { return s.id === opts.attemptId; });
+        if (found) lmsState.lastSubmissionId = found.id;
+      } else if (opts.review && assign) {
+        const assignSubs = allSubs.filter(function (s) { return s.assignmentId === assign.id; });
+        if (assignSubs.length) lmsState.lastSubmissionId = assignSubs[assignSubs.length - 1].id;
+      }
+    }
+
     if (window.UETStudio && typeof window.UETStudio.openLmsScreen === "function") {
       window.UETStudio.openLmsScreen("student-assign");
     }
@@ -1598,12 +2636,16 @@
     const askedSet = new Set(sub.askTeacherIds || []);
 
     root.innerHTML = '<div class="ql-wrap"><div class="ql-card">' +
-      '<div class="ql-header">' +
+      '<div class="ql-header" style="flex-wrap:wrap;gap:10px">' +
         '<div>' +
           '<h2 class="ql-title">Hoàn thành bài tập</h2>' +
           '<p class="ql-subtitle"><span>' + esc(assign.title) + '</span><span>·</span><span>' + fmtDuration(sub.durationSec) + '</span></p>' +
         '</div>' +
-        '<button type="button" class="ql-back-btn" data-lms-nav="gradebook">' + ICONS.arrowLeft + '<span>Xem sổ điểm</span></button>' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+          '<button type="button" class="btn btn-outline btn-sm" data-lms="preview-sub-a4" data-sub="' + esc(sub.id) + '">🖨️ ' + esc(tr("Xem & In phiếu A4")) + '</button>' +
+          '<button type="button" class="btn btn-primary btn-sm" data-lms="export-sub-pdf-qr" data-sub="' + esc(sub.id) + '">📄 ' + esc(tr("Xuất PDF + QR")) + '</button>' +
+          '<button type="button" class="ql-back-btn" data-lms-nav="gradebook">' + ICONS.arrowLeft + '<span>Xem sổ điểm</span></button>' +
+        '</div>' +
       '</div>' +
 
       '<div class="lms-kpi-row">' +
@@ -1747,9 +2789,12 @@
       if (window.UETStudio && typeof window.UETStudio.openLmsScreen === "function") window.UETStudio.openLmsScreen("gradebook");
     }
     else if (act === "send-reminders") sendDeadlineReminders(b.getAttribute("data-id"));
+    else if (act === "send-student-email") sendStudentGradebookEmail(b.getAttribute("data-assign"), b.getAttribute("data-student"));
     else if (act === "export-gb-xlsx") exportGradebookExcel(b.getAttribute("data-id"));
     else if (act === "export-gb-pdf") exportGradebookPdf(b.getAttribute("data-id"));
     else if (act === "export-worksheet-pdf") exportWorksheetA4Pdf(b.getAttribute("data-id"));
+    else if (act === "preview-sub-a4") openStudentA4PreviewModal(b.getAttribute("data-sub"));
+    else if (act === "export-sub-pdf-qr") exportStudentA4Pdf(b.getAttribute("data-sub"));
     else if (act === "make-remedial") createRemedialFromSubmission(b.getAttribute("data-sub"));
     else if (act === "toggle-student-email") {
       const aid = b.getAttribute("data-assign"), sid = b.getAttribute("data-student");
@@ -1870,6 +2915,13 @@
     handleChange: handleChange,
     openStudentAssignment: openStudentAssignment,
     openParentReceipt: openParentReceipt,
-    openAssignModalForQuiz: openAssignModalForQuiz
+    openAssignModalForQuiz: openAssignModalForQuiz,
+    generateQrSvg: generateQrSvg,
+    buildSubmissionReviewUrl: buildSubmissionReviewUrl,
+    buildStudentA4SheetHtml: buildStudentA4SheetHtml,
+    getStudentParentEmail: getStudentParentEmail,
+    sendParentEmailBatch: sendParentEmailBatch,
+    sendDeadlineReminders: sendDeadlineReminders,
+    sendStudentGradebookEmail: sendStudentGradebookEmail
   };
 })();

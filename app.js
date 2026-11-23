@@ -5248,6 +5248,31 @@ const I18N_MAP = {
   "Ghi chú của giáo viên (hướng dẫn, công thức, link tài liệu)": { vi: "Ghi chú của giáo viên (hướng dẫn, công thức, link tài liệu)", en: "Teacher's Note (instructions, formulas, reference links)", ja: "先生からのメモ（注意事項・公式・参考リンクなど）" },
   "Đảo thứ tự câu hỏi riêng cho từng học sinh": { vi: "Đảo thứ tự câu hỏi riêng cho từng học sinh", en: "Shuffle questions per student", ja: "生徒ごとに問題順をシャッフル" },
   "Tự động gửi email báo cáo kết quả cho phụ huynh": { vi: "Tự động gửi email báo cáo kết quả cho phụ huynh", en: "Auto-email result report to parents upon submission", ja: "提出時に保護者へ成績レポートを自動送信" },
+  "Xem & In phiếu A4": { vi: "Xem & In phiếu A4", en: "Preview & Print A4 Sheet", ja: "A4シートをプレビュー・印刷" },
+  "Xuất PDF + QR": { vi: "Xuất PDF + QR", en: "Export PDF + QR", ja: "PDF + QR を出力" },
+  "Quét mã QR để xem lại đề & bài làm chi tiết trực tuyến": { vi: "Quét mã QR để xem lại đề & bài làm chi tiết trực tuyến", en: "Scan QR code to review exam & answers online", ja: "QRコードをスキャンして問題と解答をオンラインで確認" },
+  "PHIẾU KẾT QUẢ & ÔN TẬP A4": { vi: "PHIẾU KẾT QUẢ & ÔN TẬP A4", en: "A4 RESULT & REVIEW WORKSHEET", ja: "A4 成績・復習ワークシート" },
+  "Thời điểm nộp": { vi: "Thời điểm nộp", en: "Submitted At", ja: "提出日時" },
+  "Thời gian làm": { vi: "Thời gian làm", en: "Time Taken", ja: "所要時間" },
+  "Bài làm của bạn": { vi: "Bài làm của bạn", en: "Your Answer", ja: "あなたの解答" },
+  "Lời giải / Giải thích": { vi: "Lời giải / Giải thích", en: "Explanation", ja: "解説" },
+  "Cần hỏi giáo viên": { vi: "Cần hỏi giáo viên", en: "Ask Teacher", ja: "先生に質問" },
+  "Yêu cầu nhóm câu": { vi: "Yêu cầu nhóm câu", en: "Group Instruction", ja: "問題グループ指示" },
+  "Đoạn văn / Ngữ liệu dùng chung": { vi: "Đoạn văn / Ngữ liệu dùng chung", en: "Shared Reading Passage / Context", ja: "共通長文・資料" },
+  "Xem trước phiếu kết quả A4 + Mã QR": { vi: "Xem trước phiếu kết quả A4 + Mã QR", en: "A4 Result Sheet + QR Preview", ja: "A4成績シート + QR プレビュー" },
+  "Sao chép link QR": { vi: "Sao chép link QR", en: "Copy QR Link", ja: "QRリンクをコピー" },
+  "In phiếu A4": { vi: "In phiếu A4", en: "Print A4 Sheet", ja: "A4シートを印刷" },
+  "Tải PDF + QR": { vi: "Tải PDF + QR", en: "Download PDF + QR", ja: "PDF + QR を保存" },
+  "Chưa cấu hình dịch vụ gửi Email trên máy chủ": { vi: "Chưa cấu hình dịch vụ gửi Email trên máy chủ", en: "Server Email Delivery Not Configured", ja: "サーバーのメール送信が未設定です" },
+  "Gửi email nhắc nộp bài chưa thành công": { vi: "Gửi email nhắc nộp bài chưa thành công", en: "Parent Reminder Email Failed", ja: "リマインダーメール送信に失敗しました" },
+  "Sao chép nội dung nhắc nhở": { vi: "Sao chép nội dung nhắc nhở", en: "Copy Reminder Message", ja: "リマインド内容をコピー" },
+  "Mở ứng dụng Email (mailto:)": { vi: "Mở ứng dụng Email (mailto:)", en: "Open Email Client (mailto:)", ja: "メールアプリを開く (mailto:)" },
+  "Biến môi trường cần cấu hình trên Vercel": { vi: "Biến môi trường cần cấu hình trên Vercel", en: "Required Vercel Environment Variables", ja: "Vercel に必要な環境変数" },
+  "Nội dung nhắc nhở (dự phòng gửi thủ công)": { vi: "Nội dung nhắc nhở (dự phòng gửi thủ công)", en: "Manual Reminder Message Fallback", ja: "手動送信用リマインド文面" },
+  "Đã gửi KQ": { vi: "Đã gửi KQ", en: "Result Sent", ja: "結果送信済" },
+  "Đã nhắc": { vi: "Đã nhắc", en: "Reminded", ja: "リマインド済" },
+  "Lỗi gửi": { vi: "Lỗi gửi", en: "Send Failed", ja: "送信エラー" },
+  "Lỗi nhắc": { vi: "Lỗi nhắc", en: "Reminder Failed", ja: "リマインド失敗" },
   "Tạo & Giao bài": { vi: "Tạo & Giao bài", en: "Create & Assign", ja: "作成して配布" },
   "Vui lòng chọn hạn nộp bài.": { vi: "Vui lòng chọn hạn nộp bài.", en: "Please set a deadline.", ja: "提出期限を設定してください。" },
   "Vui lòng chọn ít nhất 1 học sinh.": { vi: "Vui lòng chọn ít nhất 1 học sinh.", en: "Please select at least 1 student.", ja: "少なくとも1名の生徒を選択してください。" },
@@ -6897,7 +6922,10 @@ function init() {
       const receiptId = params.get("receipt");
       if (assignCode) {
         if (!state.user) enterGuestShareMode();
-        window.UETLms.openStudentAssignment(assignCode);
+        window.UETLms.openStudentAssignment(assignCode, {
+          attemptId: params.get("attempt") || "",
+          review: params.get("review") === "1" || params.get("review") === "true"
+        });
         return;
       }
       if (receiptId) {
