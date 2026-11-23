@@ -2278,7 +2278,7 @@ function renderPricing() {
   setText("pricingNote", adm
     ? "👑 Admin (Diamond): B\u1ea1n c\u00f3 m\u1eb7c \u0111\u1ecbnh to\u00e0n quy\u1ec1n Diamond VIP kh\u00f4ng gi\u1edbi h\u1ea1n. B\u1ea1n c\u00f3 th\u1ec3 b\u1ea5m \"K\u00edch ho\u1ea1t ngay (Admin)\" tr\u00ean b\u1ea5t k\u1ef3 g\u00f3i n\u00e0o \u0111\u1ec3 chuy\u1ec3n \u0111\u1ed5i th\u1eed nghi\u1ec7m tr\u1ef1c ti\u1ebfp."
     : (cur === "none"
-      ? "K\u00edch ho\u1ea1t mi\u1ec5n ph\u00ed g\u00f3i Unranked (0\u0111/n\u0103m) ho\u1eb7c ch\u1ecdn 1 trong 4 h\u1ea1ng g\u00f3i cao c\u1ea5p — qu\u00e9t VietQR MB Bank \u0111\u1ec3 h\u1ec7 th\u1ed1ng SePay t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t trong v\u00e0i gi\u00e2y."
+      ? "K\u00edch ho\u1ea1t mi\u1ec5n ph\u00ed g\u00f3i Unranked (0\u0111/n\u0103m) ho\u1eb7c ch\u1ecdn 1 trong 4 h\u1ea1ng g\u00f3i cao c\u1ea5p — qu\u00e9t VietQR MB Bank \u0111\u1ec3 h\u1ec7 th\u1ed1ng API c\u1ee7a Ph\u1ea1m \u0110\u1ee9c Hi\u1ebfu t\u1ef1 \u0111\u1ed9ng k\u00edch ho\u1ea1t trong v\u00e0i gi\u00e2y."
       : "G\u00f3i hi\u1ec7n t\u1ea1i c\u1ee7a b\u1ea1n: " + TIERS[cur].icon + " " + TIERS[cur].full + (sub ? " • H\u1ebft h\u1ea1n: " + fmtDate(sub.expires) : "")));
 
   // Pending / Rejected status banner on Pricing (strictly reflects live server state)
@@ -2546,7 +2546,7 @@ function openCheckout(code) {
   const rf = $("coReceiptFile"); if (rf) rf.value = "";
   const rp = $("coReceiptPreview"); if (rp) { rp.src = ""; rp.classList.add("hidden"); }
   toggleEl("coReceiptClear", false);
-  setCheckoutNotice("\u0110ang kh\u1edfi t\u1ea1o \u0111\u01a1n h\u00e0ng VietQR MB Bank (t\u1ef1 \u0111\u1ed9ng duy\u1ec7t qua SePay)...");
+  setCheckoutNotice("Tr\u1ea1ng th\u00e1i: \u0110ang kh\u1edfi t\u1ea1o \u0111\u01a1n h\u00e0ng VietQR MB Bank (t\u1ef1 \u0111\u1ed9ng duy\u1ec7t qua API c\u1ee7a Ph\u1ea1m \u0110\u1ee9c Hi\u1ebfu)...");
   renderCheckout();
   openModal("checkoutModal");
   createCheckoutServerOrder();
