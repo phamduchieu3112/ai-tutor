@@ -2956,7 +2956,7 @@
           '</div>' +
           '<div class="ql-field">' +
             '<div class="ql-field-head"><label class="ql-field-label" for="lmsEntryPin">Mã PIN 4 số</label></div>' +
-            '<input type="password" inputmode="numeric" maxlength="4" class="ql-input" id="lmsEntryPin" placeholder="••••">' +
+            '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" class="ql-input lms-pin-input" id="lmsEntryPin" placeholder="••••">' +
           '</div>' +
         '</div>' +
         '<p class="ql-helper">' +
@@ -3110,9 +3110,11 @@
     detachExamMonitors();
     const sess = lmsState.studentSession;
     if (!sess) return;
+    const attachedAt = Date.now();
     let lastSwitchTs = 0;
     const onSwitch = function () {
       const now = Date.now();
+      if (now - attachedAt < 2500) return; // Ignore initial focus transition when starting exam
       if (now - lastSwitchTs < 1500) return;
       lastSwitchTs = now;
       sess.tabSwitches = (sess.tabSwitches || 0) + 1;

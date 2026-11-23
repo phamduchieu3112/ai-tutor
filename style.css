@@ -1704,6 +1704,7 @@ button, input, select, textarea { font-family: inherit; }
 .lms-email-status-bar.is-ok { background: rgba(16, 185, 129, .1); border-color: rgba(16, 185, 129, .35); color: #065f46; }
 .lms-email-status-bar.is-info { background: rgba(59, 130, 246, .08); border-color: rgba(59, 130, 246, .3); color: #1e40af; }
 .lms-email-status-bar.is-warn { background: rgba(245, 158, 11, .1); border-color: rgba(245, 158, 11, .4); color: #92400e; }
+.lms-pin-input { -webkit-text-security: disc; letter-spacing: .2em; font-weight: 700; }
 [data-theme="dark"] .lms-email-status-bar.is-ok { color: #6ee7b7; }
 [data-theme="dark"] .lms-email-status-bar.is-info { color: #93c5fd; }
 [data-theme="dark"] .lms-email-status-bar.is-warn { color: #fcd34d; }
