@@ -833,6 +833,8 @@ function normalizeDeck(d, idx) {
       tag: String(d.tag || "Ch\u01b0a ph\u00e2n lo\u1ea1i"),
       gradeLevel: String(d.gradeLevel || d.grade_level || d.grade || ""),
       subject: String(d.subject || ""),
+      createdAt: d.createdAt || "",
+      updatedAt: d.updatedAt || "",
       isBuiltIn: false,
       questions: questions
     };
@@ -1261,7 +1263,8 @@ function deckRowHTML(d, mode) {
   } else {
     actions = '<button type="button" class="btn btn-primary btn-sm" data-action="practice">' + (resume ? "Ti\u1ebfp t\u1ee5c \u00f4n t\u1eadp" : "\u00d4n t\u1eadp") + "</button>" +
       '<button type="button" class="btn btn-primary btn-sm" data-action="exam">' + lockExam + "Thi th\u1eed</button>" +
-      '<button type="button" class="btn btn-outline btn-sm" data-action="studio">Quiz Studio</button>';
+      '<button type="button" class="btn btn-outline btn-sm" data-action="studio">Quiz Studio</button>' +
+      (d.kind === "user" ? '<button type="button" class="btn btn-outline btn-sm" data-action="edit-meta" title="Ch\u1ec9nh s\u1eeda t\u00ean, kh\u1ed1i l\u1edbp, m\u00f4n h\u1ecdc">✏️ S\u1eeda th\u00f4ng tin</button>' : "");
     if (mode === "dash") {
       actions += '<button type="button" class="btn btn-outline btn-sm" data-action="flash">L\u1eadt th\u1ebb</button>' +
         '<button type="button" class="btn btn-outline btn-sm" data-action="share" title="Chia s\u1ebb b\u1eb1ng Link, M\u00e3 \u0111\u1ec1 &amp; QR">🔗 Chia s\u1ebb</button>' +
@@ -1271,10 +1274,14 @@ function deckRowHTML(d, mode) {
         (d.kind === "user" ? '<button type="button" class="btn btn-outline btn-sm" data-action="delete" title="X\u00f3a b\u1ed9 \u0111\u1ec1 n\u00e0y">X\u00f3a</button>' : "");
     }
   }
+  const tax = CURRICULUM ? CURRICULUM.detectTaxonomy(d) : { gradeLevel: "unclassified", gradeLabel: "", subject: "" };
   return '<div class="deck-row' + (pinned ? " pinned" : "") + '" data-deck-id="' + esc(d.id) + '">' +
     '<div class="deck-title-line"><span class="deck-title">' + esc(d.title) + "</span>" +
     (mode === "dash" ? '<button type="button" class="pin-btn' + (pinned ? " on" : "") + '" data-action="pin" aria-pressed="' + (pinned ? "true" : "false") + '" title="' + (pinned ? "B\u1ecf ghim b\u1ed9 \u0111\u1ec1" : "Ghim b\u1ed9 \u0111\u1ec1 l\u00ean \u0111\u1ea7u") + '">📌</button>' : "") + "</div>" +
-    '<div class="deck-sub"><span class="badge">' + esc(d.tag) + "</span><span>" + d.questions.length + " c\u00e2u h\u1ecfi</span>" +
+    '<div class="deck-sub">' +
+      (tax.gradeLevel && tax.gradeLevel !== "unclassified" ? '<span class="badge tax-badge-grade">' + esc(tax.gradeLabel) + '</span>' : '') +
+      (tax.subject ? '<span class="badge tax-badge-subj">' + esc(tax.subject) + '</span>' : '<span class="badge">' + esc(d.tag) + '</span>') +
+      "<span>" + d.questions.length + " c\u00e2u h\u1ecfi</span>" +
     '<span>Ti\u1ebfn \u0111\u1ed9 ' + pct + '%</span><span class="mini-bar"><i style="width:' + pct + '%"></i></span></div>' +
     '<div class="deck-actions">' + actions + "</div></div>";
 }
@@ -1412,9 +1419,112 @@ function onDeckListClick(e) {
   else if (action === "pdf") { if (window.UETCloud) window.UETCloud.openPdfModal(deck); }
   else if (action === "export-json") { if (requireFeature("exportData")) exportJSON(deck); }
   else if (action === "export-xlsx") { if (requireFeature("exportData")) exportXLSX(deck); }
+  else if (action === "edit-meta") { openDeckMetaModal(deck); }
   else if (action === "delete") {
     showConfirm("X\u00f3a b\u1ed9 \u0111\u1ec1", "B\u1ea1n c\u00f3 ch\u1eafc mu\u1ed1n x\u00f3a b\u1ed9 \u0111\u1ec1 \"" + deck.title + "\"? H\u00e0nh \u0111\u1ed9ng n\u00e0y kh\u00f4ng th\u1ec3 ho\u00e0n t\u00e1c.", function () { deleteDeck(deck.id); });
   }
+}
+
+function openDeckMetaModal(deck) {
+  if (!deck) return;
+  const host = $("extraModals");
+  if (!host) return;
+  const curr = CURRICULUM;
+  const tax = curr ? curr.detectTaxonomy(deck) : { gradeLevel: "unclassified", subject: deck.subject || "" };
+  const initGrade = deck.gradeLevel || tax.gradeLevel || "unclassified";
+  const initSubj = deck.subject || tax.subject || "";
+
+  const renderSubjField = function (gradeId, curSubj) {
+    if (gradeId === "university") {
+      const uniList = curr ? curr.getSubjectsForGrade("university") : [];
+      return '<input type="text" id="dkMetaSubjCustom" list="dkMetaUniList" value="' + esc(curSubj) + '" placeholder="VD: Gi\u1ea3i t\u00edch 1, Ti\u1ebfng Anh..." maxlength="100">' +
+        '<datalist id="dkMetaUniList">' + uniList.map(function (s) { return '<option value="' + esc(s) + '"></option>'; }).join("") + '</datalist>';
+    }
+    return '<select id="dkMetaSubj">' + (curr ? curr.renderSubjectOptionsHtml(gradeId, curSubj) : '') + '</select>' +
+      '<input type="text" id="dkMetaSubjCustom" class="hidden" value="" placeholder="Nh\u1eadp t\u00ean m\u00f4n h\u1ecdc m\u1edbi..." maxlength="100" style="margin-top:6px">';
+  };
+
+  host.innerHTML =
+    '<div class="modal-overlay" id="deckMetaModal" role="dialog" aria-modal="true"><div class="modal">' +
+      '<h3>✏️ Ch\u1ec9nh s\u1eeda th\u00f4ng tin b\u1ed9 \u0111\u1ec1</h3>' +
+      '<label class="field">T\u00ean b\u1ed9 \u0111\u1ec1<input type="text" id="dkMetaTitle" value="' + esc(deck.title || "") + '" maxlength="160"></label>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+        '<label class="field">Kh\u1ed1i / C\u1ea5p h\u1ecdc<select id="dkMetaGrade">' + (curr ? curr.renderGradeOptionsHtml(initGrade, true) : '<option value="unclassified">Ch\u01b0a ph\u00e2n lo\u1ea1i</option>') + '</select></label>' +
+        '<label class="field">M\u00f4n h\u1ecdc<div id="dkMetaSubjHost">' + renderSubjField(initGrade, initSubj) + '</div></label>' +
+      '</div>' +
+      '<label class="field">Th\u1ebb / Tag (hi\u1ec3n th\u1ecb ph\u1ee5)<input type="text" id="dkMetaTag" value="' + esc(deck.tag || "") + '" placeholder="VD: Ti\u1ebfng Anh, Gi\u1eefa k\u00ec 1" maxlength="80"></label>' +
+      '<div class="modal-actions">' +
+        '<button type="button" class="btn btn-outline" id="dkMetaCancel">H\u1ee7y</button>' +
+        '<button type="button" class="btn btn-primary" id="dkMetaSave">L\u01b0u thay \u0111\u1ed5i</button>' +
+      '</div>' +
+    '</div></div>';
+
+  const bindSubj = function () {
+    const sel = $("dkMetaSubj");
+    const cust = $("dkMetaSubjCustom");
+    if (sel && cust) {
+      sel.addEventListener("change", function () {
+        const isC = sel.value === "__custom__";
+        cust.classList.toggle("hidden", !isC);
+        if (isC) cust.focus();
+      });
+    }
+  };
+  bindSubj();
+
+  on("dkMetaGrade", "change", function () {
+    const g = $("dkMetaGrade").value;
+    const h = $("dkMetaSubjHost");
+    if (h) { h.innerHTML = renderSubjField(g, ""); bindSubj(); }
+  });
+  on("dkMetaCancel", "click", function () { host.innerHTML = ""; });
+  on("dkMetaSave", "click", function () {
+    const newTitle = ($("dkMetaTitle").value || "").trim();
+    if (!newTitle) { showToast("Vui l\u00f2ng nh\u1eadp t\u00ean b\u1ed9 \u0111\u1ec1.", "warning"); return; }
+    const newGrade = $("dkMetaGrade") ? $("dkMetaGrade").value : "unclassified";
+    let newSubj = "";
+    if (newGrade === "university") {
+      newSubj = ($("dkMetaSubjCustom") ? $("dkMetaSubjCustom").value : "").trim();
+    } else {
+      const sel = $("dkMetaSubj");
+      newSubj = sel ? (sel.value === "__custom__" ? ($("dkMetaSubjCustom") ? $("dkMetaSubjCustom").value : "").trim() : sel.value) : "";
+    }
+    if (newSubj && curr && typeof curr.addCustomSubject === "function") curr.addCustomSubject(newSubj);
+    const newTag = ($("dkMetaTag").value || "").trim() || newSubj || "T\u1ed5ng h\u1ee3p";
+    const nowIso = new Date().toISOString();
+
+    const oldTitleNorm = String(deck.title || "").trim().toLowerCase();
+    const oldLen = Array.isArray(deck.questions) ? deck.questions.length : -1;
+    const list = loadArr(KEYS.decks);
+    const updatedDecks = list.map(function (d) {
+      if (d && String(d.id) === String(deck.id)) {
+        return Object.assign({}, d, { title: newTitle, gradeLevel: newGrade, subject: newSubj, tag: newTag, updatedAt: nowIso });
+      }
+      return d;
+    });
+    saveJSON(KEYS.decks, updatedDecks);
+
+    // Sync metadata to matching quiz in Creator Studio as well
+    const qList = loadArr(KEYS.quizzes);
+    let qChanged = false;
+    const updatedQ = qList.map(function (q) {
+      if (!q) return q;
+      const qLen = Array.isArray(q.questions) ? q.questions.length : (Array.isArray(q.items) ? q.items.length : -2);
+      const match = String(q.id) === String(deck.id) || String(q.id) === ("deck_" + deck.id) || String(q.sourceDeckId || "") === String(deck.id)
+        || (oldTitleNorm && String(q.title || "").trim().toLowerCase() === oldTitleNorm && oldLen >= 0 && qLen === oldLen);
+      if (match) {
+        qChanged = true;
+        return Object.assign({}, q, { title: newTitle, gradeLevel: newGrade, subject: newSubj, tag: newTag, updatedAt: nowIso });
+      }
+      return q;
+    });
+    if (qChanged) saveJSON(KEYS.quizzes, updatedQ);
+
+    host.innerHTML = "";
+    rebuildDecks();
+    renderTab();
+    showToast("\u0110\u00e3 c\u1eadp nh\u1eadt th\u00f4ng tin b\u1ed9 \u0111\u1ec1!", "success");
+  });
 }
 function onPagerClick(e) {
   const b = e.target.closest ? e.target.closest("[data-pager]") : null;

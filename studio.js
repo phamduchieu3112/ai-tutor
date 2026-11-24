@@ -349,6 +349,111 @@
     if (typeof U().applyI18n === "function") U().applyI18n(root);
   }
 
+  /* ======================== QUICK EDIT QUIZ METADATA MODAL ======================== */
+  function openQuizMetaModal(quizId) {
+    const qz = findQuizById(quizId);
+    if (!qz) return;
+    const host = U().$("extraModals");
+    if (!host) return;
+    const curr = U().CURRICULUM;
+    const tax = curr ? curr.detectTaxonomy(qz) : { gradeLevel: "unclassified", subject: qz.subject || "" };
+    const initGrade = qz.gradeLevel || tax.gradeLevel || "unclassified";
+    const initSubj = qz.subject || tax.subject || "";
+
+    const renderSubjField = function (gradeId, curSubj) {
+      if (gradeId === "university") {
+        const uniList = curr ? curr.getSubjectsForGrade("university") : [];
+        return '<input type="text" id="qzMetaSubjCustom" list="qzMetaUniList" value="' + U().esc(curSubj) + '" placeholder="VD: Gi\u1ea3i t\u00edch 1, Ti\u1ebfng Anh..." maxlength="100">' +
+          '<datalist id="qzMetaUniList">' + uniList.map(function (s) { return '<option value="' + U().esc(s) + '"></option>'; }).join("") + '</datalist>';
+      }
+      return '<select id="qzMetaSubj">' + (curr ? curr.renderSubjectOptionsHtml(gradeId, curSubj) : '') + '</select>' +
+        '<input type="text" id="qzMetaSubjCustom" class="hidden" value="" placeholder="Nh\u1eadp t\u00ean m\u00f4n h\u1ecdc m\u1edbi..." maxlength="100" style="margin-top:6px">';
+    };
+
+    host.innerHTML =
+      '<div class="modal-overlay" id="studioQuizMetaModal" role="dialog" aria-modal="true"><div class="modal">' +
+        '<h3>✏️ Ch\u1ec9nh s\u1eeda th\u00f4ng tin Quiz</h3>' +
+        '<label class="field">T\u00ean Quiz<input type="text" id="qzMetaTitle" value="' + U().esc(qz.title || "") + '" maxlength="160"></label>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+          '<label class="field">Kh\u1ed1i / C\u1ea5p h\u1ecdc<select id="qzMetaGrade">' + (curr ? curr.renderGradeOptionsHtml(initGrade, true) : '<option value="unclassified">Ch\u01b0a ph\u00e2n lo\u1ea1i</option>') + '</select></label>' +
+          '<label class="field">M\u00f4n h\u1ecdc<div id="qzMetaSubjHost">' + renderSubjField(initGrade, initSubj) + '</div></label>' +
+        '</div>' +
+        '<label class="field">Th\u1ebb / Tag<input type="text" id="qzMetaTag" value="' + U().esc(qz.tag || "") + '" placeholder="VD: Ti\u1ebfng Anh, Unit 4" maxlength="80"></label>' +
+        '<div class="modal-actions">' +
+          '<button type="button" class="btn btn-outline" id="qzMetaCancel">H\u1ee7y</button>' +
+          '<button type="button" class="btn btn-primary" id="qzMetaSave">L\u01b0u thay \u0111\u1ed5i</button>' +
+        '</div>' +
+      '</div></div>';
+
+    const bindSubj = function () {
+      const sel = U().$("qzMetaSubj");
+      const cust = U().$("qzMetaSubjCustom");
+      if (sel && cust) {
+        sel.addEventListener("change", function () {
+          const isC = sel.value === "__custom__";
+          cust.classList.toggle("hidden", !isC);
+          if (isC) cust.focus();
+        });
+      }
+    };
+    bindSubj();
+
+    U().on("qzMetaGrade", "change", function () {
+      const g = U().$("qzMetaGrade").value;
+      const h = U().$("qzMetaSubjHost");
+      if (h) { h.innerHTML = renderSubjField(g, ""); bindSubj(); }
+    });
+    U().on("qzMetaCancel", "click", function () { host.innerHTML = ""; });
+    U().on("qzMetaSave", "click", function () {
+      const newTitle = (U().$("qzMetaTitle").value || "").trim();
+      if (!newTitle) { U().showToast("Vui l\u00f2ng nh\u1eadp t\u00ean Quiz.", "warning"); return; }
+      const newGrade = U().$("qzMetaGrade") ? U().$("qzMetaGrade").value : "unclassified";
+      let newSubj = "";
+      if (newGrade === "university") {
+        newSubj = (U().$("qzMetaSubjCustom") ? U().$("qzMetaSubjCustom").value : "").trim();
+      } else {
+        const sel = U().$("qzMetaSubj");
+        newSubj = sel ? (sel.value === "__custom__" ? (U().$("qzMetaSubjCustom") ? U().$("qzMetaSubjCustom").value : "").trim() : sel.value) : "";
+      }
+      if (newSubj && curr && typeof curr.addCustomSubject === "function") curr.addCustomSubject(newSubj);
+      const newTag = (U().$("qzMetaTag").value || "").trim() || newSubj || "T\u1ed5ng h\u1ee3p";
+      const nowIso = new Date().toISOString();
+
+      const oldTitleNorm = String(qz.title || "").trim().toLowerCase();
+      const oldLen = Array.isArray(qz.questions) ? qz.questions.length : -1;
+      const list = loadQuizzes().map(function (item) {
+        if (item && String(item.id) === String(qz.id)) {
+          return Object.assign({}, item, { title: newTitle, gradeLevel: newGrade, subject: newSubj, tag: newTag, updatedAt: nowIso });
+        }
+        return item;
+      });
+      saveQuizzes(list);
+
+      // Sync updated metadata back to matching deck in Kho đề (KEYS.decks)
+      const curDecks = U().loadArr(U().KEYS.decks);
+      const srcDeckId = qz.sourceDeckId ? String(qz.sourceDeckId) : (String(qz.id).indexOf("deck_") === 0 ? String(qz.id).slice(5) : "");
+      let dChanged = false;
+      const nextDecks = curDecks.map(function (d) {
+        if (!d) return d;
+        const match = (srcDeckId && String(d.id) === srcDeckId)
+          || (oldTitleNorm && String(d.title || "").trim().toLowerCase() === oldTitleNorm && Array.isArray(d.questions) && d.questions.length === oldLen);
+        if (match) {
+          dChanged = true;
+          return Object.assign({}, d, { title: newTitle, gradeLevel: newGrade, subject: newSubj, tag: newTag, updatedAt: nowIso });
+        }
+        return d;
+      });
+      if (dChanged) {
+        U().saveJSON(U().KEYS.decks, nextDecks);
+        if (typeof U().rebuildAndRefresh === "function") U().rebuildAndRefresh();
+      }
+
+      host.innerHTML = "";
+      render();
+      U().showToast("\u0110\u00e3 c\u1eadp nh\u1eadt th\u00f4ng tin Quiz!", "success");
+    });
+  }
+
   /* ======================== HOME ======================== */
   function renderHome(root) {
     stopStudioTimer();
@@ -447,7 +552,8 @@
           '<div class="deck-actions">' +
             '<button type="button" class="btn btn-emerald btn-sm" data-sact="play-saved" data-id="' + U().esc(qz.id) + '">▶ B\u1eaft \u0111\u1ea7u l\u00e0m b\u00e0i (Play)</button>' +
             '<button type="button" class="btn btn-primary btn-sm" data-sact="assign-saved" data-id="' + U().esc(qz.id) + '">Giao cho h\u1ecdc sinh</button>' +
-            '<button type="button" class="btn btn-outline btn-sm" data-sact="edit-saved" data-id="' + U().esc(qz.id) + '">Ch\u1ec9nh s\u1eeda</button>' +
+            '<button type="button" class="btn btn-outline btn-sm" data-sact="edit-meta-saved" data-id="' + U().esc(qz.id) + '" title="Ch\u1ec9nh s\u1eeda t\u00ean, kh\u1ed1i l\u1edbp, m\u00f4n h\u1ecdc">✏️ S\u1eeda th\u00f4ng tin</button>' +
+            '<button type="button" class="btn btn-outline btn-sm" data-sact="edit-saved" data-id="' + U().esc(qz.id) + '">So\u1ea1n c\u00e2u h\u1ecfi</button>' +
             '<select data-sact="card-vis" data-id="' + U().esc(qz.id) + '" aria-label="Quy\u1ec1n truy c\u1eadp Quiz" style="padding:5px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:.78rem;font-weight:700">' +
               '<option value="public"' + (isPub ? " selected" : "") + '>🌐 Public</option>' +
               '<option value="private"' + (!isPub ? " selected" : "") + '>🔒 Private</option>' +
@@ -1379,6 +1485,9 @@
     else if (act === "play-saved") {
       const qz = findQuizById(b.getAttribute("data-id"));
       if (qz) { sState.quiz = JSON.parse(JSON.stringify(qz)); initLobbyDefaultsForQuiz(sState.quiz); sState.screen = "lobby"; render(); }
+    }
+    else if (act === "edit-meta-saved") {
+      openQuizMetaModal(b.getAttribute("data-id"));
     }
     else if (act === "del-saved") {
       const id = String(b.getAttribute("data-id") || "");
