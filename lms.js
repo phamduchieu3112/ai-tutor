@@ -3105,6 +3105,8 @@
     }
 
     const qCount = resolveAssignmentQuestions(assign).length;
+    const isSingleStudent = Array.isArray(roster) && roster.length === 1;
+    const singleStu = isSingleStudent ? roster[0] : null;
     root.innerHTML = '<div class="ql-wrap"><div class="ql-card">' +
       '<div class="ql-header">' +
         '<div>' +
@@ -3122,13 +3124,20 @@
         '<span class="ql-section-label">Xác thực học sinh</span>' +
         '<div class="ql-grid-2 ql-grid-top">' +
           '<div class="ql-field">' +
-            '<div class="ql-field-head"><label class="ql-field-label" for="lmsEntryStudent">Chọn họ và tên của bạn</label></div>' +
-            '<select class="ql-select" id="lmsEntryStudent">' +
-              '<option value="">-- Chọn tên từ danh sách --</option>' +
-              roster.map(function (s) {
-                return '<option value="' + esc(s.id) + '">' + esc(s.fullName) + ' (' + esc(s.className || "") + ')</option>';
-              }).join("") +
-            '</select>' +
+            (isSingleStudent
+              ? '<div class="ql-field-head"><span class="ql-field-label">Học sinh làm bài</span></div>' +
+                '<div class="ql-input" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg2);font-weight:600">' +
+                  '<span>' + esc(singleStu.fullName) + (singleStu.className ? (' <span class="muted" style="font-weight:400">(' + esc(singleStu.className) + ')</span>') : '') + '</span>' +
+                  '<span class="badge badge-ok" style="font-size:.72rem">Đã chọn sẵn</span>' +
+                '</div>' +
+                '<input type="hidden" id="lmsEntryStudent" value="' + esc(singleStu.id) + '">'
+              : '<div class="ql-field-head"><label class="ql-field-label" for="lmsEntryStudent">Chọn họ và tên của bạn</label></div>' +
+                '<select class="ql-select" id="lmsEntryStudent">' +
+                  '<option value="">-- Chọn tên từ danh sách --</option>' +
+                  roster.map(function (s) {
+                    return '<option value="' + esc(s.id) + '">' + esc(s.fullName) + ' (' + esc(s.className || "") + ')</option>';
+                  }).join("") +
+                '</select>') +
           '</div>' +
           '<div class="ql-field">' +
             '<div class="ql-field-head"><label class="ql-field-label" for="lmsEntryPin">Mã PIN 4 số</label></div>' +
@@ -3145,6 +3154,26 @@
         '<button type="button" class="ql-cta-btn" data-lms="start-student-exam" data-id="' + esc(assign.id) + '">Bắt đầu làm bài</button>' +
       '</div>' +
     '</div></div>';
+
+    const pinInput = U().$("lmsEntryPin");
+    const stuSelect = U().$("lmsEntryStudent");
+    if (isSingleStudent && pinInput) {
+      setTimeout(function () { try { pinInput.focus(); } catch (e) { /* */ } }, 30);
+    } else if (stuSelect && stuSelect.tagName === "SELECT" && pinInput) {
+      stuSelect.addEventListener("change", function () {
+        if (stuSelect.value) {
+          try { pinInput.focus(); } catch (e) { /* */ }
+        }
+      });
+    }
+    if (pinInput) {
+      pinInput.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" && !ev.isComposing) {
+          ev.preventDefault();
+          startStudentExam(assign.id);
+        }
+      });
+    }
   }
 
   async function startStudentExam(assignId) {
@@ -3280,6 +3309,7 @@
     if (sess.timerId) { clearInterval(sess.timerId); sess.timerId = null; }
     if (sess.visHandler) { document.removeEventListener("visibilitychange", sess.visHandler); sess.visHandler = null; }
     if (sess.blurHandler) { window.removeEventListener("blur", sess.blurHandler); sess.blurHandler = null; }
+    if (sess.keyHandler) { document.removeEventListener("keydown", sess.keyHandler); sess.keyHandler = null; }
   }
 
   function attachExamMonitors(assign) {
@@ -3301,8 +3331,30 @@
     };
     sess.visHandler = function () { if (document.hidden) onSwitch(); };
     sess.blurHandler = function () { onSwitch(); };
+    sess.keyHandler = function (ev) {
+      if (!lmsState.studentSession) return;
+      if (ev.key !== "Enter" || ev.isComposing) return;
+      // Never handle exam Enter navigation while any confirmation/overlay modal is open
+      if (document.getElementById("lmsSubmitDoubleModal") || document.querySelector(".modal-overlay:not(.hidden)")) return;
+      const target = ev.target;
+      const tag = target && target.tagName ? target.tagName.toUpperCase() : "";
+      if (tag === "TEXTAREA" && ev.shiftKey) return; // Allow Shift+Enter line breaks in ESSAY textarea
+      const q = sess.questions[sess.idx];
+      if (!q) return;
+      if (!isStudentQuestionAnswered(q, sess.answers[q.id])) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (sess.idx < sess.questions.length - 1) {
+        sess.idx++;
+        persistStudentDraft();
+        refreshStudio();
+      } else {
+        openDoubleSubmitConfirmModal(assign.id);
+      }
+    };
     document.addEventListener("visibilitychange", sess.visHandler);
     window.addEventListener("blur", sess.blurHandler);
+    document.addEventListener("keydown", sess.keyHandler);
 
     if (sess.totalSec > 0) {
       sess.timerId = setInterval(function () {
@@ -3504,7 +3556,118 @@
         const dot = root.querySelector('.lms-pal-dot[data-idx="' + sess.idx + '"]');
         if (dot) dot.classList.toggle("done", isStudentQuestionAnswered(q, ev.target.value));
       });
+      if (!document.getElementById("lmsSubmitDoubleModal")) {
+        setTimeout(function () {
+          try {
+            if (document.getElementById("lmsStudentTextInput") === txtInput && !document.getElementById("lmsSubmitDoubleModal")) {
+              txtInput.focus();
+              if (typeof txtInput.setSelectionRange === "function" && txtInput.value) {
+                const len = txtInput.value.length;
+                txtInput.setSelectionRange(len, len);
+              }
+            }
+          } catch (e) { /* */ }
+        }, 25);
+      }
     }
+  }
+
+  function openDoubleSubmitConfirmModal(assignId) {
+    const sess = lmsState.studentSession;
+    const host = U().$("extraModals");
+    if (!sess || !host) return;
+    if (document.getElementById("lmsSubmitDoubleModal")) return;
+
+    const total = Array.isArray(sess.questions) ? sess.questions.length : 0;
+    const answered = (sess.questions || []).filter(function (item) { return isStudentQuestionAnswered(item, sess.answers[item.id]); }).length;
+    const unanswered = Math.max(0, total - answered);
+
+    const blurActive = function () {
+      try { if (document.activeElement && typeof document.activeElement.blur === "function") document.activeElement.blur(); } catch (e) { /* */ }
+    };
+    blurActive();
+
+    const blockKeyboard = function (ev) {
+      if (!document.getElementById("lmsSubmitDoubleModal")) {
+        window.removeEventListener("keydown", blockKeyboard, true);
+        return;
+      }
+      if (ev.key === "Enter" || ev.key === " " || ev.key === "Spacebar" || ev.code === "Space" || ev.code === "Enter" || ev.code === "NumpadEnter") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        blurActive();
+      }
+    };
+    window.addEventListener("keydown", blockKeyboard, true);
+
+    const closeModal = function () {
+      window.removeEventListener("keydown", blockKeyboard, true);
+      if (host && document.getElementById("lmsSubmitDoubleModal")) host.innerHTML = "";
+    };
+
+    const bindPointerOnly = function (btnId, handler) {
+      const btn = U().$(btnId);
+      if (!btn) return;
+      let lastPointerTs = 0;
+      btn.addEventListener("pointerdown", function (ev) {
+        if (ev.pointerType === "mouse" || ev.pointerType === "touch" || ev.pointerType === "pen" || ev.isTrusted) {
+          lastPointerTs = Date.now();
+        }
+      });
+      btn.addEventListener("click", function (ev) {
+        const isPointer = (ev.detail > 0) || (Date.now() - lastPointerTs < 800);
+        if (!isPointer) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          blurActive();
+          return;
+        }
+        handler(ev);
+      });
+    };
+
+    const renderStep1 = function () {
+      blurActive();
+      host.innerHTML =
+        '<div class="modal-overlay" id="lmsSubmitDoubleModal" role="dialog" aria-modal="true">' +
+          '<div class="modal">' +
+            '<h3>N\u1ed9p b\u00e0i t\u1eadp</h3>' +
+            '<p style="margin:8px 0">B\u1ea1n \u0111\u00e3 tr\u1ea3 l\u1eddi <strong>' + answered + ' / ' + total + '</strong> c\u00e2u h\u1ecfi.' +
+              (unanswered > 0 ? (' <span style="color:var(--warn,#d97706);font-weight:700">C\u00f2n ' + unanswered + ' c\u00e2u ch\u01b0a tr\u1ea3 l\u1eddi.</span>') : ' T\u1ea5t c\u1ea3 c\u00e1c c\u00e2u \u0111\u00e3 \u0111\u01b0\u1ee3c tr\u1ea3 l\u1eddi.') +
+            '</p>' +
+            '<p class="muted" style="font-size:.82rem;margin:0 0 12px">Vui l\u00f2ng b\u1ea5m chu\u1ed9t ho\u1eb7c ch\u1ea1m \u0111\u1ec3 x\u00e1c nh\u1eadn (ph\u00edm Enter / Space t\u1ea1m kh\u00f3a \u0111\u1ec3 tr\u00e1nh n\u1ed9p nh\u1ea7m).</p>' +
+            '<div class="modal-actions">' +
+              '<button type="button" class="btn btn-outline" id="lmsSubCancel1">Quay l\u1ea1i l\u00e0m ti\u1ebfp</button>' +
+              '<button type="button" class="btn btn-primary" id="lmsSubStep1Ok">X\u00e1c nh\u1eadn n\u1ed9p b\u00e0i</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      U().on("lmsSubCancel1", "click", closeModal);
+      bindPointerOnly("lmsSubStep1Ok", function () { renderStep2(); });
+    };
+
+    const renderStep2 = function () {
+      blurActive();
+      host.innerHTML =
+        '<div class="modal-overlay" id="lmsSubmitDoubleModal" role="dialog" aria-modal="true">' +
+          '<div class="modal">' +
+            '<h3>X\u00e1c nh\u1eadn l\u1ea7n cu\u1ed1i</h3>' +
+            '<p style="margin:8px 0;font-weight:700;font-size:1.02rem">B\u1ea1n ch\u1eafc ch\u1eafn mu\u1ed1n n\u1ed9p b\u00e0i ch\u01b0a?</p>' +
+            '<p class="muted" style="font-size:.84rem;margin:0 0 12px">Sau khi n\u1ed9p b\u00e0i, b\u1ea1n s\u1ebd kh\u00f4ng th\u1ec3 ch\u1ec9nh s\u1eeda c\u00e2u tr\u1ea3 l\u1eddi \u0111\u00e3 ch\u1ecdn.</p>' +
+            '<div class="modal-actions">' +
+              '<button type="button" class="btn btn-outline" id="lmsSubCancel2">H\u1ee7y</button>' +
+              '<button type="button" class="btn btn-emerald" id="lmsSubStep2Ok">Ch\u1eafc ch\u1eafn, n\u1ed9p b\u00e0i ngay</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      U().on("lmsSubCancel2", "click", closeModal);
+      bindPointerOnly("lmsSubStep2Ok", function () {
+        closeModal();
+        finishStudentExam(assignId, false);
+      });
+    };
+
+    renderStep1();
   }
 
   async function finishStudentExam(assignId, isTimeout) {
@@ -3970,9 +4133,7 @@
     }
     else if (act === "submit-student-exam") {
       const aid = b.getAttribute("data-id");
-      U().showConfirm("Nộp bài tập", "Bạn có chắc chắn muốn nộp bài ngay bây giờ?", function () {
-        finishStudentExam(aid, false);
-      });
+      openDoubleSubmitConfirmModal(aid);
     }
     else if (act === "toggle-ask-teacher") {
       const subId = b.getAttribute("data-sub");
