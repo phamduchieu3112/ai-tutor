@@ -1385,23 +1385,40 @@ module.exports = async function apiHandler(req, res) {
 
     /* ---------- Cloud User Data Sync API ---------- */
     if (p === "/api/cloud/sync" && method === "GET") {
-      const caller = getCallerEmail(req);
+      const caller = normalizeGmail(getCallerEmail(req));
       if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
       const data = await storage.getCloudUser(caller);
       return sendJson(res, 200, { ok: true, data: data || null });
     }
     if (p === "/api/cloud/sync" && method === "PUT") {
-      const caller = getCallerEmail(req);
+      const caller = normalizeGmail(getCallerEmail(req));
       if (!caller) return sendJson(res, 401, { error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." });
       const body = await readBody(req);
       const prev = await storage.getCloudUser(caller);
+      const countPayloadItems = function (obj) {
+        if (!obj || typeof obj !== "object") return 0;
+        const arrLen = function (v) { return Array.isArray(v) ? v.length : 0; };
+        const vocabCount = obj.vocab_studio && Array.isArray(obj.vocab_studio.words) ? obj.vocab_studio.words.length : 0;
+        return arrLen(obj.exam_sets) + arrLen(obj.decks) + arrLen(obj.studio_quizzes) +
+          arrLen(obj.lms_students) + arrLen(obj.lms_assignments) + arrLen(obj.lms_submissions) +
+          arrLen(obj.quiz_history) + vocabCount;
+      };
+      // Empty-device overwrite protection: never allow an empty local state to wipe non-empty cloud data
+      if (prev && !body.forceReplace && countPayloadItems(prev) > 0 && countPayloadItems(body) === 0) {
+        return sendJson(res, 409, {
+          ok: false,
+          code: "EMPTY_OVERWRITE_BLOCKED",
+          error: "Blocked empty payload from overwriting existing cloud data.",
+          cloudUpdatedAt: prev.updatedAt || ""
+        });
+      }
       // Stale backup overwrite protection
       const prevTs = prev && prev.updatedAt ? Date.parse(prev.updatedAt) : 0;
       const incTs = body && (body.updatedAt || body.exportedAt) ? Date.parse(body.updatedAt || body.exportedAt) : Date.now();
       if (prev && prevTs && incTs && incTs < prevTs && !body.forceReplace) {
         return sendJson(res, 409, { error: "Stale backup rejected to protect newer cloud data.", code: "STALE_BACKUP", cloudUpdatedAt: prev.updatedAt });
       }
-      const next = Object.assign({}, prev || {}, body, { updatedAt: new Date().toISOString() });
+      const next = Object.assign({}, prev || {}, body, { userEmail: caller, updatedAt: new Date().toISOString() });
       await storage.saveCloudUser(caller, next);
       return sendJson(res, 200, { ok: true, updatedAt: next.updatedAt });
     }

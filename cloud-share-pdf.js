@@ -22,6 +22,14 @@ const CLOUD_CONFIG = {
   const SHARES_KEY = "ai_tutor_shares";
   const IDB_NAME = "ai_tutor_idb";
   const IDB_STORE = "kv";
+  const LMS_BACKUP_KEYS = {
+    students: "uet_lms_students",
+    assignments: "uet_lms_assignments",
+    submissions: "uet_lms_submissions",
+    feedbackRules: "uet_lms_feedback_rules",
+    customSubjects: "uet_master_custom_subjects"
+  };
+  const MAX_CLOUD_PAYLOAD_BYTES = 3.6 * 1024 * 1024; // Safe margin below Vercel 4.5MB body limit
 
   const cs = {
     driveToken: "",
@@ -30,10 +38,20 @@ const CLOUD_CONFIG = {
     restoreMode: "merge",
     lastSyncText: "☁️ \u0110\u00e3 \u0111\u1ed3ng b\u1ed9",
     syncTimer: null,
+    pulledForEmail: "",
     backupMounted: false
   };
 
   function U() { return window.UET; }
+
+  function normalizeEmailKey(email) {
+    const clean = String(email || "").trim().toLowerCase();
+    const parts = clean.split("@");
+    if (parts.length === 2 && (parts[1] === "gmail.com" || parts[1] === "googlemail.com")) {
+      return parts[0].replace(/\./g, "") + "@gmail.com";
+    }
+    return clean;
+  }
 
   function dateStamp() {
     const d = new Date();
@@ -89,20 +107,34 @@ const CLOUD_CONFIG = {
     } catch (e) { return null; }
   }
 
+  function countPayloadRecords(obj) {
+    if (!obj || typeof obj !== "object") return 0;
+    const arrLen = function (v) { return Array.isArray(v) ? v.length : 0; };
+    const vocabCount = obj.vocab_studio && Array.isArray(obj.vocab_studio.words) ? obj.vocab_studio.words.length : 0;
+    return arrLen(obj.exam_sets) + arrLen(obj.decks) + arrLen(obj.studio_quizzes) +
+      arrLen(obj.lms_students) + arrLen(obj.lms_assignments) + arrLen(obj.lms_submissions) +
+      arrLen(obj.quiz_history) + vocabCount;
+  }
+
   function buildBackupPayload() {
     const u = U().state.user;
     const vocabSnapshot = (typeof window !== "undefined" && window.VocabStudio && typeof window.VocabStudio.exportBackupData === "function")
       ? window.VocabStudio.exportBackupData()
       : U().loadJSON("vocabStudio.v2", null);
     return {
-      version: 2,
+      version: 3,
       app: "AI Tutor",
       exportedAt: new Date().toISOString(),
-      userEmail: u ? u.email : "",
+      userEmail: u ? normalizeEmailKey(u.email) : "",
       exam_sets: U().loadArr(U().KEYS.decks),
       wrong_questions: U().loadObj(U().KEYS.mistakes),
       quiz_history: U().loadArr(U().KEYS.history),
       studio_quizzes: U().loadArr(U().KEYS.quizzes),
+      lms_students: U().loadArr(LMS_BACKUP_KEYS.students),
+      lms_assignments: U().loadArr(LMS_BACKUP_KEYS.assignments),
+      lms_submissions: U().loadArr(LMS_BACKUP_KEYS.submissions),
+      lms_feedback_rules: U().loadArr(LMS_BACKUP_KEYS.feedbackRules),
+      custom_subjects: U().loadArr((U().KEYS && U().KEYS.customSubjects) || LMS_BACKUP_KEYS.customSubjects),
       vocab_studio: vocabSnapshot,
       progress: U().loadObj(U().KEYS.progress),
       stats: U().loadObj(U().KEYS.stats),
@@ -115,22 +147,87 @@ const CLOUD_CONFIG = {
     };
   }
 
+  function trimPayloadForCloud(payload) {
+    let serialized = JSON.stringify(payload);
+    if (serialized.length <= MAX_CLOUD_PAYLOAD_BYTES) {
+      return { payload: payload, json: serialized, trimmed: false };
+    }
+    // Deep clone and strip oversized inline base64 data:image blobs (>30KB) while keeping all students/decks/quizzes intact
+    const stripBlobs = function (val) {
+      if (typeof val === "string") {
+        if (val.length > 30000 && val.indexOf("data:image/") === 0) return "";
+        return val;
+      }
+      if (Array.isArray(val)) return val.map(stripBlobs);
+      if (val && typeof val === "object") {
+        const out = {};
+        Object.keys(val).forEach(function (k) { out[k] = stripBlobs(val[k]); });
+        return out;
+      }
+      return val;
+    };
+    const compact = stripBlobs(payload);
+    serialized = JSON.stringify(compact);
+    if (serialized.length > MAX_CLOUD_PAYLOAD_BYTES) {
+      if (Array.isArray(compact.quiz_history) && compact.quiz_history.length > 50) {
+        compact.quiz_history = compact.quiz_history.slice(-50);
+      }
+      if (Array.isArray(compact.lms_submissions) && compact.lms_submissions.length > 100) {
+        compact.lms_submissions = compact.lms_submissions.slice(-100);
+      }
+      serialized = JSON.stringify(compact);
+    }
+    return { payload: compact, json: serialized, trimmed: true };
+  }
+
   function validateBackupPayload(obj) {
     if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
     const hasDecks = Array.isArray(obj.exam_sets) || Array.isArray(obj.decks);
     const hasWrong = obj.wrong_questions && typeof obj.wrong_questions === "object";
     const hasHist = Array.isArray(obj.quiz_history);
     const hasVocab = (obj.vocab_studio && typeof obj.vocab_studio === "object") || Array.isArray(obj.words);
-    return hasDecks || hasWrong || hasHist || Array.isArray(obj.studio_quizzes) || hasVocab;
+    const hasLms = Array.isArray(obj.lms_students) || Array.isArray(obj.lms_assignments) || Array.isArray(obj.lms_submissions);
+    return hasDecks || hasWrong || hasHist || Array.isArray(obj.studio_quizzes) || hasVocab || hasLms;
   }
 
-  function applyBackupPayload(obj, mode) {
+  function mergeById(localArr, incomingArr, idKey) {
+    const out = Array.isArray(localArr) ? localArr.slice() : [];
+    const idxById = {};
+    const kName = idKey || "id";
+    out.forEach(function (item, idx) {
+      if (item && item[kName] !== undefined && item[kName] !== null && String(item[kName])) {
+        idxById[String(item[kName])] = idx;
+      }
+    });
+    (Array.isArray(incomingArr) ? incomingArr : []).forEach(function (item) {
+      if (!item || typeof item !== "object") return;
+      const key = (item[kName] !== undefined && item[kName] !== null) ? String(item[kName]) : "";
+      if (!key) return;
+      if (idxById[key] === undefined) {
+        idxById[key] = out.length;
+        out.push(item);
+      } else {
+        const cur = out[idxById[key]];
+        const curTs = cur && cur.updatedAt ? Date.parse(cur.updatedAt) : 0;
+        const incTs = item.updatedAt ? Date.parse(item.updatedAt) : 0;
+        if (incTs > curTs) {
+          out[idxById[key]] = Object.assign({}, cur, item);
+        }
+      }
+    });
+    return out;
+  }
+
+  function applyBackupPayload(obj, mode, opts) {
     if (!validateBackupPayload(obj)) {
-      U().showToast("File sao l\u01b0u kh\u00f4ng h\u1ee3p l\u1ec7 ho\u1eb7c b\u1ecb h\u1ecfng c\u1ea5u tr\u00fac.", "error");
+      if (!opts || !opts.silent) {
+        U().showToast("File sao l\u01b0u kh\u00f4ng h\u1ee3p l\u1ec7 ho\u1eb7c b\u1ecb h\u1ecfng c\u1ea5u tr\u00fac.", "error");
+      }
       return false;
     }
     const isReplace = mode === "replace";
     const incomingDecks = Array.isArray(obj.exam_sets) ? obj.exam_sets : (Array.isArray(obj.decks) ? obj.decks : []);
+    const customSubjKey = (U().KEYS && U().KEYS.customSubjects) || LMS_BACKUP_KEYS.customSubjects;
     if (isReplace) {
       U().saveJSON(U().KEYS.decks, incomingDecks);
       U().saveJSON(U().KEYS.mistakes, obj.wrong_questions && typeof obj.wrong_questions === "object" ? obj.wrong_questions : {});
@@ -139,12 +236,14 @@ const CLOUD_CONFIG = {
       U().saveJSON(U().KEYS.progress, obj.progress && typeof obj.progress === "object" ? obj.progress : {});
       U().saveJSON(U().KEYS.stats, obj.stats && typeof obj.stats === "object" ? obj.stats : {});
       U().saveJSON(U().KEYS.pins, Array.isArray(obj.pins) ? obj.pins : []);
+      if (Array.isArray(obj.lms_students)) U().saveJSON(LMS_BACKUP_KEYS.students, obj.lms_students);
+      if (Array.isArray(obj.lms_assignments)) U().saveJSON(LMS_BACKUP_KEYS.assignments, obj.lms_assignments);
+      if (Array.isArray(obj.lms_submissions)) U().saveJSON(LMS_BACKUP_KEYS.submissions, obj.lms_submissions);
+      if (Array.isArray(obj.lms_feedback_rules)) U().saveJSON(LMS_BACKUP_KEYS.feedbackRules, obj.lms_feedback_rules);
+      if (Array.isArray(obj.custom_subjects)) U().saveJSON(customSubjKey, obj.custom_subjects);
     } else {
       // Merge mode
-      const curDecks = U().loadArr(U().KEYS.decks);
-      const seen = {};
-      curDecks.forEach(function (d) { if (d && d.id) seen[d.id] = true; });
-      incomingDecks.forEach(function (d) { if (d && d.id && !seen[d.id]) { curDecks.push(d); seen[d.id] = true; } });
+      const curDecks = mergeById(U().loadArr(U().KEYS.decks), incomingDecks, "id");
       U().saveJSON(U().KEYS.decks, curDecks);
 
       const curMk = Object.assign({}, U().loadObj(U().KEYS.mistakes), obj.wrong_questions || {});
@@ -183,6 +282,23 @@ const CLOUD_CONFIG = {
       });
       U().saveJSON(U().KEYS.quizzes, curQz);
 
+      if (Array.isArray(obj.lms_students) && obj.lms_students.length) {
+        U().saveJSON(LMS_BACKUP_KEYS.students, mergeById(U().loadArr(LMS_BACKUP_KEYS.students), obj.lms_students, "id"));
+      }
+      if (Array.isArray(obj.lms_assignments) && obj.lms_assignments.length) {
+        U().saveJSON(LMS_BACKUP_KEYS.assignments, mergeById(U().loadArr(LMS_BACKUP_KEYS.assignments), obj.lms_assignments, "id"));
+      }
+      if (Array.isArray(obj.lms_submissions) && obj.lms_submissions.length) {
+        U().saveJSON(LMS_BACKUP_KEYS.submissions, mergeById(U().loadArr(LMS_BACKUP_KEYS.submissions), obj.lms_submissions, "id"));
+      }
+      if (Array.isArray(obj.lms_feedback_rules) && obj.lms_feedback_rules.length && U().loadArr(LMS_BACKUP_KEYS.feedbackRules).length === 0) {
+        U().saveJSON(LMS_BACKUP_KEYS.feedbackRules, obj.lms_feedback_rules);
+      }
+      if (Array.isArray(obj.custom_subjects) && obj.custom_subjects.length) {
+        const mergedSubjs = Array.from(new Set(U().loadArr(customSubjKey).concat(obj.custom_subjects)));
+        U().saveJSON(customSubjKey, mergedSubjs);
+      }
+
       const curPins = Array.from(new Set(U().loadArr(U().KEYS.pins).concat(Array.isArray(obj.pins) ? obj.pins : [])));
       U().saveJSON(U().KEYS.pins, curPins);
     }
@@ -214,55 +330,113 @@ const CLOUD_CONFIG = {
 
     if (typeof U().rebuildAndRefresh === "function") U().rebuildAndRefresh();
     else U().renderTab();
-    cloudStorageService.scheduleSync();
+    if (typeof window !== "undefined" && window.UETStudio && typeof window.UETStudio.render === "function" && U().state && U().state.tab === "studio") {
+      window.UETStudio.render();
+    }
+    if (!opts || !opts.skipScheduleSync) {
+      cloudStorageService.scheduleSync();
+    }
     return true;
   }
 
   const cloudStorageService = {
+    resetSession: function () {
+      cs.pulledForEmail = "";
+      if (cs.syncTimer) { clearTimeout(cs.syncTimer); cs.syncTimer = null; }
+    },
     scheduleSync: function () {
       if (!U() || !U().state.user) return;
+      const normEmail = normalizeEmailKey(U().state.user.email);
+      // Guard against fresh empty device overwriting cloud before initial pull completes
+      if (cs.pulledForEmail !== normEmail && countPayloadRecords(buildBackupPayload()) === 0) return;
       setSyncIndicator("🔄 \u0110ang l\u01b0u...");
       if (cs.syncTimer) clearTimeout(cs.syncTimer);
       cs.syncTimer = setTimeout(function () { cloudStorageService.push(); }, 500);
     },
-    push: async function () {
+    push: async function (opts) {
+      const o = opts || {};
       const u = U().state.user;
-      if (!u) return;
-      const key = "cloud_" + u.email.toLowerCase();
-      const payload = buildBackupPayload();
-      await idbPut(key, payload);
-      if (U().state.backendOnline) {
+      if (!u) return { ok: false, error: "Ch\u01b0a \u0111\u0103ng nh\u1eadp." };
+      const normEmail = normalizeEmailKey(u.email);
+      const key = "cloud_" + normEmail;
+      const rawPayload = buildBackupPayload();
+      const localCount = countPayloadRecords(rawPayload);
+
+      // Protect cloud backup from being wiped by a fresh empty device before initial pull
+      if (!o.force && cs.pulledForEmail !== normEmail && localCount === 0) {
+        return { ok: false, skipped: true, code: "EMPTY_BEFORE_PULL" };
+      }
+
+      const prepared = trimPayloadForCloud(rawPayload);
+      await idbPut(key, prepared.payload);
+
+      if (typeof fetch === "function") {
         try {
-          const hdr = { "Content-Type": "application/json", "X-User-Email": u.email };
+          const hdr = { "Content-Type": "application/json", "X-User-Email": normEmail };
           if (u.credential) hdr["Authorization"] = "Bearer " + u.credential;
-          await fetch("/api/cloud/sync", { method: "PUT", headers: hdr, body: JSON.stringify(payload) });
-        } catch (e) { /* offline fallback already in IndexedDB */ }
+          const res = await fetch("/api/cloud/sync", { method: "PUT", headers: hdr, body: prepared.json });
+          if (!res.ok) {
+            const errData = await res.json().catch(function () { return {}; });
+            const errMsg = (errData && errData.error) || ("HTTP " + res.status);
+            if (res.status === 409 && errData && errData.code === "EMPTY_OVERWRITE_BLOCKED") {
+              setSyncIndicator("☁️ \u0110\u00e3 b\u1ea3o v\u1ec7 d\u1eef li\u1ec7u");
+              return { ok: false, status: 409, code: errData.code, error: errMsg };
+            }
+            setSyncIndicator("⚠️ L\u1ed7i \u0111\u1ed3ng b\u1ed9");
+            return { ok: false, status: res.status, error: errMsg };
+          }
+          setSyncIndicator("☁️ \u0110\u00e3 \u0111\u1ed3ng b\u1ed9");
+          return { ok: true, trimmed: prepared.trimmed };
+        } catch (e) {
+          setSyncIndicator("⚠️ Ngo\u1ea1i tuy\u1ebfn (IDB)");
+          return { ok: false, error: (e && e.message) || "L\u1ed7i k\u1ebft n\u1ed1i m\u00e1y ch\u1ee7." };
+        }
       }
       setSyncIndicator("☁️ \u0110\u00e3 \u0111\u1ed3ng b\u1ed9");
+      return { ok: true };
     },
     pull: async function () {
       const u = U().state.user;
-      if (!u) return;
+      if (!u) return { ok: false };
+      const normEmail = normalizeEmailKey(u.email);
       setSyncIndicator("🔄 \u0110ang \u0111\u1ed3ng b\u1ed9...");
       let remote = null;
-      if (U().state.backendOnline) {
+      if (typeof fetch === "function") {
         try {
-          const hdr = { "X-User-Email": u.email };
+          const hdr = { "X-User-Email": normEmail };
           if (u.credential) hdr["Authorization"] = "Bearer " + u.credential;
           const res = await fetch("/api/cloud/sync", { headers: hdr });
           if (res.ok) {
             const j = await res.json();
             if (j && j.data) remote = j.data;
           }
-        } catch (e) { /* fallback */ }
+        } catch (e) { /* fallback to IDB */ }
       }
-      if (!remote) remote = await idbGet("cloud_" + u.email.toLowerCase());
-      // Auto-recover if localStorage was wiped but IndexedDB/Cloud still has decks
-      if (remote && U().loadArr(U().KEYS.decks).length === 0 && Array.isArray(remote.exam_sets) && remote.exam_sets.length > 0) {
-        applyBackupPayload(remote, "merge");
-        U().showToast("\u0110\u00e3 t\u1ef1 \u0111\u1ed9ng kh\u00f4i ph\u1ee5c " + remote.exam_sets.length + " b\u1ed9 \u0111\u1ec1 t\u1eeb b\u1ed9 nh\u1edb \u0111\u1ec7m Cloud/IndexedDB!", "success");
+      if (!remote) {
+        remote = await idbGet("cloud_" + normEmail) || await idbGet("cloud_" + String(u.email || "").trim().toLowerCase());
+      }
+      cs.pulledForEmail = normEmail;
+
+      if (remote && validateBackupPayload(remote) && countPayloadRecords(remote) > 0) {
+        const beforeDecks = U().loadArr(U().KEYS.decks).length;
+        const beforeQuizzes = U().loadArr(U().KEYS.quizzes).length;
+        const beforeStudents = U().loadArr(LMS_BACKUP_KEYS.students).length;
+
+        applyBackupPayload(remote, "merge", { skipScheduleSync: true, silent: true });
+
+        const addedDecks = U().loadArr(U().KEYS.decks).length - beforeDecks;
+        const addedQuizzes = U().loadArr(U().KEYS.quizzes).length - beforeQuizzes;
+        const addedStudents = U().loadArr(LMS_BACKUP_KEYS.students).length - beforeStudents;
+        const parts = [];
+        if (addedDecks > 0) parts.push(addedDecks + " b\u1ed9 \u0111\u1ec1");
+        if (addedQuizzes > 0) parts.push(addedQuizzes + " quiz Studio");
+        if (addedStudents > 0) parts.push(addedStudents + " h\u1ecdc sinh");
+        if (parts.length > 0) {
+          U().showToast("\u0110\u00e3 \u0111\u1ed3ng b\u1ed9 t\u1eeb Cloud: " + parts.join(", ") + "!", "success");
+        }
       }
       setSyncIndicator("☁️ \u0110\u00e3 \u0111\u1ed3ng b\u1ed9");
+      return { ok: true, restored: Boolean(remote && countPayloadRecords(remote) > 0) };
     }
   };
 
@@ -572,7 +746,19 @@ const CLOUD_CONFIG = {
         else if (act === "drive-backup") backupToGoogleDrive();
         else if (act === "drive-restore") restoreFromGoogleDrive(cs.restoreMode);
         else if (act === "json-export") exportJsonBackup();
-        else if (act === "cloud-sync-now") { cloudStorageService.push().then(function () { U().showToast("\u0110\u00e3 \u0111\u1ed3ng b\u1ed9 d\u1eef li\u1ec7u th\u00e0nh c\u00f4ng.", "success"); }); }
+        else if (act === "cloud-sync-now") {
+          cloudStorageService.pull().then(function () {
+            return cloudStorageService.push();
+          }).then(function (r) {
+            if (r && r.ok) {
+              U().showToast("\u0110\u00e3 \u0111\u1ed3ng b\u1ed9 d\u1eef li\u1ec7u (h\u1ecdc sinh, b\u1ed9 \u0111\u1ec1 & l\u1ecbch s\u1eed) l\u00ean Cloud th\u00e0nh c\u00f4ng.", "success");
+            } else if (r && r.skipped) {
+              U().showToast("\u0110\u00e3 ki\u1ec3m tra v\u00e0 b\u1ea3o v\u1ec7 d\u1eef li\u1ec7u Cloud.", "info");
+            } else {
+              U().showToast("\u0110\u1ed3ng b\u1ed9 Cloud th\u1ea5t b\u1ea1i: " + ((r && r.error) || "L\u1ed7i m\u1ea1ng"), "error");
+            }
+          });
+        }
       });
       root.addEventListener("change", function (e) {
         if (e.target && e.target.name === "restoreMode") cs.restoreMode = e.target.value;

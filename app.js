@@ -240,7 +240,10 @@ function loadJSON(key, fb) {
 }
 function loadObj(key) { const v = loadJSON(key, {}); return v && typeof v === "object" && !Array.isArray(v) ? v : {}; }
 function loadArr(key) { const v = loadJSON(key, []); return Array.isArray(v) ? v : []; }
-const SYNCED_KEYS = [KEYS.decks, KEYS.mistakes, KEYS.history, KEYS.quizzes, KEYS.progress, KEYS.stats, KEYS.pins, KEYS.profiles, KEYS.customSubjects];
+const SYNCED_KEYS = [
+  KEYS.decks, KEYS.mistakes, KEYS.history, KEYS.quizzes, KEYS.progress, KEYS.stats, KEYS.pins, KEYS.profiles, KEYS.customSubjects,
+  "uet_lms_students", "uet_lms_assignments", "uet_lms_submissions", "uet_lms_feedback_rules"
+];
 function saveJSON(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
@@ -753,6 +756,9 @@ function logout() {
   }
   if (window.UETConverter && typeof window.UETConverter.resetAdminVerifyCache === "function") {
     window.UETConverter.resetAdminVerifyCache();
+  }
+  if (window.UETCloud && window.UETCloud.cloudStorageService && typeof window.UETCloud.cloudStorageService.resetSession === "function") {
+    window.UETCloud.cloudStorageService.resetSession();
   }
   removeKey(KEYS.auth);
   try { if (typeof google !== "undefined" && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect(); } catch (e) { /* b\u1ecf qua */ }
