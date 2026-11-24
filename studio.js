@@ -1382,9 +1382,27 @@
     }
     else if (act === "del-saved") {
       const id = String(b.getAttribute("data-id") || "");
-      U().showConfirm("X\u00f3a Quiz", "X\u00f3a Quiz n\u00e0y kh\u1ecfi Creator Studio?", function () {
-        saveQuizzes(loadQuizzes().filter(function (x) { return x && String(x.id) !== id; }));
+      U().showConfirm("X\u00f3a Quiz", "X\u00f3a \u0111\u1ec1 n\u00e0y kh\u1ecfi Creator Studio v\u00e0 Kho \u0111\u1ec1?", function () {
+        const allQ = loadQuizzes();
+        const target = allQ.find(function (x) { return x && String(x.id) === id; });
+        saveQuizzes(allQ.filter(function (x) { return x && String(x.id) !== id; }));
+        // Also remove matching copy in KEYS.decks so deleted quizzes do not reappear in "Tạo bài giao mới"
+        const curDecks = U().loadArr(U().KEYS.decks);
+        const normT = target ? String(target.title || "").trim().toLowerCase() : "";
+        const tLen = target && Array.isArray(target.questions) ? target.questions.length : -1;
+        const srcDeckId = target && target.sourceDeckId ? String(target.sourceDeckId) : (id.indexOf("deck_") === 0 ? id.slice(5) : "");
+        const nextDecks = curDecks.filter(function (d) {
+          if (!d) return false;
+          if (srcDeckId && String(d.id) === srcDeckId) return false;
+          if (normT && String(d.title || "").trim().toLowerCase() === normT && Array.isArray(d.questions) && d.questions.length === tLen) return false;
+          return true;
+        });
+        if (nextDecks.length !== curDecks.length) {
+          U().saveJSON(U().KEYS.decks, nextDecks);
+          if (typeof U().rebuildAndRefresh === "function") U().rebuildAndRefresh();
+        }
         render();
+        U().showToast("\u0110\u00e3 x\u00f3a \u0111\u1ec1 kh\u1ecfi h\u1ec7 th\u1ed1ng.", "success");
       });
     }
     else if (act === "back-home") { stopStudioTimer(); sState.screen = "home"; render(); }

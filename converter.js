@@ -4009,28 +4009,38 @@
               '<label class="check-row"><input type="checkbox" id="cKeepLatex"' + (cState.keepLatex ? " checked" : "") + '> Gi\u1eef chu\u1ea9n LaTeX ($...$)</label>' +
               '<label class="check-row"><input type="checkbox" id="cKeepHtml"' + (cState.keepHtml ? " checked" : "") + '> Gi\u1eef th\u1ebb HTML (&lt;u&gt;, &lt;b&gt;, &lt;i&gt;)</label>' +
             '</div>' +
-            '<div class="conv-filename-preview">T\u00ean file d\u1ef1 ki\u1ebfn: <code>AI_Tutor_' + dateStamp() + '.xlsx</code></div>' +
-            '<div class="conv-drawer-actions">' +
-              '<button type="button" class="btn btn-primary" style="width:100%" data-cact="exp-xlsx"' + (cState.questions.length === 0 ? " disabled" : "") + '>\u2b07 Xu\u1ea5t .xlsx (Chu\u1ea9n 11 c\u1ed9t)</button>' +
-              '<div class="conv-drawer-subactions">' +
-                '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="exp-csv"' + (cState.questions.length === 0 ? " disabled" : "") + '>Xu\u1ea5t CSV</button>' +
-                '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="exp-md"' + (cState.questions.length === 0 && !cState.rawMarkdown && !cState.studyNoteMarkdown ? " disabled" : "") + '>T\u1ea3i xu\u1ed1ng file .md</button>' +
-                '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="save-drive"' + (cState.questions.length === 0 && !cState.studyNoteMarkdown ? " disabled" : "") + '>☁️ L\u01b0u th\u01b0 vi\u1ec7n / Drive</button>' +
-              '</div>' +
-            '</div>' +
-            (cState.questions.length > 0 ? (
-              '<div class="conv-drawer-divider"></div>' +
-              '<div class="conv-drawer-section-title">L\u01b0u v\u00e0o Kho \u0111\u1ec1 AI Tutor (1-Click Import)</div>' +
-              '<label class="field">T\u00ean b\u1ed9 \u0111\u1ec1<input type="text" id="convDeckTitle" value="' + U().esc((function () { const gs = getExamGroups(); return (gs[0] && gs[0].title) || ("AI_Tutor_" + dateStamp()); })()) + '"></label>' +
-              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
-                '<label class="field">Th\u1ebb m\u00f4n h\u1ecdc / Tag<input type="text" id="convDeckTag" placeholder="VD: Gi\u1ea3i t\u00edch, Ti\u1ebfng Anh"></label>' +
-                '<label class="field">\u0110\u00edch l\u01b0u' + (U().can("merge") ? "" : " (G\u1ed9p c\u1ea7n Gold)") + '<select id="convMergeTarget">' + mergeOpts + '</select></label>' +
-              '</div>' +
-              '<div class="conv-drawer-subactions" style="margin-top:8px">' +
-                '<button type="button" class="btn conv-btn-ghost btn-sm" style="flex:1" data-cact="one-click-import">\u26a1 Nh\u1eadp v\u00e0o Kho \u0111\u1ec1 (' + v.valid + ' c\u00e2u)</button>' +
-                '<button type="button" class="btn conv-btn-ghost btn-sm" style="flex:1" data-cact="send-studio">🎮 M\u1edf Creator Studio</button>' +
-              '</div>'
-            ) : '') +
+            (function () {
+              const gs = getExamGroups();
+              const isMulti = gs.length > 1;
+              const previewText = isMulti
+                ? (gs.length + " file ri\u00eang bi\u1ec7t (VD: " + sanitizeExportFilename(gs[0].title, "AI_Tutor") + ".xlsx, ...)")
+                : (sanitizeExportFilename((gs[0] && gs[0].title) || ("AI_Tutor_" + dateStamp()), "AI_Tutor_" + dateStamp()) + ".xlsx");
+              const singleTitle = (gs[0] && gs[0].title) || ("AI_Tutor_" + dateStamp());
+              return '<div class="conv-filename-preview">T\u00ean file d\u1ef1 ki\u1ebfn: <code>' + U().esc(previewText) + '</code></div>' +
+                '<div class="conv-drawer-actions">' +
+                  '<button type="button" class="btn btn-primary" style="width:100%" data-cact="exp-xlsx"' + (cState.questions.length === 0 ? " disabled" : "") + '>' + (isMulti ? ('\u2b07 Xu\u1ea5t ' + gs.length + ' file .xlsx ri\u00eang (Chu\u1ea9n 11 c\u1ed9t)') : '\u2b07 Xu\u1ea5t .xlsx (Chu\u1ea9n 11 c\u1ed9t)') + '</button>' +
+                  '<div class="conv-drawer-subactions">' +
+                    '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="exp-csv"' + (cState.questions.length === 0 ? " disabled" : "") + '>' + (isMulti ? ('Xu\u1ea5t ' + gs.length + ' CSV') : 'Xu\u1ea5t CSV') + '</button>' +
+                    '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="exp-md"' + (cState.questions.length === 0 && !cState.rawMarkdown && !cState.studyNoteMarkdown ? " disabled" : "") + '>' + (isMulti ? ('T\u1ea3i ' + gs.length + ' file .md') : 'T\u1ea3i xu\u1ed1ng file .md') + '</button>' +
+                    '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="save-drive"' + (cState.questions.length === 0 && !cState.studyNoteMarkdown ? " disabled" : "") + '>' + (isMulti ? ('☁️ L\u01b0u ' + gs.length + ' b\u1ed9 \u0111\u1ec1') : '☁️ L\u01b0u th\u01b0 vi\u1ec7n / Drive') + '</button>' +
+                  '</div>' +
+                '</div>' +
+                (cState.questions.length > 0 ? (
+                  '<div class="conv-drawer-divider"></div>' +
+                  '<div class="conv-drawer-section-title">L\u01b0u v\u00e0o Kho \u0111\u1ec1 AI Tutor (1-Click Import)</div>' +
+                  (isMulti
+                    ? '<div class="muted" style="font-size:.8rem;margin-bottom:8px">S\u1ebd t\u1ef1 \u0111\u1ed9ng t\u1ea1o <strong>' + gs.length + ' b\u1ed9 \u0111\u1ec1 ri\u00eang bi\u1ec7t</strong> theo t\u00ean t\u1eebng file \u0111\u00e3 t\u1ea3i l\u00ean.</div>'
+                    : '<label class="field">T\u00ean b\u1ed9 \u0111\u1ec1<input type="text" id="convDeckTitle" value="' + U().esc(singleTitle) + '"></label>') +
+                  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+                    '<label class="field">Th\u1ebb m\u00f4n h\u1ecdc / Tag<input type="text" id="convDeckTag" placeholder="VD: Gi\u1ea3i t\u00edch, Ti\u1ebfng Anh"></label>' +
+                    '<label class="field">\u0110\u00edch l\u01b0u' + (U().can("merge") ? "" : " (G\u1ed9p c\u1ea7n Gold)") + '<select id="convMergeTarget">' + mergeOpts + '</select></label>' +
+                  '</div>' +
+                  '<div class="conv-drawer-subactions" style="margin-top:8px">' +
+                    '<button type="button" class="btn conv-btn-ghost btn-sm" style="flex:1" data-cact="one-click-import">' + (isMulti ? ('\u26a1 Nh\u1eadp ' + gs.length + ' b\u1ed9 \u0111\u1ec1 ri\u00eang (' + v.valid + ' c\u00e2u)') : ('\u26a1 Nh\u1eadp v\u00e0o Kho \u0111\u1ec1 (' + v.valid + ' c\u00e2u)')) + '</button>' +
+                    '<button type="button" class="btn conv-btn-ghost btn-sm" style="flex:1" data-cact="send-studio">🎮 M\u1edf Creator Studio</button>' +
+                  '</div>'
+                ) : '');
+            })() +
           '</div>' +
         '</div>' +
       '</div>';

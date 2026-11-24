@@ -171,16 +171,24 @@
     const decks = U().getDecks ? U().getDecks() : [];
     const curr = U().CURRICULUM;
     const map = {};
+    const sigMap = {};
     const out = [];
+    const makeSig = function (title, qCount) {
+      return String(title || "").trim().toLowerCase().replace(/\s+/g, " ") + "__" + qCount;
+    };
     rawStudio.forEach(function (q) {
       if (!q || q.id == null) return;
       const qs = Array.isArray(q.questions) ? q.questions : (Array.isArray(q.items) ? q.items : []);
       if (!qs.length) return;
       const sid = String(q.id);
+      const sig = makeSig(q.title, qs.length);
+      if (sigMap[sig]) return; // Avoid showing duplicate copies of the same exam
       const tax = curr ? curr.detectTaxonomy(q) : { gradeLevel: "unclassified", subject: "" };
       map[sid] = true;
+      sigMap[sig] = true;
       out.push(Object.assign({}, q, {
         id: sid,
+        _source: "studio",
         gradeLevel: q.gradeLevel || q.grade_level || q.grade || tax.gradeLevel,
         subject: q.subject || tax.subject || "",
         questions: qs
@@ -189,10 +197,14 @@
     decks.forEach(function (d) {
       if (!d || d.id == null || !Array.isArray(d.questions) || !d.questions.length) return;
       const id = "deck_" + String(d.id);
-      if (!map[id]) {
+      const sig = makeSig(d.title, d.questions.length);
+      if (!map[id] && !sigMap[sig]) {
         const tax = curr ? curr.detectTaxonomy(d) : { gradeLevel: "unclassified", subject: "" };
+        sigMap[sig] = true;
         out.push({
           id: id,
+          _source: "deck",
+          _rawDeckId: String(d.id),
           title: d.title,
           tag: d.tag || "T\u1ed5ng h\u1ee3p",
           gradeLevel: d.gradeLevel || tax.gradeLevel,
@@ -202,6 +214,41 @@
       }
     });
     return out;
+  }
+
+  function deleteQuizOrDeckEverywhere(quizObj) {
+    if (!quizObj) return;
+    const sid = String(quizObj.id || "");
+    const rawDeckId = quizObj._rawDeckId ? String(quizObj._rawDeckId) : (sid.indexOf("deck_") === 0 ? sid.slice(5) : (quizObj.sourceDeckId ? String(quizObj.sourceDeckId) : ""));
+    const normTitle = String(quizObj.title || "").trim().toLowerCase().replace(/\s+/g, " ");
+    const qLen = Array.isArray(quizObj.questions) ? quizObj.questions.length : -1;
+
+    const curQuizzes = U().loadArr(U().KEYS.quizzes);
+    const nextQuizzes = curQuizzes.filter(function (q) {
+      if (!q) return false;
+      const qid = String(q.id || "");
+      if (qid === sid || (rawDeckId && (qid === rawDeckId || qid === ("deck_" + rawDeckId) || String(q.sourceDeckId || "") === rawDeckId))) return false;
+      const ql = Array.isArray(q.questions) ? q.questions.length : (Array.isArray(q.items) ? q.items.length : -2);
+      if (normTitle && String(q.title || "").trim().toLowerCase().replace(/\s+/g, " ") === normTitle && qLen >= 0 && ql === qLen) return false;
+      return true;
+    });
+    if (nextQuizzes.length !== curQuizzes.length) {
+      U().saveJSON(U().KEYS.quizzes, nextQuizzes);
+    }
+
+    const curDecks = U().loadArr(U().KEYS.decks);
+    const nextDecks = curDecks.filter(function (d) {
+      if (!d) return false;
+      const did = String(d.id || "");
+      if (did === sid || (rawDeckId && did === rawDeckId)) return false;
+      const dl = Array.isArray(d.questions) ? d.questions.length : -2;
+      if (normTitle && String(d.title || "").trim().toLowerCase().replace(/\s+/g, " ") === normTitle && qLen >= 0 && dl === qLen) return false;
+      return true;
+    });
+    if (nextDecks.length !== curDecks.length) {
+      U().saveJSON(U().KEYS.decks, nextDecks);
+    }
+    if (typeof U().rebuildAndRefresh === "function") U().rebuildAndRefresh();
   }
 
   function resolveAssignmentQuestions(assign) {
@@ -1181,13 +1228,16 @@
         const sid = String(q.id);
         const tx = curr ? curr.detectTaxonomy(q) : { gradeLevel: "unclassified", gradeLabel: "Ch\u01b0a ph\u00e2n lo\u1ea1i", subject: "" };
         const chk = preselectedQuizIds.has(sid);
-        return '<label class="lms-quiz-pick-row">' +
-          '<input type="checkbox" name="lmsAsQuizPick" value="' + esc(sid) + '"' + (chk ? " checked" : "") + '>' +
-          '<span class="lms-qp-title">' + esc(q.title) + '</span>' +
-          '<span class="badge tax-badge-grade">' + esc(tx.gradeLabel) + '</span>' +
-          (tx.subject ? '<span class="badge tax-badge-subj">' + esc(tx.subject) + '</span>' : '') +
-          '<span class="muted" style="font-size:.76rem;white-space:nowrap">(' + (q.questions ? q.questions.length : 0) + ' c\u00e2u)</span>' +
-        '</label>';
+        return '<div class="lms-quiz-pick-row" style="display:flex;align-items:center;gap:8px">' +
+          '<label style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;cursor:pointer;margin:0">' +
+            '<input type="checkbox" name="lmsAsQuizPick" value="' + esc(sid) + '"' + (chk ? " checked" : "") + '>' +
+            '<span class="lms-qp-title">' + esc(q.title) + '</span>' +
+            '<span class="badge tax-badge-grade">' + esc(tx.gradeLabel) + '</span>' +
+            (tx.subject ? '<span class="badge tax-badge-subj">' + esc(tx.subject) + '</span>' : '') +
+            '<span class="muted" style="font-size:.76rem;white-space:nowrap">(' + (q.questions ? q.questions.length : 0) + ' c\u00e2u)</span>' +
+          '</label>' +
+          '<button type="button" class="lms-mini-toggle" data-del-quiz="' + esc(sid) + '" title="X\u00f3a \u0111\u1ec1 c\u0169 n\u00e0y kh\u1ecfi h\u1ec7 th\u1ed1ng" style="color:var(--danger,#ef4444);flex-shrink:0">🗑️</button>' +
+        '</div>';
       }).join("");
     };
 
@@ -1411,6 +1461,23 @@
             else preselectedQuizIds.delete(e.target.value);
             syncQuizBadgeAndTaxonomy();
           }
+        });
+        qWrap.addEventListener("click", function (e) {
+          const delBtn = e.target && e.target.closest ? e.target.closest("[data-del-quiz]") : null;
+          if (!delBtn) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const delId = String(delBtn.getAttribute("data-del-quiz") || "");
+          const targetQ = quizzes.find(function (q) { return String(q.id) === delId; });
+          if (!targetQ) return;
+          if (typeof window.confirm === "function" && !window.confirm("X\u00f3a v\u0129nh vi\u1ec5n \u0111\u1ec1 \"" + targetQ.title + "\" kh\u1ecfi h\u1ec7 th\u1ed1ng (Kho \u0111\u1ec1 & Creator Studio)?")) return;
+          deleteQuizOrDeckEverywhere(targetQ);
+          preselectedQuizIds.delete(delId);
+          quizzes.length = 0;
+          getAllAvailableQuizzes().forEach(function (item) { quizzes.push(item); });
+          syncQuizBadgeAndTaxonomy();
+          refreshMultiQuizList();
+          U().showToast("\u0110\u00e3 x\u00f3a \u0111\u1ec1 \"" + targetQ.title + "\" kh\u1ecfi h\u1ec7 th\u1ed1ng.", "success");
         });
       }
     }

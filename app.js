@@ -1431,14 +1431,33 @@ function togglePin(id) {
   renderDeckPanel();
 }
 function deleteDeck(id) {
-  saveJSON(KEYS.decks, loadArr(KEYS.decks).filter(function (d) { return !d || String(d.id) !== id; }));
+  const sid = String(id || "");
+  const allDecks = loadArr(KEYS.decks);
+  const target = allDecks.find(function (d) { return d && String(d.id) === sid; });
+  saveJSON(KEYS.decks, allDecks.filter(function (d) { return !d || String(d.id) !== sid; }));
+  // Also remove synced/cloned copies in Creator Studio quizzes so deleted decks never linger in "Tạo bài giao mới"
+  const normTitle = target ? String(target.title || "").trim().toLowerCase() : "";
+  const targetLen = target && Array.isArray(target.questions) ? target.questions.length : -1;
+  const curQuizzes = loadArr(KEYS.quizzes);
+  const nextQuizzes = curQuizzes.filter(function (q) {
+    if (!q) return false;
+    if (String(q.id) === sid || String(q.id) === ("deck_" + sid) || String(q.sourceDeckId || "") === sid) return false;
+    if (normTitle && String(q.title || "").trim().toLowerCase() === normTitle) {
+      const qLen = Array.isArray(q.questions) ? q.questions.length : (Array.isArray(q.items) ? q.items.length : -2);
+      if (targetLen >= 0 && qLen === targetLen) return false;
+    }
+    return true;
+  });
+  if (nextQuizzes.length !== curQuizzes.length) {
+    saveJSON(KEYS.quizzes, nextQuizzes);
+  }
   const prog = loadObj(KEYS.progress); delete prog[id]; saveJSON(KEYS.progress, prog);
   saveJSON(KEYS.pins, getPins().filter(function (p) { return p !== id; }));
   if (state.session && state.session.deckId === id) { stopTimer(); state.session = null; }
   if (state.flash && state.flash.deckId === id) state.flash = null;
   rebuildDecks();
   renderTab();
-  showToast("\u0110\u00e3 x\u00f3a b\u1ed9 \u0111\u1ec1.", "success");
+  showToast("\u0110\u00e3 x\u00f3a b\u1ed9 \u0111\u1ec1 (v\u00e0 \u0111\u1ed3ng b\u1ed9 x\u00f3a trong Creator Studio).", "success");
 }
 function renderPicker(containerId, mode) {
   if (state.decks.length === 0) {
