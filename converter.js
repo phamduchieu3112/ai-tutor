@@ -159,6 +159,7 @@
     questions: [],          // { id, number, examId, examTitle, sourceFilename, qType, text, type, options[5], correct[], tfStatements[], tfAnswers{}, answerText, contextId, instruction, section, level, tag, time, image, explanation, verified, suspect, checkNote }
     exams: [],              // [{ id, title, subject, sourceFilename, docMeta, contexts, rawMarkdown, studyNoteMarkdown }]
     activeExamId: "all",    // "all" | exam.id
+    manualTitleEdited: false,
     docMeta: { title: "", subject: "", mode: "EXAM", total_questions: 0, duration_minutes: 45 },
     contexts: {},           // id -> { id, questions, content }
     pinnedContextId: "",
@@ -2189,17 +2190,35 @@
     return [body];
   }
 
+  function isUploadedSourceFilename(name) {
+    const clean = String(name || "").trim();
+    if (!clean) return false;
+    if (/^pasted(_\d+)?\.(md|txt)$/i.test(clean)) return false;
+    return /\.[a-z0-9]{1,6}$/i.test(clean);
+  }
+
+  function resolveSingleExportTitle(group) {
+    const manualInput = U().$("convDeckTitle");
+    const manualVal = manualInput ? String(manualInput.value || "").trim() : "";
+    if (manualVal && cState.manualTitleEdited) return manualVal;
+    if (group && group.title) return group.title;
+    if (manualVal) return manualVal;
+    return (cState.docMeta && cState.docMeta.title) || ("AI_Tutor_" + dateStamp());
+  }
+
   function getExamGroups() {
     if (Array.isArray(cState.exams) && cState.exams.length > 0) {
       return cState.exams.map(function (ex, idx) {
         const qs = cState.questions.filter(function (q) { return q && q.examId === ex.id; });
+        const fromFile = isUploadedSourceFilename(ex.sourceFilename) ? stripFileExt(ex.sourceFilename) : "";
+        const resolved = ex.title || fromFile || (ex.docMeta && ex.docMeta.title) || ("AI_Tutor_" + dateStamp());
         return {
           id: ex.id,
           index: idx,
-          title: ex.title || (ex.docMeta && ex.docMeta.title) || stripFileExt(ex.sourceFilename) || ("\u0110\u1ec1 s\u1ed1 " + (idx + 1)),
+          title: resolved,
           subject: ex.subject || (ex.docMeta && ex.docMeta.subject) || cState.docMeta.subject || "",
           sourceFilename: ex.sourceFilename || "",
-          docMeta: ex.docMeta || { title: ex.title || "", subject: ex.subject || "", mode: "EXAM", total_questions: qs.length, duration_minutes: 45 },
+          docMeta: ex.docMeta || { title: resolved, subject: ex.subject || "", mode: "EXAM", total_questions: qs.length, duration_minutes: 45 },
           contexts: ex.contexts || {},
           rawMarkdown: ex.rawMarkdown || "",
           studyNoteMarkdown: ex.studyNoteMarkdown || "",
@@ -2208,12 +2227,14 @@
       }).filter(function (g) { return g.questions.length > 0 || (g.docMeta && g.docMeta.mode === "STUDY_NOTE") || g.studyNoteMarkdown; });
     }
     if (cState.questions.length > 0 || cState.studyNoteMarkdown || (cState.docMeta && cState.docMeta.mode === "STUDY_NOTE")) {
+      const firstFileName = (cState.files[0] && cState.files[0].name) || "";
+      const fromFile = isUploadedSourceFilename(firstFileName) ? stripFileExt(firstFileName) : "";
       return [{
         id: "exam_single",
         index: 0,
-        title: (cState.docMeta && cState.docMeta.title) || ("B\u1ed9 \u0111\u1ec1 AI Converter " + dateStamp()),
+        title: fromFile || (cState.docMeta && cState.docMeta.title) || ("AI_Tutor_" + dateStamp()),
         subject: (cState.docMeta && cState.docMeta.subject) || "",
-        sourceFilename: (cState.files[0] && cState.files[0].name) || "",
+        sourceFilename: firstFileName,
         docMeta: cState.docMeta,
         contexts: cState.contexts || {},
         rawMarkdown: cState.rawMarkdown || "",
@@ -2276,7 +2297,10 @@
       if (parsedDoc.error) U().showToast(parsedDoc.error, "error");
       if (!isComplete && parsedDoc.streamingTail) lastTail = parsedDoc.streamingTail;
 
-      const resolvedTitle = (parsedDoc.meta && parsedDoc.meta.title) || grp.title || ("\u0110\u1ec1 s\u1ed1 " + (existingExams.length + eIdx + 1));
+      const uploadedBase = isUploadedSourceFilename(grp.sourceFilename) ? stripFileExt(grp.sourceFilename) : "";
+      const resolvedTitle = uploadedBase
+        ? (grp.title || uploadedBase)
+        : ((parsedDoc.meta && parsedDoc.meta.title) || grp.title || ("AI_Tutor_" + dateStamp()));
       const resolvedSubj = (parsedDoc.meta && parsedDoc.meta.subject) || "";
       const examContexts = {};
       const ctxMap = {};
@@ -2726,6 +2750,7 @@
     if (!cState.appendMode) {
       cState.exams = [];
       cState.activeExamId = "all";
+      cState.manualTitleEdited = false;
       cState.contexts = {};
       cState.pinnedContextId = "";
       cState.studyNoteMarkdown = "";
@@ -3365,7 +3390,8 @@
         });
       }
       if (!md) return;
-      const fname = makeUniqueBaseName(g.title, "AI_Tutor_De_" + (idx + 1) + "_" + stamp, usedNames) + ".md";
+      const exportTitle = groups.length === 1 ? resolveSingleExportTitle(g) : g.title;
+      const fname = makeUniqueBaseName(exportTitle, "AI_Tutor_De_" + (idx + 1) + "_" + stamp, usedNames) + ".md";
       jobs.push(function () {
         U().downloadBlob(new Blob([md], { type: "text/markdown;charset=utf-8;" }), fname);
       });
@@ -3434,8 +3460,8 @@
     } else {
       const v = validateAll();
       if (v.valid > 0) {
-        const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || cState.docMeta.title || ("B\u1ed9 \u0111\u1ec1 AI Converter " + dateStamp());
-        const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || cState.docMeta.subject || "T\u1ed5ng h\u1ee3p";
+        const title = resolveSingleExportTitle(groups[0]);
+        const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || (groups[0] && groups[0].subject) || cState.docMeta.subject || "T\u1ed5ng h\u1ee3p";
         const mergeId = U().$("convMergeTarget") ? U().$("convMergeTarget").value : "";
         const normalized = v.validItems.map(buildImportableQuestion);
         if (normalized.length > 0) {
@@ -3534,8 +3560,9 @@
           chunks.push(list);
         }
 
+        const exportTitle = groups.length === 1 ? resolveSingleExportTitle(g) : g.title;
         const baseName = makeUniqueBaseName(
-          g.title,
+          exportTitle,
           groups.length > 1 ? ("AI_Tutor_De_" + (gIdx + 1) + "_" + stamp) : ("AI_Tutor_" + stamp),
           usedNames
         );
@@ -3599,8 +3626,8 @@
         U().showToast("\u0110\u00e3 nh\u1eadp " + count + " b\u1ed9 \u0111\u1ec1 ri\u00eang bi\u1ec7t v\u00e0o th\u01b0 vi\u1ec7n!", "success");
         return;
       }
-      const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || cState.docMeta.title || ("B\u1ed9 \u0111\u1ec1 AI Converter " + dateStamp());
-      const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || cState.docMeta.subject || "T\u1ed5ng h\u1ee3p";
+      const title = resolveSingleExportTitle(groups[0]);
+      const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || (groups[0] && groups[0].subject) || cState.docMeta.subject || "T\u1ed5ng h\u1ee3p";
       const mergeId = U().$("convMergeTarget") ? U().$("convMergeTarget").value : "";
       const normalized = v.validItems.map(buildImportableQuestion);
       U().addOrMergeDeck({
@@ -3994,7 +4021,7 @@
             (cState.questions.length > 0 ? (
               '<div class="conv-drawer-divider"></div>' +
               '<div class="conv-drawer-section-title">L\u01b0u v\u00e0o Kho \u0111\u1ec1 AI Tutor (1-Click Import)</div>' +
-              '<label class="field">T\u00ean b\u1ed9 \u0111\u1ec1<input type="text" id="convDeckTitle" value="B\u1ed9 \u0111\u1ec1 ' + dateStamp() + '"></label>' +
+              '<label class="field">T\u00ean b\u1ed9 \u0111\u1ec1<input type="text" id="convDeckTitle" value="' + U().esc((function () { const gs = getExamGroups(); return (gs[0] && gs[0].title) || ("AI_Tutor_" + dateStamp()); })()) + '"></label>' +
               '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
                 '<label class="field">Th\u1ebb m\u00f4n h\u1ecdc / Tag<input type="text" id="convDeckTag" placeholder="VD: Gi\u1ea3i t\u00edch, Ti\u1ebfng Anh"></label>' +
                 '<label class="field">\u0110\u00edch l\u01b0u' + (U().can("merge") ? "" : " (G\u1ed9p c\u1ea7n Gold)") + '<select id="convMergeTarget">' + mergeOpts + '</select></label>' +
@@ -4402,9 +4429,11 @@
     segments.forEach(function (clean, sIdx) {
       if (!clean || /^ERROR_INVALID_CONTENT\s*:/i.test(clean)) return;
       const eid = "exam_md_" + Date.now() + "_" + Math.floor(Math.random() * 10000) + "_" + sIdx;
-      const fallbackTitle = stripFileExt(sourceLabel)
-        ? (segments.length > 1 ? (stripFileExt(sourceLabel) + " - \u0110\u1ec1 " + (sIdx + 1)) : stripFileExt(sourceLabel))
-        : ("\u0110\u1ec1 Markdown " + (nextExams.length + 1));
+      const fromUploadedFile = Boolean(o.fromFile || isUploadedSourceFilename(sourceLabel));
+      const uploadedBase = fromUploadedFile ? stripFileExt(sourceLabel) : "";
+      const fallbackTitle = uploadedBase
+        ? (segments.length > 1 ? (uploadedBase + " - \u0110\u1ec1 " + (sIdx + 1)) : uploadedBase)
+        : ("AI_Tutor_" + dateStamp());
 
       let docMeta = { title: fallbackTitle, subject: "", mode: "EXAM", total_questions: 0, duration_minutes: 45 };
       let examContexts = {};
@@ -4416,7 +4445,12 @@
         parser.append(clean);
         const doc = parser.finish();
         docMeta = Object.assign(docMeta, doc.meta || {});
-        if (!docMeta.title) docMeta.title = fallbackTitle;
+        // Priority: uploaded filename (without ext) first; YAML title only for pasted text without uploaded file
+        if (fromUploadedFile && uploadedBase) {
+          docMeta.title = fallbackTitle;
+        } else if (!docMeta.title) {
+          docMeta.title = fallbackTitle;
+        }
         const ctxMap = {};
         Object.keys(doc.contexts || {}).forEach(function (cid) {
           const nsId = willBeMulti ? (eid + "__" + cid) : cid;
@@ -4484,6 +4518,7 @@
     cState.questions = nextQuestions;
     cState.contexts = nextContexts;
     cState.chunkStates = nextChunks;
+    cState.manualTitleEdited = false;
     cState.docMeta = nextExams[0].docMeta || cState.docMeta;
     cState.studyNoteMarkdown = nextExams[0].studyNoteMarkdown || "";
     cState.rawMarkdown = nextExams.map(function (ex) { return ex.rawMarkdown || ""; }).filter(Boolean).join("\n\n");
@@ -4510,7 +4545,7 @@
     if (files.length === 1) {
       try {
         const txt = await readFileAsText(files[0]);
-        return importLocalMarkdown(txt, files[0].name);
+        return importLocalMarkdown(txt, files[0].name, { fromFile: true });
       } catch (e) {
         U().showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc file .md.", "error");
         return false;
@@ -4521,6 +4556,7 @@
       try {
         const txt = await readFileAsText(files[i]);
         const ok = importLocalMarkdown(txt, files[i].name, {
+          fromFile: true,
           appendExam: i > 0 || cState.appendMode,
           silent: true,
           skipRender: true
@@ -4943,6 +4979,13 @@
     const t = e.target;
     if (!t) return;
     if (t.id === "convSearch") { cState.search = t.value; cState.page = 1; renderConverter(); }
+    else if (t.id === "convDeckTitle") {
+      cState.manualTitleEdited = true;
+      const v = String(t.value || "").trim();
+      if (v && cState.exams.length === 1) {
+        cState.exams[0].title = v;
+      }
+    }
     else if (t.id === "convPasteText") {
       cState.pasteText = t.value;
       const runBtn = U().$("convSmartRunBtn");
