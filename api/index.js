@@ -1693,6 +1693,35 @@ module.exports = async function apiHandler(req, res) {
       return sendJson(res, 200, { ok: true, syncedCount: syncedCount, submissions: cloudSubs });
     }
 
+    if (p === "/api/lms/submissions/delete" && method === "POST") {
+      const body = await readBody(req);
+      const subId = String((body && body.id) || "").trim();
+      const studentId = String((body && body.studentId) || "").trim();
+      const assignmentId = String((body && body.assignmentId) || "").trim();
+      const submittedAt = String((body && body.submittedAt) || "").trim();
+      if (!subId && !(studentId && assignmentId && submittedAt)) {
+        return sendJson(res, 400, { ok: false, error: "Thiếu mã lượt nộp bài cần xóa." });
+      }
+      const db = await loadDb();
+      const before = Array.isArray(db.lmsSubmissions) ? db.lmsSubmissions.length : 0;
+      if (Array.isArray(db.lmsSubmissions)) {
+        db.lmsSubmissions = db.lmsSubmissions.filter(function (s) {
+          if (!s) return false;
+          if (subId && String(s.id) === subId) return false;
+          if (!subId && studentId && assignmentId && submittedAt &&
+              String(s.studentId) === studentId &&
+              String(s.assignmentId) === assignmentId &&
+              String(s.submittedAt) === submittedAt) {
+            return false;
+          }
+          return true;
+        });
+      }
+      const removed = before - (Array.isArray(db.lmsSubmissions) ? db.lmsSubmissions.length : 0);
+      if (removed > 0) await saveDb(db);
+      return sendJson(res, 200, { ok: true, removed: removed });
+    }
+
     /* ---------- Public Completed Attempt Result Resolver (Unauthenticated-Safe) ---------- */
     if (p === "/api/lms/public-attempt" && method === "GET") {
       const urlObj = new URL(String(req.url || "/"), "http://localhost");

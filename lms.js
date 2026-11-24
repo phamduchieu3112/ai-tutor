@@ -543,8 +543,8 @@
       .filter(function (s) { return s.studentId === st.id; })
       .sort(function (a, b) { return new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime(); });
 
-    const avg = subs.length ? (subs.reduce(function (a, b) { return a + (Number(b.score10) || 0); }, 0) / subs.length).toFixed(2) : "—";
-    const best = subs.length ? Math.max.apply(null, subs.map(function (s) { return Number(s.score10) || 0; })).toFixed(1) : "—";
+    const avg = subs.length ? (subs.reduce(function (a, b) { return a + (Number(b.score10) || 0); }, 0) / subs.length).toFixed(2) : "0.00";
+    const best = subs.length ? Math.max.apply(null, subs.map(function (s) { return Number(s.score10) || 0; })).toFixed(1) : "0.0";
 
     // Build chronological SVG line chart
     let chartHtml = '<div class="lms-empty" style="padding:24px">Chưa có bài nộp nào để vẽ biểu đồ tiến bộ.</div>';
@@ -618,7 +618,8 @@
                     '<td>' + (s.tabSwitches > 0 ? '<span class="lms-badge-warn">' + s.tabSwitches + '</span>' : '<span class="muted">0</span>') + '</td>' +
                     '<td style="text-align:right;white-space:nowrap">' +
                       '<button type="button" class="btn btn-outline btn-sm" data-lms="view-sub" data-id="' + esc(s.id) + '">Chi tiết</button> ' +
-                      (wrongCnt > 0 ? '<button type="button" class="btn btn-primary btn-sm" data-lms="make-remedial" data-sub="' + esc(s.id) + '">' + ICONS.sparkles + ' Giao bài bổ trợ (' + wrongCnt + ')</button>' : '') +
+                      (wrongCnt > 0 ? '<button type="button" class="btn btn-primary btn-sm" data-lms="make-remedial" data-sub="' + esc(s.id) + '">' + ICONS.sparkles + ' Giao bài bổ trợ (' + wrongCnt + ')</button> ' : '') +
+                      '<button type="button" class="btn btn-outline btn-sm" data-lms="del-sub" data-id="' + esc(s.id || "") + '" data-st="' + esc(s.studentId || "") + '" data-as="' + esc(s.assignmentId || "") + '" data-ts="' + esc(s.submittedAt || "") + '" title="Xóa lần làm bài này" style="color:var(--danger,#ef4444);border-color:rgba(239,68,68,.35)">🗑️ Xóa</button>' +
                     '</td>' +
                   '</tr>';
                 }).join("") +
@@ -4062,6 +4063,57 @@
         U().showToast("Cảm ơn quý phụ huynh đã xác nhận xem kết quả!", "success");
         refreshStudio();
       }
+    }
+    else if (act === "del-sub") {
+      const subId = String(b.getAttribute("data-id") || "").trim();
+      const stId = String(b.getAttribute("data-st") || "").trim();
+      const asId = String(b.getAttribute("data-as") || "").trim();
+      const subTs = String(b.getAttribute("data-ts") || "").trim();
+      U().showConfirm(
+        "X\u00f3a l\u1ea7n l\u00e0m b\u00e0i",
+        "X\u00f3a l\u1ea7n l\u00e0m b\u00e0i n\u00e0y c\u1ee7a h\u1ecdc sinh? \u0110i\u1ec3m s\u1ed1 v\u00e0 l\u1ecbch s\u1eed l\u1ea7n l\u00e0m n\u00e0y s\u1ebd b\u1ecb x\u00f3a v\u0129nh vi\u1ec5n.",
+        function () {
+          const allSubs = loadSubmissions();
+          const isMatch = function (s) {
+            if (!s) return false;
+            if (subId && String(s.id) === subId) return true;
+            if (!subId && stId && asId && subTs &&
+                String(s.studentId) === stId &&
+                String(s.assignmentId) === asId &&
+                String(s.submittedAt) === subTs) {
+              return true;
+            }
+            return false;
+          };
+          const target = allSubs.find(isMatch) || { id: subId, studentId: stId, assignmentId: asId, submittedAt: subTs };
+          const nextSubs = allSubs.filter(function (s) { return !isMatch(s); });
+          saveSubmissions(nextSubs);
+
+          if (lmsState.remoteSubmission && isMatch(lmsState.remoteSubmission)) {
+            lmsState.remoteSubmission = null;
+          }
+          if (subId && String(lmsState.lastSubmissionId || "") === subId) {
+            lmsState.lastSubmissionId = null;
+          }
+
+          if (typeof fetch === "function") {
+            fetch("/api/lms/submissions/delete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: target.id || subId,
+                studentId: target.studentId || stId,
+                assignmentId: target.assignmentId || asId,
+                submittedAt: target.submittedAt || subTs
+              })
+            }).catch(function () { /* best-effort server sync */ });
+          }
+
+          U().showToast("\u0110\u00e3 x\u00f3a l\u1ea7n l\u00e0m b\u00e0i th\u00e0nh c\u00f4ng.", "success");
+          refreshStudio();
+        },
+        "X\u00f3a v\u0129nh vi\u1ec5n"
+      );
     }
     else if (act === "view-sub") {
       const sub = findSubmissionById(b.getAttribute("data-id"));
