@@ -166,6 +166,29 @@
     return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) + "T" + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
   }
 
+  function extractItemTimestamp(item) {
+    if (!item || typeof item !== "object") return 0;
+    const raw = item.updatedAt || item.createdAt || "";
+    if (raw) {
+      const ms = Date.parse(raw);
+      if (Number.isFinite(ms) && ms > 0) return ms;
+    }
+    const idStr = String(item.id || "");
+    const m = idStr.match(/(1[5-9]\d{11})/);
+    if (m) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n > 1500000000000) return n;
+    }
+    return 0;
+  }
+
+  function fmtShortTimestamp(ms) {
+    if (!ms || !Number.isFinite(ms) || ms <= 0) return "";
+    const d = new Date(ms);
+    if (isNaN(d.getTime())) return "";
+    return pad2(d.getDate()) + "/" + pad2(d.getMonth() + 1) + " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+  }
+
   function getAllAvailableQuizzes() {
     const rawStudio = U().loadArr(U().KEYS.quizzes) || [];
     const decks = U().getDecks ? U().getDecks() : [];
@@ -189,6 +212,7 @@
       out.push(Object.assign({}, q, {
         id: sid,
         _source: "studio",
+        _ts: extractItemTimestamp(q),
         gradeLevel: q.gradeLevel || q.grade_level || q.grade || tax.gradeLevel,
         subject: q.subject || tax.subject || "",
         questions: qs
@@ -205,6 +229,7 @@
           id: id,
           _source: "deck",
           _rawDeckId: String(d.id),
+          _ts: extractItemTimestamp(d),
           title: d.title,
           tag: d.tag || "T\u1ed5ng h\u1ee3p",
           gradeLevel: d.gradeLevel || tax.gradeLevel,
@@ -213,6 +238,8 @@
         });
       }
     });
+    // Sort newest first so the most recently created/imported exams always appear at the top
+    out.sort(function (a, b) { return (b._ts || 0) - (a._ts || 0); });
     return out;
   }
 
@@ -1228,12 +1255,14 @@
         const sid = String(q.id);
         const tx = curr ? curr.detectTaxonomy(q) : { gradeLevel: "unclassified", gradeLabel: "Ch\u01b0a ph\u00e2n lo\u1ea1i", subject: "" };
         const chk = preselectedQuizIds.has(sid);
+        const tsStr = fmtShortTimestamp(q._ts);
         return '<div class="lms-quiz-pick-row" style="display:flex;align-items:center;gap:8px">' +
           '<label style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;cursor:pointer;margin:0">' +
             '<input type="checkbox" name="lmsAsQuizPick" value="' + esc(sid) + '"' + (chk ? " checked" : "") + '>' +
             '<span class="lms-qp-title">' + esc(q.title) + '</span>' +
             '<span class="badge tax-badge-grade">' + esc(tx.gradeLabel) + '</span>' +
             (tx.subject ? '<span class="badge tax-badge-subj">' + esc(tx.subject) + '</span>' : '') +
+            (tsStr ? '<span class="muted" style="font-size:.73rem;white-space:nowrap" title="Th\u1eddi gian t\u1ea1o/c\u1eadp nh\u1eadt">🕒 ' + esc(tsStr) + '</span>' : '') +
             '<span class="muted" style="font-size:.76rem;white-space:nowrap">(' + (q.questions ? q.questions.length : 0) + ' c\u00e2u)</span>' +
           '</label>' +
           '<button type="button" class="lms-mini-toggle" data-del-quiz="' + esc(sid) + '" title="X\u00f3a \u0111\u1ec1 c\u0169 n\u00e0y kh\u1ecfi h\u1ec7 th\u1ed1ng" style="color:var(--danger,#ef4444);flex-shrink:0">🗑️</button>' +
@@ -1285,7 +1314,8 @@
           ? '<div class="lms-form-grid">' +
               '<label class="field">B\u1ed9 \u0111\u1ec1 li\u00ean k\u1ebft (\u0110\u1ed5i \u0111\u1ec1 thi)<select id="lmsAsQuiz">' +
                 quizzes.map(function (q) {
-                  return '<option value="' + esc(q.id) + '"' + (String(q.id) === selectedQuizId ? " selected" : "") + '>' + esc(q.title) + ' (' + (q.questions ? q.questions.length : 0) + ' c\u00e2u)</option>';
+                  const tsLabel = fmtShortTimestamp(q._ts);
+                  return '<option value="' + esc(q.id) + '"' + (String(q.id) === selectedQuizId ? " selected" : "") + '>' + esc(q.title) + (tsLabel ? (' [' + tsLabel + ']') : '') + ' (' + (q.questions ? q.questions.length : 0) + ' c\u00e2u)</option>';
                 }).join("") +
               '</select></label>' +
               '<label class="field">Ti\u00eau \u0111\u1ec1 b\u00e0i giao<input type="text" id="lmsAsTitle" value="' + esc(existing.title) + '" placeholder="VD: B\u00e0i t\u1eadp tu\u1ea7n 5 - Ch\u01b0\u01a1ng 2" maxlength="120"></label>' +
