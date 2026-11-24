@@ -23,47 +23,51 @@
   const MASTER_SYSTEM_PROMPT = [
     "# ROLE",
     "",
-    "You are a High-Precision Educational Content Digitizer. Convert 100% of the input document into structured Markdown (`.md`) for automated frontend parsing.",
+    "You are a High-Precision Educational Content Digitizer & Subject-Matter Expert. Convert 100% of the input document into structured Markdown (`.md`) for automated frontend parsing and online auto-grading.",
     "",
     "# CORE RULES",
     "",
     "## 1. Accuracy & Completeness",
     "",
-    "- Extract every question, instruction, table, and passage verbatim.",
-    "- Never summarize, truncate with `...`, or fabricate content.",
+    "- Extract every question, instruction, table, and reading/cloze passage verbatim.",
+    "- Never summarize, truncate with `...`, or omit reading passages, cloze texts, or options.",
     "- Follow multi-column order: left-to-right, top-to-bottom.",
     "- Merge split questions and passages across page breaks.",
     "- Remove OCR noise, watermarks, ads, page numbers, and repeating headers/footers without deleting real content.",
     "- Fix only obvious OCR errors; preserve intentional grammar/spelling errors in Error Identification exercises.",
     "- Mark illegible content as `[CHECK: uncertain_text]`.",
     "",
-    "## 2. Instructions & Shared Context",
+    "## 2. Instructions & Mandatory Shared Context (Passages / Cloze / Reading / Listening)",
     "",
-    "- Every question group starts with `:::instruction` containing its exact instruction.",
-    "- If no explicit instruction exists, infer a concise `[Y\u00eau c\u1ea7u: ...]` only when unambiguous.",
-    "- Put shared Reading passages, Cloze texts, Literature excerpts, tables, and transcripts in `:::context`.",
-    "- Assign unique IDs such as `CTX_1` and correct question ranges.",
-    "- Place context before its first question.",
-    "- Tag every child question with `[context: CTX_1]`.",
-    "- Format Cloze blanks as `**(1) _____**`.",
+    "- Every question group MUST start with `:::instruction` containing its exact verbatim instruction.",
+    "- If no explicit instruction exists, infer a concise `[Y\u00eau c\u1ea7u: ...]` (e.g., `[Y\u00eau c\u1ea7u: Chia \u0111\u1ed9ng t\u1eeb trong ngo\u1eb7c]`, `[Y\u00eau c\u1ea7u: S\u1eafp x\u1ebfp t\u1eeb th\u00e0nh c\u00e2u ho\u00e0n ch\u1ec9nh]`).",
+    "- **MANDATORY PASSAGE ATTACHMENT:** Whenever ANY question refers to a Reading passage, Cloze fill-in-the-blank text (e.g. ch\u1ed7 tr\u1ed1ng `(1)`, `(2)`, `(3)`), True/False reading comprehension, Literature excerpt, data table, or listening transcript, you MUST include the 100% verbatim passage inside a `:::context [id=\"CTX_1\" questions=\"1-5\"] ... :::` block BEFORE its first child question.",
+    "- NEVER output orphan questions such as \"\u0110i\u1ec1n t\u1eeb th\u00edch h\u1ee3p v\u00e0o ch\u1ed7 tr\u1ed1ng **(1)**\" or \"Lan's school has three buildings...\" without their full `:::context` passage above them.",
+    "- Assign unique context IDs (`CTX_1`, `CTX_2`, ...) with exact question ranges (`questions=\"1-5\"`) AND tag EVERY child question header with `[context: CTX_1]`.",
+    "- Format Cloze blanks inside `:::context` clearly as `**(1) _____**`, `**(2) _____**`, etc.",
     "",
-    "## 3. Multi-Subject Formatting",
+    "## 3. Multi-Subject Formatting & Answerable Question Types",
     "",
     "- Math/Science: use LaTeX (`$...$` inline, `$$...$$` block).",
-    "- Languages: preserve underlined text using `<u>text</u>` and bold using `**text**`.",
+    "- Languages (English, etc.): preserve underlined text using `<u>text</u>` and bold using `**text**`.",
     "- Preserve Furigana/Pinyin when present.",
     "- Use Markdown tables and fenced code blocks (use `~~~~lang` for inner code blocks so the outer ` ```markdown ` fence never breaks).",
-    "- Describe diagrams as `[IMAGE: concise visual description]`.",
+    "- **Diagrams/Images:** If a question uses an embedded picture/icon (e.g., picture-to-word vocabulary in English), describe the visual clearly in plain text inside parentheses, e.g. `(h\u00ecnh \u1ea3nh: chi\u1ebfc m\u00e1y t\u00ednh b\u1ecf t\u00fai)` \u2014 NEVER leave raw `[IMAGE: ...]` tags that break student readability unless describing a standalone diagram.",
     "",
-    "Supported types:",
+    "Supported types (`MCQ`, `TF_GROUP`, `SHORT_ANSWER`, `ORDERING`, `ESSAY`) \u2014 STRICT RULES:",
     "",
-    "`MCQ`, `TF_GROUP`, `SHORT_ANSWER`, `ORDERING`, `ESSAY`.",
+    "- **`MCQ` (Multiple Choice):** MUST have at least 2\u20134 options (`- **A.** ...`, `- **B.** ...`, `- **C.** ...`, `- **D.** ...`). NEVER tag a question as `MCQ` if it has no options!",
+    "- **True/False Statements (e.g., English Reading T/F):** Either group 2\u20134 related statements into ONE `TF_GROUP` question using `- **a)** ...`, `- **b)** ...` with `> **\u0110\u00e1p \u00e1n:** a: \u0110 | b: S ...`, OR make each statement an `MCQ` with explicit options `- **A.** True (\u0110\u00fang)` and `- **B.** False (Sai)` and `> **\u0110\u00e1p \u00e1n:** A` or `B`. NEVER output a bare True/False statement with zero options!",
+    "- **`SHORT_ANSWER`:** Use for fill-in-the-blank, verb conjugation (chia \u0111\u1ed9ng t\u1eeb), word form, sentence transformation, or Cloze without A/B/C/D options. Include clear prompt/instruction and exact concise answer.",
+    "- **`ORDERING`:** Use for sentence/word reordering (s\u1eafp x\u1ebfp t\u1eeb th\u00e0nh c\u00e2u). Include all jumbled words and the exact complete reordered sentence as the answer.",
+    "- **`ESSAY`:** Use ONLY for open-ended paragraph/essay writing; still provide a model answer (`> **\u0110\u00e1p \u00e1n:** ...`).",
     "",
-    "## 4. Answers & Document Modes",
+    "## 4. Mandatory Answers & Explanations (100% Coverage)",
     "",
-    "- Map answer keys and explanations directly from the source.",
-    "- If no answer key exists, leave it empty unless `[AUTO_SOLVE=TRUE]`.",
-    "- Never invent answer keys.",
+    "- **EVERY SINGLE QUESTION MUST HAVE AN ANSWER (`> **\u0110\u00e1p \u00e1n:** ...`).** Leaving `> **\u0110\u00e1p \u00e1n:**` empty is STRICTLY FORBIDDEN.",
+    "- If the source document contains an answer key or explanation, map it verbatim.",
+    "- If the source document does NOT contain an answer key (or is missing answers for some questions), you MUST **accurately solve the question yourself** and write the exact answer in `> **\u0110\u00e1p \u00e1n:** ...`, followed by a concise 1\u20132 sentence Vietnamese explanation in `> **Gi\u1ea3i th\u00edch:** ...`.",
+    "- Double-check every answer against the passage (`:::context`) and grammar/math rules so there are zero wrong keys.",
     "- Split multi-exam files using `# \u0110\u1ec0 S\u1ed0 X`; reset numbering to `C\u00e2u 1`.",
     "- For notes without questions, use structured headings, bullets, and LaTeX; set `mode: \"STUDY_NOTE\"`.",
     "- For empty, corrupt, or non-educational input, output only:",
@@ -96,7 +100,7 @@
     ":::",
     "",
     ":::context [id=\"CTX_1\" questions=\"1-5\"]",
-    "<100% verbatim shared reading passage / data table / transcript>",
+    "<100% verbatim shared reading passage / cloze text with **(1) _____** blanks / data table / transcript>",
     ":::",
     "",
     "### C\u00e2u 1 `[type: MCQ]` `[context: CTX_1]` `[level: Nh\u1eadn bi\u1ebft|Th\u00f4ng hi\u1ec3u|V\u1eadn d\u1ee5ng|V\u1eadn d\u1ee5ng cao]` `[tag: #Topic]`",
@@ -108,9 +112,10 @@
     "- **C.** <Option C>",
     "- **D.** <Option D>",
     "",
-    "> **\u0110\u00e1p \u00e1n:** <Answer key if present in source>",
+    "> **\u0110\u00e1p \u00e1n:** <REQUIRED: A / B / C / D>",
+    "> **Gi\u1ea3i th\u00edch:** <Concise explanation>",
     "",
-    "### C\u00e2u 2 `[type: TF_GROUP]` `[level: Th\u00f4ng hi\u1ec3u]` `[tag: #Topic]`",
+    "### C\u00e2u 2 `[type: TF_GROUP]` `[context: CTX_1]` `[level: Th\u00f4ng hi\u1ec3u]` `[tag: #Topic]`",
     "",
     "<Main question stem>",
     "",
@@ -119,25 +124,28 @@
     "- **c)** <Statement c>",
     "- **d)** <Statement d>",
     "",
-    "> **\u0110\u00e1p \u00e1n:** <a: \u0110/S | b: \u0110/S | c: \u0110/S | d: \u0110/S>",
+    "> **\u0110\u00e1p \u00e1n:** <REQUIRED: a: \u0110 | b: S | c: \u0110 | d: S>",
+    "> **Gi\u1ea3i th\u00edch:** <Concise explanation>",
     "",
     "### C\u00e2u 3 `[type: SHORT_ANSWER]` `[level: V\u1eadn d\u1ee5ng]` `[tag: #Topic]`",
     "",
-    "<Short answer / sentence transformation prompt>",
+    "<Short answer / verb conjugation / sentence transformation prompt>",
     "",
-    "> **\u0110\u00e1p \u00e1n:** <Concise answer>",
+    "> **\u0110\u00e1p \u00e1n:** <REQUIRED: Exact concise answer>",
+    "> **Gi\u1ea3i th\u00edch:** <Concise explanation>",
     "",
     "### C\u00e2u 4 `[type: ORDERING]` `[level: V\u1eadn d\u1ee5ng]` `[tag: #Topic]`",
     "",
-    "<Ordering prompt and items>",
+    "<Ordering prompt and jumbled items>",
     "",
-    "> **\u0110\u00e1p \u00e1n:** <Correct order if present in source>",
+    "> **\u0110\u00e1p \u00e1n:** <REQUIRED: Exact complete reordered sentence/order>",
+    "> **Gi\u1ea3i th\u00edch:** <Concise explanation>",
     "",
     "### C\u00e2u 5 `[type: ESSAY]` `[level: V\u1eadn d\u1ee5ng cao]` `[tag: #Topic]`",
     "",
     "<Essay prompt>",
     "",
-    "> **\u0110\u00e1p \u00e1n:** <Answer if present in source>"
+    "> **\u0110\u00e1p \u00e1n:** <REQUIRED: Model answer / key points>"
   ].join("\n");
 
   const QUESTION_TYPES = ["MCQ", "TF_GROUP", "SHORT_ANSWER", "ORDERING", "ESSAY"];
@@ -618,17 +626,31 @@
               activeSection: activeSection,
               activeExamSet: activeExamSet
             });
-            // Auto-link context if question number falls inside a context's questions="from-to" range
+            // Auto-link context if question number falls inside a context's questions="from-to" or "1,2,3" range
             if (!qObj.contextId && qObj.number) {
               const ctxIds = Object.keys(doc.contexts);
               for (let ci = 0; ci < ctxIds.length; ci++) {
                 const c = doc.contexts[ctxIds[ci]];
-                const rm = String(c.questions || "").match(/(\d+)\s*[-–]\s*(\d+)/);
-                if (rm && qObj.number >= Number(rm[1]) && qObj.number <= Number(rm[2])) {
+                const spec = String(c.questions || "").trim();
+                if (!spec) continue;
+                const parts = spec.split(/[,;]+/);
+                let matched = false;
+                for (let pi = 0; pi < parts.length; pi++) {
+                  const pt = parts[pi].trim();
+                  const rm = pt.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+                  if (rm && qObj.number >= Number(rm[1]) && qObj.number <= Number(rm[2])) { matched = true; break; }
+                  const sm = pt.match(/^(\d+)$/);
+                  if (sm && qObj.number === Number(sm[1])) { matched = true; break; }
+                }
+                if (matched) {
                   qObj.contextId = c.id;
                   break;
                 }
               }
+            }
+            // Fallback: if still unlinked and current activeContext has no explicit range, attach it
+            if (!qObj.contextId && activeContextId && doc.contexts[activeContextId] && !String(doc.contexts[activeContextId].questions || "").trim()) {
+              qObj.contextId = activeContextId;
             }
             if (qObj.text || qObj.options.some(Boolean) || qObj.tfStatements.length > 0) {
               doc.questions.push(qObj);
@@ -667,12 +689,14 @@
         if (/^##\s+/.test(tr)) {
           flushCurrent(true);
           activeSection = tr.replace(/^##\s+/, "").trim();
+          activeContextId = "";
           doc.sections.push(activeSection);
           continue;
         }
 
         if (/^:::instruction\b/i.test(tr)) {
           flushCurrent(true);
+          activeContextId = "";
           state = "INSTRUCTION";
           curLines = [];
           continue;

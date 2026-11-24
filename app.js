@@ -210,7 +210,10 @@ function renderRich(raw) {
     tokens.push(html);
     return "%%KATEX_" + idx + "%%";
   });
-  let safe = sanitizeAllowedHtml(replaced).replace(/\n/g, "<br>");
+  let safe = sanitizeAllowedHtml(replaced);
+  safe = safe.replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>");
+  safe = safe.replace(/(^|[\s(>])\*([^*\n]+?)\*(?=[\s.,!?;:)<]|$)/g, "$1<em>$2</em>");
+  safe = safe.replace(/\n/g, "<br>");
   safe = safe.replace(/%%KATEX_(\d+)%%/g, function (_, i) { return tokens[Number(i)] || ""; });
   return safe;
 }

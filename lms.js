@@ -344,7 +344,10 @@
     expandedRecipients: {},
     // Student exam runner state (supports both local & Incognito cloud mode)
     activeAssignCode: null,
+    activeAttemptId: null,
+    openedViaReviewLink: false,
     remoteAssignment: null,
+    remoteSubmission: null,
     remoteStudents: [],
     remoteLoading: false,
     remoteError: null,
@@ -2600,8 +2603,16 @@
     '</div>';
   }
 
+  function findSubmissionById(subId) {
+    if (!subId) return null;
+    if (lmsState.remoteSubmission && String(lmsState.remoteSubmission.id) === String(subId)) {
+      return lmsState.remoteSubmission;
+    }
+    return loadSubmissions().find(function (s) { return s && String(s.id) === String(subId); }) || null;
+  }
+
   function getSubContextById(subId) {
-    const sub = loadSubmissions().find(function (s) { return String(s.id) === String(subId); });
+    const sub = findSubmissionById(subId);
     if (!sub) return null;
     const assign = loadAssignments().find(function (a) { return String(a.id) === String(sub.assignmentId); })
       || (lmsState.remoteAssignment && String(lmsState.remoteAssignment.id) === String(sub.assignmentId) ? lmsState.remoteAssignment : null)
@@ -2722,7 +2733,12 @@
         '</div>' +
       '</div>';
 
-    U().on("a4CopyLinkBtn", "click", function () { U().copyText(reviewUrl, tr("liên kết xem lại bài làm")); });
+    U().on("a4CopyLinkBtn", "click", function () {
+      if (ctx.assign && ctx.assign.code) {
+        syncAssignmentsToCloud([ctx.assign], true).catch(function () { /* best-effort */ });
+      }
+      U().copyText(reviewUrl, tr("liên kết xem lại bài làm"));
+    });
     U().on("a4PrintBtn", "click", function () { printStudentA4Sheet(subId); });
     U().on("a4DownloadPdfBtn", "click", function () { exportStudentA4Pdf(subId); });
     U().on("a4CloseBtn", "click", function () { host.innerHTML = ""; });
@@ -2740,16 +2756,19 @@
 
   function openStudentAssignment(code, opts) {
     const normCode = String(code || "").trim().toUpperCase();
+    const wantedAttemptId = (opts && opts.attemptId) ? String(opts.attemptId).trim() : "";
     lmsState.activeAssignCode = normCode;
+    lmsState.activeAttemptId = wantedAttemptId || null;
+    lmsState.openedViaReviewLink = Boolean(wantedAttemptId || (opts && opts.review));
     lmsState.studentSession = null;
     lmsState.lastSubmissionId = null;
     lmsState.remoteAssignment = null;
+    lmsState.remoteSubmission = null;
     lmsState.remoteStudents = [];
     lmsState.remoteError = null;
     lmsState.remoteLoading = false;
 
     const localAssign = loadAssignments().find(function (a) { return String(a.code || "").toUpperCase() === normCode; });
-    const wantedAttemptId = (opts && opts.attemptId) ? String(opts.attemptId).trim() : "";
     let foundLocalSub = null;
     if (wantedAttemptId) {
       foundLocalSub = loadSubmissions().find(function (s) { return String(s.id) === wantedAttemptId; }) || null;
@@ -2763,28 +2782,38 @@
     }
 
     // Direct Public Attempt Result hydration (?assign=CODE&attempt=ID) — bypasses login & PIN!
-    if (wantedAttemptId && (!foundLocalSub || !localAssign) && normCode && typeof fetch === "function") {
+    if (wantedAttemptId && (!foundLocalSub || !localAssign) && typeof fetch === "function") {
       lmsState.remoteLoading = true;
       lmsState.remoteLoadingMsg = tr("Đang tải kết quả bài làm...");
-      fetch("/api/lms/public-attempt?code=" + encodeURIComponent(normCode) + "&attempt=" + encodeURIComponent(wantedAttemptId))
+      const attemptQuery = "/api/lms/public-attempt?attempt=" + encodeURIComponent(wantedAttemptId) + (normCode ? ("&code=" + encodeURIComponent(normCode)) : "");
+      fetch(attemptQuery)
         .then(function (resp) {
           return resp.json().catch(function () { return {}; }).then(function (data) {
             return { ok: resp.ok, status: resp.status, data: data };
           });
         })
         .then(function (r) {
-          if (lmsState.activeAssignCode !== normCode) return;
+          if (lmsState.activeAttemptId !== wantedAttemptId) return;
           lmsState.remoteLoading = false;
           lmsState.remoteLoadingMsg = "";
           if (r.ok && r.data && r.data.submission) {
-            if (r.data.assignment) lmsState.remoteAssignment = r.data.assignment;
-            if (r.data.student) lmsState.remoteStudents = [r.data.student];
-            const localSubs = loadSubmissions();
-            if (!localSubs.some(function (s) { return String(s.id) === String(r.data.submission.id); })) {
-              localSubs.push(r.data.submission);
-              saveSubmissions(localSubs);
+            if (r.data.assignment) {
+              lmsState.remoteAssignment = r.data.assignment;
+              if (!lmsState.activeAssignCode && r.data.assignment.code) {
+                lmsState.activeAssignCode = String(r.data.assignment.code).toUpperCase();
+              }
             }
+            if (r.data.student) lmsState.remoteStudents = [r.data.student];
+            lmsState.remoteSubmission = r.data.submission;
+            try {
+              const localSubs = loadSubmissions();
+              if (!localSubs.some(function (s) { return String(s.id) === String(r.data.submission.id); })) {
+                localSubs.push(r.data.submission);
+                saveSubmissions(localSubs);
+              }
+            } catch (e) { /* in-memory remoteSubmission still works */ }
             lmsState.lastSubmissionId = r.data.submission.id;
+            lmsState.activeAttemptId = r.data.submission.id;
           } else {
             lmsState.remoteError = {
               code: (r.data && r.data.code) || ("HTTP_" + r.status),
@@ -2794,7 +2823,7 @@
           refreshStudio();
         })
         .catch(function (err) {
-          if (lmsState.activeAssignCode !== normCode) return;
+          if (lmsState.activeAttemptId !== wantedAttemptId) return;
           lmsState.remoteLoading = false;
           lmsState.remoteLoadingMsg = "";
           lmsState.remoteError = {
@@ -2847,7 +2876,57 @@
   }
 
   function openParentReceipt(subId) {
-    lmsState.activeReceiptId = subId;
+    const cleanId = String(subId || "").trim();
+    lmsState.activeReceiptId = cleanId;
+    lmsState.remoteError = null;
+    lmsState.remoteLoading = false;
+    const localSub = findSubmissionById(cleanId);
+    if (!localSub && cleanId && typeof fetch === "function") {
+      lmsState.remoteLoading = true;
+      lmsState.remoteLoadingMsg = tr("Đang tải báo cáo kết quả bài làm...");
+      fetch("/api/lms/public-attempt?attempt=" + encodeURIComponent(cleanId))
+        .then(function (resp) {
+          return resp.json().catch(function () { return {}; }).then(function (data) {
+            return { ok: resp.ok, status: resp.status, data: data };
+          });
+        })
+        .then(function (r) {
+          if (lmsState.activeReceiptId !== cleanId) return;
+          lmsState.remoteLoading = false;
+          lmsState.remoteLoadingMsg = "";
+          if (r.ok && r.data && r.data.submission) {
+            lmsState.remoteSubmission = r.data.submission;
+            if (r.data.assignment) {
+              lmsState.remoteAssignment = r.data.assignment;
+              if (r.data.assignment.code) lmsState.activeAssignCode = String(r.data.assignment.code).toUpperCase();
+            }
+            if (r.data.student) lmsState.remoteStudents = [r.data.student];
+            try {
+              const localSubs = loadSubmissions();
+              if (!localSubs.some(function (s) { return String(s.id) === String(r.data.submission.id); })) {
+                localSubs.push(r.data.submission);
+                saveSubmissions(localSubs);
+              }
+            } catch (e) { /* in-memory remoteSubmission still works */ }
+          } else {
+            lmsState.remoteError = {
+              code: (r.data && r.data.code) || ("HTTP_" + r.status),
+              message: (r.data && r.data.error) || tr("Không tìm thấy báo cáo kết quả với mã này.")
+            };
+          }
+          refreshStudio();
+        })
+        .catch(function (err) {
+          if (lmsState.activeReceiptId !== cleanId) return;
+          lmsState.remoteLoading = false;
+          lmsState.remoteLoadingMsg = "";
+          lmsState.remoteError = {
+            code: "NETWORK_ERROR",
+            message: (err && err.message) || tr("Không thể kết nối máy chủ để tải báo cáo kết quả.")
+          };
+          refreshStudio();
+        });
+    }
     if (window.UETStudio && typeof window.UETStudio.openLmsScreen === "function") {
       window.UETStudio.openLmsScreen("parent-receipt");
     }
@@ -3142,18 +3221,149 @@
     }
   }
 
+  function isStudentQuestionAnswered(q, ans) {
+    if (ans === null || ans === undefined) return false;
+    const qt = normalizeQType(q);
+    if (qt === "MCQ" && Array.isArray(q && q.options) && q.options.length > 0) {
+      return Array.isArray(ans) && ans.length > 0;
+    }
+    if (qt === "TF_GROUP") {
+      return typeof ans === "object" && !Array.isArray(ans) && Object.keys(ans).length > 0;
+    }
+    if (typeof ans === "string") return ans.trim().length > 0;
+    if (Array.isArray(ans)) return ans.length > 0;
+    return false;
+  }
+
+  function normalizeStudentText(s) {
+    return String(s || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[“”"'`]/g, "")
+      .replace(/\s+/g, " ")
+      .replace(/\s*([.,?!;:])\s*/g, "$1")
+      .replace(/[.]+$/, "")
+      .trim();
+  }
+
+  function gradeStudentQuestion(q, ans) {
+    const qt = normalizeQType(q);
+    const hasOpts = Array.isArray(q && q.options) && q.options.length > 0;
+
+    if (qt === "MCQ" && hasOpts) {
+      const picked = (Array.isArray(ans) ? ans.map(Number).filter(Number.isFinite) : []).slice().sort(function (a, b) { return a - b; });
+      const corr = (Array.isArray(q.correct) ? q.correct.map(Number).filter(Number.isFinite) : []).slice().sort(function (a, b) { return a - b; });
+      const ok = corr.length > 0 && picked.length === corr.length && picked.every(function (v, i) { return v === corr[i]; });
+      return { qId: q.id, q: q, picked: picked, userAnswer: picked, ok: ok };
+    }
+
+    if (qt === "TF_GROUP") {
+      const tfPick = (ans && typeof ans === "object" && !Array.isArray(ans)) ? ans : {};
+      const stmts = (Array.isArray(q.tfStatements) && q.tfStatements.length) ? q.tfStatements : (Array.isArray(q.statements) ? q.statements : []);
+      const keyMap = (q.tfAnswers && typeof q.tfAnswers === "object") ? q.tfAnswers : {};
+      let ok = false;
+      if (window.AIDigitizer && typeof window.AIDigitizer.scoreTfGroup === "function" && Object.keys(keyMap).length > 0) {
+        const res = window.AIDigitizer.scoreTfGroup(tfPick, keyMap);
+        ok = res.total > 0 && res.matched === res.total;
+      } else {
+        const keys = stmts.length ? stmts.map(function (st, idx) { return st.key || String.fromCharCode(97 + idx); }) : Object.keys(keyMap);
+        let matched = 0;
+        keys.forEach(function (k) {
+          if (typeof keyMap[k] === "boolean" && tfPick[k] === keyMap[k]) matched++;
+        });
+        ok = keys.length > 0 && matched === keys.length;
+      }
+      return { qId: q.id, q: q, picked: [], userAnswer: tfPick, ok: ok };
+    }
+
+    // SHORT_ANSWER, ORDERING, ESSAY, or fallback for optionless MCQ
+    const userText = typeof ans === "string" ? ans.trim() : "";
+    const expected = String(
+      (q && q.answerText)
+      || (Array.isArray(q && q.acceptedAnswers) ? q.acceptedAnswers.join(" | ") : "")
+      || ""
+    ).trim();
+    let ok = false;
+    if (userText && expected) {
+      if (window.AIDigitizer && typeof window.AIDigitizer.compareShortAnswer === "function") {
+        ok = !!window.AIDigitizer.compareShortAnswer(userText, expected);
+      }
+      if (!ok) {
+        const normUser = normalizeStudentText(userText);
+        const candidates = expected.split(/\s*[|\/]\s*/).map(normalizeStudentText).filter(Boolean);
+        ok = candidates.indexOf(normUser) !== -1 || normalizeStudentText(expected) === normUser;
+      }
+    }
+    return { qId: q.id, q: q, picked: [], userAnswer: userText, ok: ok };
+  }
+
   function renderStudentExamActive(root, assign) {
     const sess = lmsState.studentSession;
     const q = sess.questions[sess.idx];
-    const picked = sess.answers[q.id] || [];
-    const answeredCount = Object.keys(sess.answers).filter(function (k) { return (sess.answers[k] || []).length > 0; }).length;
+    const qType = normalizeQType(q);
+    const hasOpts = Array.isArray(q.options) && q.options.length > 0;
+    const curAns = sess.answers[q.id];
+    const picked = Array.isArray(curAns) ? curAns : [];
+    const answeredCount = sess.questions.filter(function (item) { return isStudentQuestionAnswered(item, sess.answers[item.id]); }).length;
     const letters = U().LETTERS || ["A", "B", "C", "D", "E"];
+    const instrTxt = String(q.instruction || "").trim();
+    const ctxTxt = String(q.context || "").trim();
+
+    let answerAreaHtml = "";
+    if (qType === "MCQ" && hasOpts) {
+      answerAreaHtml = '<div class="lms-opt-list">' +
+        q.options.map(function (opt, oi) {
+          const active = picked.indexOf(oi) !== -1;
+          return '<button type="button" class="lms-opt-btn' + (active ? " active" : "") + '" data-lms="pick-student-opt" data-opt="' + oi + '">' +
+            '<span class="lms-opt-key">' + (letters[oi] || String(oi + 1)) + '</span>' +
+            '<span class="rich-text">' + U().renderRich(opt) + '</span>' +
+          '</button>';
+        }).join("") +
+      '</div>';
+    } else if (qType === "TF_GROUP") {
+      const stmts = (Array.isArray(q.tfStatements) && q.tfStatements.length) ? q.tfStatements : (Array.isArray(q.statements) ? q.statements : []);
+      const tfPick = (curAns && typeof curAns === "object" && !Array.isArray(curAns)) ? curAns : {};
+      if (stmts.length) {
+        answerAreaHtml = '<div class="lms-tf-list" style="display:flex;flex-direction:column;gap:8px">' +
+          stmts.map(function (st, si) {
+            const key = (st && typeof st === "object" && st.key) ? String(st.key) : String.fromCharCode(97 + si);
+            const text = (st && typeof st === "object") ? (st.text || st.statement || "") : String(st || "");
+            const val = tfPick[key];
+            return '<div class="lms-tf-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg2)">' +
+              '<div class="rich-text" style="flex:1;font-size:.94rem"><strong>' + esc(key) + ')</strong> ' + U().renderRich(text) + '</div>' +
+              '<div style="display:flex;gap:6px;flex-shrink:0">' +
+                '<button type="button" class="btn btn-sm ' + (val === true ? "btn-primary" : "btn-outline") + '" data-lms="pick-student-tf" data-tfkey="' + esc(key) + '" data-tfval="true">Đúng</button>' +
+                '<button type="button" class="btn btn-sm ' + (val === false ? "btn-primary" : "btn-outline") + '" data-lms="pick-student-tf" data-tfkey="' + esc(key) + '" data-tfval="false">Sai</button>' +
+              '</div>' +
+            '</div>';
+          }).join("") +
+        '</div>';
+      } else {
+        const tfVal = typeof curAns === "string" ? curAns : "";
+        answerAreaHtml = '<div class="lms-opt-list">' +
+          '<button type="button" class="lms-opt-btn' + (tfVal === "True" ? " active" : "") + '" data-lms="pick-student-text-opt" data-val="True"><span class="lms-opt-key">T</span><span>True (Đúng)</span></button>' +
+          '<button type="button" class="lms-opt-btn' + (tfVal === "False" ? " active" : "") + '" data-lms="pick-student-text-opt" data-val="False"><span class="lms-opt-key">F</span><span>False (Sai)</span></button>' +
+        '</div>';
+      }
+    } else {
+      const textVal = typeof curAns === "string" ? curAns : "";
+      const isEssay = qType === "ESSAY";
+      const ph = qType === "ORDERING"
+        ? "Nhập câu đã sắp xếp hoàn chỉnh..."
+        : (isEssay ? "Nhập bài làm tự luận của bạn..." : "Nhập đáp án của bạn...");
+      answerAreaHtml = '<div style="margin-top:8px">' +
+        (isEssay
+          ? '<textarea id="lmsStudentTextInput" rows="5" class="inline-edit-input" style="width:100%;font-size:.96rem;padding:12px;border-radius:10px" placeholder="' + esc(ph) + '">' + esc(textVal) + '</textarea>'
+          : '<input type="text" id="lmsStudentTextInput" class="inline-edit-input" style="width:100%;font-size:.98rem;padding:12px 14px;border-radius:10px" value="' + esc(textVal) + '" placeholder="' + esc(ph) + '" autocomplete="off">') +
+        '<div class="muted" style="font-size:.78rem;margin-top:6px">Đáp án của bạn được tự động lưu ngay khi gõ.</div>' +
+      '</div>';
+    }
 
     root.innerHTML = '<div class="ql-wrap"><div class="ql-card">' +
       '<div class="ql-header">' +
         '<div>' +
           '<h2 class="ql-title">' + esc(assign.title) + '</h2>' +
-          '<p class="ql-subtitle"><span>Câu ' + (sess.idx + 1) + ' / ' + sess.questions.length + '</span><span>·</span><span>Đã chọn ' + answeredCount + '/' + sess.questions.length + '</span>' +
+          '<p class="ql-subtitle"><span>Câu ' + (sess.idx + 1) + ' / ' + sess.questions.length + '</span><span>·</span><span>Đã làm <span id="lmsAnsweredCount">' + answeredCount + '</span>/' + sess.questions.length + '</span>' +
             (sess.tabSwitches > 0 ? '<span>·</span><span class="lms-badge-warn">Chuyển tab: <span id="lmsTabWarnBadge">' + sess.tabSwitches + '</span></span>' : '<span id="lmsTabWarnBadge" class="hidden">0</span>') +
           '</p>' +
         '</div>' +
@@ -3164,17 +3374,11 @@
       '</div>' +
 
       '<div class="ql-section">' +
-        '<div class="rich-text" style="font-size:1rem;font-weight:600;margin-bottom:14px">' + U().renderRich(q.text) + '</div>' +
+        (instrTxt ? '<div class="digitizer-instr-banner" style="margin-bottom:10px;padding:10px 12px;border-radius:10px;background:rgba(99,102,241,.10);border:1px solid rgba(99,102,241,.28)"><div style="font-size:.75rem;font-weight:800;color:var(--brand);margin-bottom:4px">📋 Yêu cầu bài làm</div><div class="rich-text" style="font-size:.9rem;line-height:1.5">' + U().renderRich(instrTxt) + '</div></div>' : '') +
+        (ctxTxt ? '<div class="lms-context-box" style="margin-bottom:14px;padding:12px 14px;border-radius:10px;background:var(--bg2);border:1px solid var(--brand);max-height:280px;overflow-y:auto"><div style="font-size:.78rem;font-weight:800;color:var(--brand);margin-bottom:6px">📌 Đoạn văn / Ngữ liệu chung' + (q.contextId ? (' (' + esc(q.contextId) + ')') : '') + '</div><div class="rich-text" style="font-size:.94rem;line-height:1.65">' + U().renderRich(ctxTxt) + '</div></div>' : '') +
+        '<div class="rich-text" style="font-size:1rem;font-weight:600;margin-bottom:14px;line-height:1.55">' + U().renderRich(q.text) + '</div>' +
         (q.image ? '<div class="q-image"><img src="' + esc(q.image) + '" alt="Question" style="max-width:100%;border-radius:8px;margin-bottom:12px"></div>' : '') +
-        '<div class="lms-opt-list">' +
-          q.options.map(function (opt, oi) {
-            const active = picked.indexOf(oi) !== -1;
-            return '<button type="button" class="lms-opt-btn' + (active ? " active" : "") + '" data-lms="pick-student-opt" data-opt="' + oi + '">' +
-              '<span class="lms-opt-key">' + letters[oi] + '</span>' +
-              '<span class="rich-text">' + U().renderRich(opt) + '</span>' +
-            '</button>';
-          }).join("") +
-        '</div>' +
+        answerAreaHtml +
       '</div>' +
 
       '<div class="ql-footer" style="justify-content:space-between;flex-wrap:wrap;gap:10px">' +
@@ -3184,12 +3388,26 @@
         '</div>' +
         '<div class="lms-palette">' +
           sess.questions.map(function (item, i) {
-            const done = (sess.answers[item.id] || []).length > 0;
+            const done = isStudentQuestionAnswered(item, sess.answers[item.id]);
             return '<button type="button" class="lms-pal-dot' + (i === sess.idx ? " current" : "") + (done ? " done" : "") + '" data-lms="jump-student-q" data-idx="' + i + '">' + (i + 1) + '</button>';
           }).join("") +
         '</div>' +
       '</div>' +
     '</div></div>';
+
+    const txtInput = U().$("lmsStudentTextInput");
+    if (txtInput) {
+      txtInput.addEventListener("input", function (ev) {
+        sess.answers[q.id] = ev.target.value;
+        persistStudentDraft();
+        const cntEl = U().$("lmsAnsweredCount");
+        if (cntEl) {
+          cntEl.textContent = String(sess.questions.filter(function (item) { return isStudentQuestionAnswered(item, sess.answers[item.id]); }).length);
+        }
+        const dot = root.querySelector('.lms-pal-dot[data-idx="' + sess.idx + '"]');
+        if (dot) dot.classList.toggle("done", isStudentQuestionAnswered(q, ev.target.value));
+      });
+    }
   }
 
   async function finishStudentExam(assignId, isTimeout) {
@@ -3208,11 +3426,17 @@
       U().showToast(tr("Đang nộp bài và chấm điểm trên máy chủ..."), "info");
       const mappedAnswers = {};
       (sess.questions || []).forEach(function (q) {
-        const pickedShuffled = Array.isArray(sess.answers[q.id]) ? sess.answers[q.id] : [];
-        const order = Array.isArray(q.optOrder) ? q.optOrder : null;
-        mappedAnswers[String(q.id)] = order
-          ? pickedShuffled.map(function (idx) { return order[idx] != null ? order[idx] : idx; })
-          : pickedShuffled;
+        const rawAns = sess.answers[q.id];
+        const qt = normalizeQType(q);
+        if (qt === "MCQ" && Array.isArray(q.options) && q.options.length > 0) {
+          const pickedShuffled = Array.isArray(rawAns) ? rawAns : [];
+          const order = Array.isArray(q.optOrder) ? q.optOrder : null;
+          mappedAnswers[String(q.id)] = order
+            ? pickedShuffled.map(function (idx) { return order[idx] != null ? order[idx] : idx; })
+            : pickedShuffled;
+        } else {
+          mappedAnswers[String(q.id)] = rawAns !== undefined ? rawAns : "";
+        }
       });
       try {
         const resp = await fetch("/api/lms/public-submit", {
@@ -3234,9 +3458,12 @@
           attachExamMonitors(assign);
           return;
         }
+        lmsState.remoteSubmission = data.submission;
         const subs = loadSubmissions();
-        subs.push(data.submission);
-        saveSubmissions(subs);
+        if (!subs.some(function (s) { return String(s.id) === String(data.submission.id); })) {
+          subs.push(data.submission);
+          saveSubmissions(subs);
+        }
 
         const drafts = loadDrafts();
         delete drafts[sess.assignId + "__" + sess.studentId];
@@ -3244,6 +3471,7 @@
 
         lmsState.studentSession = null;
         lmsState.lastSubmissionId = data.submission.id;
+        lmsState.activeAttemptId = data.submission.id;
         U().showToast(isTimeout ? "Đã hết giờ! Bài làm của bạn đã được nộp tự động." : "Đã nộp bài thành công!", "success");
         refreshStudio();
         return;
@@ -3255,10 +3483,7 @@
     }
 
     const records = sess.questions.map(function (q) {
-      const picked = (sess.answers[q.id] || []).slice().sort(function (a, b) { return a - b; });
-      const corr = (q.correct || []).slice().sort(function (a, b) { return a - b; });
-      const ok = picked.length === corr.length && picked.every(function (v, i) { return v === corr[i]; });
-      return { qId: q.id, q: q, picked: picked, ok: ok };
+      return gradeStudentQuestion(q, sess.answers[q.id]);
     });
     const correctCount = records.filter(function (r) { return r.ok; }).length;
     const total = records.length || 1;
@@ -3311,23 +3536,24 @@
   }
 
   function renderStudentPostQuizReview(root, assign, subId) {
-    const sub = loadSubmissions().find(function (s) { return s.id === subId; });
+    const sub = findSubmissionById(subId);
     if (!sub) { lmsState.lastSubmissionId = null; renderStudentAssignmentView(root); return; }
     const now = Date.now();
     const deadMs = assign.deadline ? new Date(assign.deadline).getTime() : 0;
-    const canReveal = assign.revealMode === "immediate" || (deadMs && now > deadMs);
+    const canReveal = assign.revealMode === "immediate" || (deadMs && now > deadMs) || lmsState.openedViaReviewLink;
     const dl = fmtDeadlineParts(assign.deadline);
     const letters = U().LETTERS || ["A", "B", "C", "D", "E"];
     const askedSet = new Set(sub.askTeacherIds || []);
 
-    const stuObj = loadStudents().find(function (s) { return String(s.id) === String(sub.studentId); });
+    const stuObj = loadStudents().find(function (s) { return String(s.id) === String(sub.studentId); })
+      || (lmsState.remoteStudents || []).find(function (s) { return String(s.id) === String(sub.studentId); });
     const parentEmailAddr = sub.parentEmailTarget || getStudentParentEmail(stuObj);
     let emailStatusBanner = "";
     if (sub.parentReportSentAt || sub.parentEmailSentAt) {
       emailStatusBanner = '<div class="lms-email-status-bar is-ok">📧 ' + esc(tr("Đã tự động gửi báo cáo kết quả tới ")) + '<strong>' + esc(parentEmailAddr || tr("phụ huynh")) + '</strong></div>';
     } else if (sub.parentEmailStatus === "sending") {
       emailStatusBanner = '<div class="lms-email-status-bar is-info">⏳ ' + esc(tr("Đang tự động gửi báo cáo kết quả tới ")) + '<strong>' + esc(parentEmailAddr || tr("phụ huynh")) + '</strong>...</div>';
-    } else if (assign.parentEmailEnabled !== false && assign.notifyParent !== false) {
+    } else if (!lmsState.openedViaReviewLink && assign.parentEmailEnabled !== false && assign.notifyParent !== false) {
       const errHint = sub.parentEmailError ? (' (' + esc(sub.parentEmailError.slice(0, 90)) + ')') : (!parentEmailAddr ? (' (' + esc(tr("Chưa có email phụ huynh")) + ')') : '');
       emailStatusBanner = '<div class="lms-email-status-bar is-warn">' +
         '<span>⚠️ ' + esc(tr("Chưa gửi được email báo cáo")) + errHint + '</span>' +
@@ -3335,23 +3561,24 @@
       '</div>';
     }
 
+    const stuDisplayName = (stuObj && stuObj.fullName) || sub.studentName || "";
     root.innerHTML = '<div class="ql-wrap"><div class="ql-card">' +
       '<div class="ql-header" style="flex-wrap:wrap;gap:10px">' +
         '<div>' +
-          '<h2 class="ql-title">Hoàn thành bài tập</h2>' +
-          '<p class="ql-subtitle"><span>' + esc(assign.title) + '</span><span>·</span><span>' + fmtDuration(sub.durationSec) + '</span></p>' +
+          '<h2 class="ql-title">' + (lmsState.openedViaReviewLink ? 'Kết quả &amp; Đáp án chi tiết' : 'Hoàn thành bài tập') + '</h2>' +
+          '<p class="ql-subtitle">' + (stuDisplayName ? ('<span><strong>' + esc(stuDisplayName) + '</strong></span><span>·</span>') : '') + '<span>' + esc(assign.title) + '</span><span>·</span><span>' + fmtDuration(sub.durationSec) + '</span></p>' +
         '</div>' +
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
           '<button type="button" class="btn btn-outline btn-sm" data-lms="preview-sub-a4" data-sub="' + esc(sub.id) + '">🖨️ ' + esc(tr("Xem & In phiếu A4")) + '</button>' +
           '<button type="button" class="btn btn-primary btn-sm" data-lms="export-sub-pdf-qr" data-sub="' + esc(sub.id) + '">📄 ' + esc(tr("Xuất PDF + QR")) + '</button>' +
-          '<button type="button" class="ql-back-btn" data-lms-nav="gradebook">' + ICONS.arrowLeft + '<span>Xem sổ điểm</span></button>' +
+          (!lmsState.openedViaReviewLink ? '<button type="button" class="ql-back-btn" data-lms-nav="gradebook">' + ICONS.arrowLeft + '<span>Xem sổ điểm</span></button>' : '') +
         '</div>' +
       '</div>' +
 
       '<div class="lms-kpi-row">' +
         '<div class="lms-kpi"><span class="lms-kpi-k">Điểm số</span><span class="lms-kpi-v">' + Number(sub.score10).toFixed(1) + ' / 10</span></div>' +
         '<div class="lms-kpi"><span class="lms-kpi-k">Số câu đúng</span><span class="lms-kpi-v">' + sub.correctCount + ' / ' + sub.totalQuestions + '</span></div>' +
-        '<div class="lms-kpi"><span class="lms-kpi-k">Chuyển tab</span><span class="lms-kpi-v">' + sub.tabSwitches + '</span></div>' +
+        '<div class="lms-kpi"><span class="lms-kpi-k">Chuyển tab</span><span class="lms-kpi-v">' + (sub.tabSwitches || 0) + '</span></div>' +
       '</div>' +
       emailStatusBanner +
 
@@ -3360,10 +3587,36 @@
           ? '<div class="lms-empty">' + ICONS.lock + '<p style="margin:8px 0 0">Đáp án chi tiết sẽ được mở khóa sau khi hết hạn nộp bài của lớp (' + esc(dl.full) + ').</p></div>'
           : '<span class="ql-section-label">Xem lại chi tiết &amp; Đánh dấu câu cần hỏi giáo viên</span>' +
             (sub.records || []).map(function (r, idx) {
-              const q = r.q;
+              const q = r.q || {};
+              const qt = normalizeQType(q);
+              const opts = Array.isArray(q.options) ? q.options : [];
               const isAsked = askedSet.has(r.qId);
-              const corrTxt = (q.correct || []).map(function (c) { return letters[c]; }).join(", ");
-              const pickTxt = (r.picked || []).length ? r.picked.map(function (c) { return letters[c]; }).join(", ") : "Chưa trả lời";
+              const instrTxt = String(q.instruction || "").trim();
+              const ctxTxt = String(q.context || "").trim();
+
+              let pickTxt = "Chưa trả lời";
+              let corrTxt = "—";
+              if (qt === "MCQ" && opts.length > 0) {
+                const fmtOpt = function (arr) {
+                  return arr.map(function (c) {
+                    const lbl = letters[c] || String(c + 1);
+                    return opts[c] ? (lbl + ". " + String(opts[c]).replace(/<[^>]+>/g, "")) : lbl;
+                  }).join(" | ");
+                };
+                pickTxt = (r.picked || []).length ? fmtOpt(r.picked) : "Chưa trả lời";
+                corrTxt = (q.correct || []).length ? fmtOpt(q.correct) : "—";
+              } else if (qt === "TF_GROUP") {
+                const tfPick = (r.userAnswer && typeof r.userAnswer === "object" && !Array.isArray(r.userAnswer)) ? r.userAnswer : {};
+                const tfKey = (q.tfAnswers && typeof q.tfAnswers === "object") ? q.tfAnswers : {};
+                const pKeys = Object.keys(tfPick);
+                const kKeys = Object.keys(tfKey);
+                pickTxt = pKeys.length ? pKeys.map(function (k) { return k + ": " + (tfPick[k] ? "Đúng" : "Sai"); }).join(" | ") : "Chưa trả lời";
+                corrTxt = kKeys.length ? kKeys.map(function (k) { return k + ": " + (tfKey[k] ? "Đúng" : "Sai"); }).join(" | ") : "—";
+              } else {
+                pickTxt = (typeof r.userAnswer === "string" && r.userAnswer.trim()) ? r.userAnswer.trim() : "Chưa trả lời";
+                corrTxt = String(q.answerText || (Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers.join(" | ") : "") || "—").trim() || "—";
+              }
+
               return '<div class="lms-review-item ' + (r.ok ? "is-ok" : "is-bad") + '">' +
                 '<div class="lms-review-top">' +
                   '<strong>Câu ' + (idx + 1) + ' · ' + (r.ok ? "Đúng" : "Sai") + '</strong>' +
@@ -3371,8 +3624,10 @@
                     ICONS.flag + ' <span>' + (isAsked ? "Đã đánh dấu hỏi giáo viên" : "Chưa hiểu câu này") + '</span>' +
                   '</button>' +
                 '</div>' +
-                '<div class="rich-text" style="margin:6px 0">' + U().renderRich(q.text) + '</div>' +
-                '<div class="lms-cell-sub">Bạn chọn: <strong>' + esc(pickTxt) + '</strong> · Đáp án đúng: <strong>' + esc(corrTxt) + '</strong></div>' +
+                (instrTxt ? '<div class="muted" style="font-size:.82rem;margin:4px 0">📋 ' + U().renderRich(instrTxt) + '</div>' : '') +
+                (ctxTxt ? '<details style="margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border)"><summary style="cursor:pointer;font-size:.82rem;font-weight:700;color:var(--brand)">📌 Xem đoạn văn / ngữ liệu</summary><div class="rich-text" style="margin-top:6px;font-size:.88rem;line-height:1.55">' + U().renderRich(ctxTxt) + '</div></details>' : '') +
+                '<div class="rich-text" style="margin:6px 0">' + U().renderRich(q.text || "") + '</div>' +
+                '<div class="lms-cell-sub">Bạn làm: <strong>' + esc(pickTxt) + '</strong> · Đáp án đúng: <strong>' + esc(corrTxt) + '</strong></div>' +
                 (q.explanation ? '<div class="lms-explain-box rich-text">' + U().renderRich(q.explanation) + '</div>' : '') +
               '</div>';
             }).join("")) +
@@ -3382,16 +3637,26 @@
 
   /* ======================== PARENT READ RECEIPT VIEW ======================== */
   function renderParentReceiptView(root) {
-    const sub = loadSubmissions().find(function (s) { return s.id === lmsState.activeReceiptId; });
+    if (lmsState.remoteLoading) {
+      root.innerHTML = '<div class="ql-wrap"><div class="ql-card"><div class="ql-section" style="text-align:center;padding:48px 24px">' +
+        '<h3>' + esc(lmsState.remoteLoadingMsg || tr("Đang tải báo cáo kết quả...")) + '</h3>' +
+      '</div></div></div>';
+      return;
+    }
+    const sub = findSubmissionById(lmsState.activeReceiptId);
     if (!sub) {
+      const err = lmsState.remoteError;
       root.innerHTML = '<div class="ql-wrap"><div class="ql-card"><div class="ql-section" style="text-align:center;padding:36px">' +
         '<h3>Không tìm thấy báo cáo kết quả</h3>' +
+        (err && err.message ? '<p class="muted">' + esc(err.message) + '</p>' : '') +
         '<button type="button" class="btn btn-outline btn-sm" data-lms-nav="gradebook">Quay lại</button>' +
       '</div></div></div>';
       return;
     }
-    const assign = loadAssignments().find(function (a) { return a.id === sub.assignmentId; });
-    const student = loadStudents().find(function (s) { return s.id === sub.studentId; });
+    const assign = loadAssignments().find(function (a) { return String(a.id) === String(sub.assignmentId); })
+      || (lmsState.remoteAssignment && String(lmsState.remoteAssignment.id) === String(sub.assignmentId) ? lmsState.remoteAssignment : null);
+    const student = loadStudents().find(function (s) { return String(s.id) === String(sub.studentId); })
+      || (lmsState.remoteStudents || []).find(function (s) { return String(s.id) === String(sub.studentId); });
     const feedback = computeDynamicFeedback(sub.score10);
 
     root.innerHTML = '<div class="ql-wrap"><div class="ql-card">' +
@@ -3539,12 +3804,15 @@
       }
     }
     else if (act === "view-sub") {
-      const sub = loadSubmissions().find(function (x) { return x.id === b.getAttribute("data-id"); });
+      const sub = findSubmissionById(b.getAttribute("data-id"));
       if (sub) {
-        const assign = loadAssignments().find(function (a) { return a.id === sub.assignmentId; });
+        const assign = loadAssignments().find(function (a) { return String(a.id) === String(sub.assignmentId); })
+          || (lmsState.remoteAssignment && String(lmsState.remoteAssignment.id) === String(sub.assignmentId) ? lmsState.remoteAssignment : null);
         if (assign) {
           lmsState.activeAssignCode = assign.code;
           lmsState.lastSubmissionId = sub.id;
+          lmsState.activeAttemptId = sub.id;
+          lmsState.openedViaReviewLink = true;
           if (window.UETStudio && typeof window.UETStudio.openLmsScreen === "function") window.UETStudio.openLmsScreen("student-assign");
         }
       }
@@ -3555,7 +3823,7 @@
       if (!sess) return true;
       const q = sess.questions[sess.idx];
       const opt = Number(b.getAttribute("data-opt"));
-      const cur = sess.answers[q.id] || [];
+      const cur = Array.isArray(sess.answers[q.id]) ? sess.answers[q.id] : [];
       if (q.type === "multiple") {
         const p = cur.indexOf(opt);
         if (p === -1) cur.push(opt); else cur.splice(p, 1);
@@ -3563,6 +3831,28 @@
       } else {
         sess.answers[q.id] = [opt];
       }
+      persistStudentDraft();
+      refreshStudio();
+    }
+    else if (act === "pick-student-tf") {
+      const sess = lmsState.studentSession;
+      if (!sess) return true;
+      const q = sess.questions[sess.idx];
+      const key = b.getAttribute("data-tfkey");
+      const val = b.getAttribute("data-tfval") === "true";
+      const cur = (sess.answers[q.id] && typeof sess.answers[q.id] === "object" && !Array.isArray(sess.answers[q.id]))
+        ? Object.assign({}, sess.answers[q.id])
+        : {};
+      cur[key] = val;
+      sess.answers[q.id] = cur;
+      persistStudentDraft();
+      refreshStudio();
+    }
+    else if (act === "pick-student-text-opt") {
+      const sess = lmsState.studentSession;
+      if (!sess) return true;
+      const q = sess.questions[sess.idx];
+      sess.answers[q.id] = b.getAttribute("data-val") || "";
       persistStudentDraft();
       refreshStudio();
     }
@@ -3637,7 +3927,7 @@
       return openStudentAssignment(code, { attemptId: attemptId || "", review: Boolean(attemptId) });
     },
     getActiveAssignCode: function () { return lmsState.activeAssignCode || ""; },
-    getActiveAttemptId: function () { return lmsState.lastSubmissionId || ""; },
+    getActiveAttemptId: function () { return lmsState.lastSubmissionId || lmsState.activeAttemptId || ""; },
     openParentReceipt: openParentReceipt,
     openAssignModalForQuiz: openAssignModalForQuiz,
     generateQrSvg: generateQrSvg,

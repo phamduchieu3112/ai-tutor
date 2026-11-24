@@ -1680,22 +1680,34 @@ module.exports = async function apiHandler(req, res) {
     if (p === "/api/lms/public-attempt" && method === "GET") {
       const urlObj = new URL(String(req.url || "/"), "http://localhost");
       const code = String(urlObj.searchParams.get("code") || urlObj.searchParams.get("assign") || "").trim().toUpperCase();
-      const attemptId = String(urlObj.searchParams.get("attempt") || "").trim();
-      if (!code || !attemptId) {
-        return sendJson(res, 400, { ok: false, code: "MISSING_PARAMS", error: "Thiếu mã bài tập hoặc mã lượt nộp." });
+      const attemptId = String(urlObj.searchParams.get("attempt") || urlObj.searchParams.get("receipt") || "").trim();
+      if (!attemptId) {
+        return sendJson(res, 400, { ok: false, code: "MISSING_PARAMS", error: "Thiếu mã lượt nộp bài." });
       }
       const db = await loadDb();
-      const entry = db.lmsAssignments && db.lmsAssignments[code];
+      let entry = code && db.lmsAssignments ? db.lmsAssignments[code] : null;
       const allSubs = Array.isArray(db.lmsSubmissions) ? db.lmsSubmissions : [];
       const rawSub = allSubs.find(function (s) {
         if (!s || String(s.id) !== attemptId) return false;
+        if (!code) return true;
         if (entry && String(s.assignmentId) === String(entry.id)) return true;
         if (s.assignCode && String(s.assignCode).toUpperCase() === code) return true;
         return false;
-      });
+      }) || allSubs.find(function (s) { return s && String(s.id) === attemptId; });
       if (!rawSub) {
         return sendJson(res, 404, { ok: false, code: "ATTEMPT_NOT_FOUND", error: "Không tìm thấy kết quả bài làm với mã này." });
       }
+      if (!entry && db.lmsAssignments) {
+        const keys = Object.keys(db.lmsAssignments);
+        for (let ki = 0; ki < keys.length; ki++) {
+          const cand = db.lmsAssignments[keys[ki]];
+          if (cand && (String(cand.id) === String(rawSub.assignmentId) || (rawSub.assignCode && String(cand.code).toUpperCase() === String(rawSub.assignCode).toUpperCase()))) {
+            entry = cand;
+            break;
+          }
+        }
+      }
+      const resolvedCode = (entry && entry.code) || rawSub.assignCode || code || "";
 
       const stuRec = entry && Array.isArray(entry.assignedStudents)
         ? entry.assignedStudents.find(function (st) { return String(st.id) === String(rawSub.studentId); })
@@ -1705,7 +1717,7 @@ module.exports = async function apiHandler(req, res) {
       const safeSub = {
         id: rawSub.id,
         assignmentId: rawSub.assignmentId,
-        assignCode: rawSub.assignCode || code,
+        assignCode: rawSub.assignCode || resolvedCode,
         quizTitle: rawSub.quizTitle || (entry && entry.title) || "",
         studentId: rawSub.studentId,
         studentName: rawSub.studentName || (stuRec && stuRec.fullName) || "",
@@ -1794,15 +1806,18 @@ module.exports = async function apiHandler(req, res) {
       const rawQs = (entry.quizSnapshot && Array.isArray(entry.quizSnapshot.questions)) ? entry.quizSnapshot.questions : [];
       // Strip correct answers & explanations from public GET unless reviewing an unlocked attempt
       const safeQuestions = rawQs.map(function (q, idx) {
+        const tfStmts = Array.isArray(q && q.tfStatements) ? q.tfStatements : (Array.isArray(q && q.statements) ? q.statements : []);
         return {
           id: String((q && q.id) || ("q_" + idx)),
           qType: (q && q.qType) || "MCQ",
           type: (q && q.type) || "single",
           text: (q && q.text) || "",
           options: Array.isArray(q && q.options) ? q.options : [],
-          statements: Array.isArray(q && q.statements) ? q.statements : (Array.isArray(q && q.tfStatements) ? q.tfStatements : []),
+          tfStatements: tfStmts,
+          statements: tfStmts,
           items: Array.isArray(q && q.items) ? q.items : [],
           instruction: (q && q.instruction) || "",
+          contextId: (q && q.contextId) || "",
           context: (q && q.context) || "",
           image: (q && q.image) || ""
         };
@@ -1922,13 +1937,56 @@ module.exports = async function apiHandler(req, res) {
 
       const origQs = (entry.quizSnapshot && Array.isArray(entry.quizSnapshot.questions)) ? entry.quizSnapshot.questions : [];
       const letters = ["A", "B", "C", "D", "E", "F"];
+      const normText = function (s) {
+        return String(s || "").trim().toLowerCase()
+          .replace(/[“”"'`]/g, "")
+          .replace(/\s+/g, " ")
+          .replace(/\s*([.,?!;:])\s*/g, "$1")
+          .replace(/[.]+$/, "")
+          .trim();
+      };
+      const normQType = function (q) {
+        const raw = String((q && (q.qType || q.type)) || "MCQ").toUpperCase();
+        if (raw === "TF_GROUP" || raw === "TRUE_FALSE_GROUP") return "TF_GROUP";
+        if (raw === "SHORT_ANSWER" || raw === "SHORT") return "SHORT_ANSWER";
+        if (raw === "ORDERING" || raw === "ORDER") return "ORDERING";
+        if (raw === "ESSAY" || raw === "FREE_TEXT") return "ESSAY";
+        return "MCQ";
+      };
       const records = origQs.map(function (q, idx) {
         const qid = String((q && q.id) || ("q_" + idx));
-        const pickedRaw = Array.isArray(answers[qid]) ? answers[qid].map(Number).filter(Number.isFinite) : [];
-        const picked = pickedRaw.slice().sort(function (a, b) { return a - b; });
-        const corr = (Array.isArray(q.correct) ? q.correct.map(Number) : []).slice().sort(function (a, b) { return a - b; });
-        const ok = picked.length === corr.length && picked.every(function (v, i) { return v === corr[i]; });
-        return { qId: qid, q: q, picked: picked, ok: ok };
+        const qt = normQType(q);
+        const hasOpts = Array.isArray(q && q.options) && q.options.length > 0;
+        const rawAns = answers[qid];
+
+        if (qt === "MCQ" && hasOpts) {
+          const pickedRaw = Array.isArray(rawAns) ? rawAns.map(Number).filter(Number.isFinite) : [];
+          const picked = pickedRaw.slice().sort(function (a, b) { return a - b; });
+          const corr = (Array.isArray(q.correct) ? q.correct.map(Number).filter(Number.isFinite) : []).slice().sort(function (a, b) { return a - b; });
+          const ok = corr.length > 0 && picked.length === corr.length && picked.every(function (v, i) { return v === corr[i]; });
+          return { qId: qid, q: q, picked: picked, userAnswer: picked, ok: ok };
+        }
+        if (qt === "TF_GROUP") {
+          const tfPick = (rawAns && typeof rawAns === "object" && !Array.isArray(rawAns)) ? rawAns : {};
+          const stmts = (Array.isArray(q.tfStatements) && q.tfStatements.length) ? q.tfStatements : (Array.isArray(q.statements) ? q.statements : []);
+          const keyMap = (q.tfAnswers && typeof q.tfAnswers === "object") ? q.tfAnswers : {};
+          const keys = stmts.length ? stmts.map(function (st, si) { return (st && st.key) ? String(st.key) : String.fromCharCode(97 + si); }) : Object.keys(keyMap);
+          let matched = 0;
+          keys.forEach(function (k) {
+            if (typeof keyMap[k] === "boolean" && tfPick[k] === keyMap[k]) matched++;
+          });
+          const ok = keys.length > 0 && matched === keys.length;
+          return { qId: qid, q: q, picked: [], userAnswer: tfPick, ok: ok };
+        }
+        const userText = typeof rawAns === "string" ? rawAns.trim() : "";
+        const expected = String((q && q.answerText) || (Array.isArray(q && q.acceptedAnswers) ? q.acceptedAnswers.join(" | ") : "") || "").trim();
+        let ok = false;
+        if (userText && expected) {
+          const nu = normText(userText);
+          const cands = expected.split(/\s*[|\/]\s*/).map(normText).filter(Boolean);
+          ok = cands.indexOf(nu) !== -1 || normText(expected) === nu;
+        }
+        return { qId: qid, q: q, picked: [], userAnswer: userText, ok: ok };
       });
       const correctCount = records.filter(function (r) { return r.ok; }).length;
       const total = records.length || 1;
@@ -1966,15 +2024,33 @@ module.exports = async function apiHandler(req, res) {
         const siteUrl = String(process.env.PUBLIC_SITE_URL || "https://ai-tutor.phamduchieu.site").replace(/\/+$/, "");
         const reviewUrl = siteUrl + "/creator-studio?assign=" + encodeURIComponent(entry.code) + "&attempt=" + encodeURIComponent(subId);
         const breakdown = records.map(function (r, idx) {
-          const opts = Array.isArray(r.q && r.q.options) ? r.q.options : [];
+          const q = r.q || {};
+          const qt = normQType(q);
+          const opts = Array.isArray(q.options) ? q.options : [];
           const fmt = function (arr) {
             return arr.map(function (i) { return (letters[i] || String(i + 1)) + (opts[i] ? (": " + String(opts[i]).replace(/<[^>]+>/g, "").slice(0, 120)) : ""); }).join("; ");
           };
+          let pickedText = "Chưa trả lời";
+          let correctText = "—";
+          if (qt === "MCQ" && opts.length > 0) {
+            pickedText = r.picked && r.picked.length ? fmt(r.picked) : "Chưa trả lời";
+            correctText = Array.isArray(q.correct) && q.correct.length ? fmt(q.correct) : "—";
+          } else if (qt === "TF_GROUP") {
+            const tfPick = (r.userAnswer && typeof r.userAnswer === "object" && !Array.isArray(r.userAnswer)) ? r.userAnswer : {};
+            const tfKey = (q.tfAnswers && typeof q.tfAnswers === "object") ? q.tfAnswers : {};
+            const pKeys = Object.keys(tfPick);
+            const kKeys = Object.keys(tfKey);
+            pickedText = pKeys.length ? pKeys.map(function (k) { return k + ": " + (tfPick[k] ? "Đúng" : "Sai"); }).join(" | ") : "Chưa trả lời";
+            correctText = kKeys.length ? kKeys.map(function (k) { return k + ": " + (tfKey[k] ? "Đúng" : "Sai"); }).join(" | ") : "—";
+          } else {
+            pickedText = (typeof r.userAnswer === "string" && r.userAnswer.trim()) ? r.userAnswer.trim() : "Chưa trả lời";
+            correctText = String(q.answerText || (Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers.join(" | ") : "") || "—").trim() || "—";
+          }
           return {
             index: idx + 1,
-            prompt: String((r.q && r.q.text) || "").replace(/<[^>]+>/g, "").trim(),
-            pickedText: r.picked.length ? fmt(r.picked) : "Chưa trả lời",
-            correctText: Array.isArray(r.q && r.q.correct) && r.q.correct.length ? fmt(r.q.correct) : "—",
+            prompt: String(q.text || "").replace(/<[^>]+>/g, "").trim(),
+            pickedText: pickedText,
+            correctText: correctText,
             ok: r.ok
           };
         });
