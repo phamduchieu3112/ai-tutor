@@ -617,7 +617,7 @@
                     '<td>' + fmtDuration(s.durationSec) + '</td>' +
                     '<td>' + (s.tabSwitches > 0 ? '<span class="lms-badge-warn">' + s.tabSwitches + '</span>' : '<span class="muted">0</span>') + '</td>' +
                     '<td style="text-align:right;white-space:nowrap">' +
-                      '<button type="button" class="btn btn-outline btn-sm" data-lms="view-sub" data-id="' + esc(s.id) + '">Chi tiết</button> ' +
+                      '<button type="button" class="btn btn-outline btn-sm" data-lms="view-sub" data-id="' + esc(s.id || "") + '" data-st="' + esc(s.studentId || "") + '" data-as="' + esc(s.assignmentId || "") + '" data-ts="' + esc(s.submittedAt || "") + '">Chi tiết</button> ' +
                       (wrongCnt > 0 ? '<button type="button" class="btn btn-primary btn-sm" data-lms="make-remedial" data-sub="' + esc(s.id) + '">' + ICONS.sparkles + ' Giao bài bổ trợ (' + wrongCnt + ')</button> ' : '') +
                       '<button type="button" class="btn btn-outline btn-sm" data-lms="del-sub" data-id="' + esc(s.id || "") + '" data-st="' + esc(s.studentId || "") + '" data-as="' + esc(s.assignmentId || "") + '" data-ts="' + esc(s.submittedAt || "") + '" title="Xóa lần làm bài này" style="color:var(--danger,#ef4444);border-color:rgba(239,68,68,.35)">🗑️ Xóa</button>' +
                     '</td>' +
@@ -3962,6 +3962,138 @@
     if (window.UETStudio && typeof window.UETStudio.render === "function") window.UETStudio.render();
   }
 
+  function openSubmissionDetailModal(subId, meta) {
+    const m = meta || {};
+    const cleanId = String(subId || "").trim();
+    let sub = cleanId ? findSubmissionById(cleanId) : null;
+    if (!sub && m.studentId && m.assignmentId && m.submittedAt) {
+      sub = loadSubmissions().find(function (s) {
+        return s && String(s.studentId) === String(m.studentId) &&
+          String(s.assignmentId) === String(m.assignmentId) &&
+          String(s.submittedAt) === String(m.submittedAt);
+      }) || null;
+    }
+    if (!sub) {
+      U().showToast("Kh\u00f4ng t\u00ecm th\u1ea5y d\u1eef li\u1ec7u chi ti\u1ebft c\u1ee7a l\u1ea7n l\u00e0m b\u00e0i n\u00e0y.", "warning");
+      return false;
+    }
+
+    const assign = loadAssignments().find(function (a) { return a && String(a.id) === String(sub.assignmentId); })
+      || (lmsState.remoteAssignment && String(lmsState.remoteAssignment.id) === String(sub.assignmentId) ? lmsState.remoteAssignment : null);
+    const stuObj = loadStudents().find(function (s) { return s && String(s.id) === String(sub.studentId); })
+      || (lmsState.remoteStudents || []).find(function (s) { return s && String(s.id) === String(sub.studentId); });
+
+    const examTitle = (assign && assign.title) || sub.quizTitle || "B\u00e0i t\u1eadp (\u0111\u1ec1 g\u1ed1c \u0111\u00e3 x\u00f3a)";
+    const studentName = (stuObj && stuObj.fullName) || sub.studentName || "H\u1ecdc sinh";
+    const className = (stuObj && stuObj.className) || sub.className || "";
+    const letters = U().LETTERS || ["A", "B", "C", "D", "E"];
+    const records = Array.isArray(sub.records) ? sub.records : [];
+    const totalQ = Number(sub.totalQuestions) || records.length || 0;
+    const correctCnt = Number(sub.correctCount) || records.filter(function (r) { return r && r.ok; }).length;
+    const score10 = Number.isFinite(Number(sub.score10)) ? Number(sub.score10).toFixed(1) : "0.0";
+
+    const recordsHtml = records.length === 0
+      ? '<div class="lms-empty" style="padding:20px">Kh\u00f4ng c\u00f3 b\u1ea3n ghi t\u1eebng c\u00e2u h\u1ecfi cho l\u1ea7n l\u00e0m b\u00e0i n\u00e0y.</div>'
+      : records.map(function (r, idx) {
+          const q = (r && r.q && typeof r.q === "object") ? r.q : {};
+          const qt = normalizeQType(q);
+          const opts = Array.isArray(q.options) ? q.options : [];
+          const instrTxt = String(q.instruction || "").trim();
+          const ctxTxt = String(q.context || "").trim();
+
+          let pickTxt = "Ch\u01b0a tr\u1ea3 l\u1eddi";
+          let corrTxt = "\u2014";
+          if (qt === "MCQ" && opts.length > 0) {
+            const fmtOpt = function (arr) {
+              return arr.map(function (c) {
+                const lbl = letters[c] || String(c + 1);
+                return opts[c] ? (lbl + ". " + String(opts[c]).replace(/<[^>]+>/g, "")) : lbl;
+              }).join(" | ");
+            };
+            pickTxt = Array.isArray(r.picked) && r.picked.length ? fmtOpt(r.picked) : "Ch\u01b0a tr\u1ea3 l\u1eddi";
+            corrTxt = Array.isArray(q.correct) && q.correct.length ? fmtOpt(q.correct) : "\u2014";
+          } else if (qt === "TF_GROUP") {
+            const tfPick = (r.userAnswer && typeof r.userAnswer === "object" && !Array.isArray(r.userAnswer)) ? r.userAnswer : {};
+            const tfKey = (q.tfAnswers && typeof q.tfAnswers === "object") ? q.tfAnswers : {};
+            const pKeys = Object.keys(tfPick);
+            const kKeys = Object.keys(tfKey);
+            pickTxt = pKeys.length ? pKeys.map(function (k) { return k + ": " + (tfPick[k] ? "\u0110\u00fang" : "Sai"); }).join(" | ") : "Ch\u01b0a tr\u1ea3 l\u1eddi";
+            corrTxt = kKeys.length ? kKeys.map(function (k) { return k + ": " + (tfKey[k] ? "\u0110\u00fang" : "Sai"); }).join(" | ") : "\u2014";
+          } else {
+            pickTxt = (typeof r.userAnswer === "string" && r.userAnswer.trim()) ? r.userAnswer.trim() : "Ch\u01b0a tr\u1ea3 l\u1eddi";
+            corrTxt = String(q.answerText || (Array.isArray(q.acceptedAnswers) ? q.acceptedAnswers.join(" | ") : "") || "\u2014").trim() || "\u2014";
+          }
+
+          return '<div class="lms-review-item ' + (r && r.ok ? "is-ok" : "is-bad") + '" style="margin-bottom:10px">' +
+            '<div class="lms-review-top">' +
+              '<strong>C\u00e2u ' + (idx + 1) + ' \u00b7 ' + (r && r.ok ? "\u0110\u00fang" : "Sai") + '</strong>' +
+            '</div>' +
+            (instrTxt ? '<div class="muted" style="font-size:.82rem;margin:4px 0">📋 ' + U().renderRich(instrTxt) + '</div>' : '') +
+            (ctxTxt ? '<details style="margin:6px 0;padding:8px 10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border)"><summary style="cursor:pointer;font-size:.82rem;font-weight:700;color:var(--brand)">📌 Xem \u0111o\u1ea1n v\u0103n / ng\u1eef li\u1ec7u</summary><div class="rich-text" style="margin-top:6px;font-size:.88rem;line-height:1.55">' + U().renderRich(ctxTxt) + '</div></details>' : '') +
+            '<div class="rich-text" style="margin:6px 0">' + U().renderRich(q.text || "(Kh\u00f4ng c\u00f3 n\u1ed9i dung c\u00e2u h\u1ecfi)") + '</div>' +
+            '<div class="lms-cell-sub">H\u1ecdc sinh tr\u1ea3 l\u1eddi: <strong>' + esc(pickTxt) + '</strong> \u00b7 \u0110\u00e1p \u00e1n \u0111\u00fang: <strong>' + esc(corrTxt) + '</strong></div>' +
+            (q.explanation ? '<div class="lms-explain-box rich-text"><strong>Gi\u1ea3i th\u00edch:</strong> ' + U().renderRich(q.explanation) + '</div>' : '') +
+          '</div>';
+        }).join("");
+
+    let host = U().$("extraModals");
+    if (!host && typeof document !== "undefined" && document.body) {
+      host = document.createElement("div");
+      host.id = "extraModals";
+      host.className = "no-print";
+      document.body.appendChild(host);
+    }
+    if (!host) return false;
+
+    host.innerHTML =
+      '<div class="modal-overlay" id="lmsSubDetailModal" role="dialog" aria-modal="true" style="display:flex;z-index:1100">' +
+        '<div class="modal modal-lg" style="max-height:88vh;display:flex;flex-direction:column;overflow:hidden">' +
+          '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px">' +
+            '<div>' +
+              '<h3 style="margin:0">' + esc(examTitle) + '</h3>' +
+              '<p class="muted" style="margin:4px 0 0;font-size:.84rem">' +
+                '<strong>' + esc(studentName) + '</strong>' + (className ? (' (' + esc(className) + ')') : '') +
+                ' \u00b7 N\u1ed9p l\u00fac: ' + esc(fmtDeadlineParts(sub.submittedAt).full) +
+              '</p>' +
+            '</div>' +
+            '<button type="button" class="btn btn-outline btn-sm" id="lmsSubDetailCloseTop" aria-label="\u0110\u00f3ng">\u2715 \u0110\u00f3ng</button>' +
+          '</div>' +
+
+          '<div class="lms-kpi-row" style="margin-bottom:12px">' +
+            '<div class="lms-kpi"><span class="lms-kpi-k">\u0110i\u1ec3m s\u1ed1</span><span class="lms-kpi-v">' + score10 + ' / 10</span></div>' +
+            '<div class="lms-kpi"><span class="lms-kpi-k">S\u1ed1 c\u00e2u \u0111\u00fang</span><span class="lms-kpi-v">' + correctCnt + ' / ' + totalQ + '</span></div>' +
+            '<div class="lms-kpi"><span class="lms-kpi-k">Th\u1eddi l\u01b0\u1ee3ng</span><span class="lms-kpi-v">' + fmtDuration(sub.durationSec) + '</span></div>' +
+            '<div class="lms-kpi"><span class="lms-kpi-k">Chuy\u1ec3n tab</span><span class="lms-kpi-v">' + (sub.tabSwitches || 0) + '</span></div>' +
+          '</div>' +
+
+          '<div style="flex:1;overflow-y:auto;padding-right:4px">' + recordsHtml + '</div>' +
+
+          '<div class="modal-actions" style="margin-top:12px;justify-content:space-between;flex-wrap:wrap;gap:8px">' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+              '<button type="button" class="btn btn-outline btn-sm" id="lmsSubDetailA4Btn">🖨️ Xem &amp; In phi\u1ebfu A4</button>' +
+              '<button type="button" class="btn btn-primary btn-sm" id="lmsSubDetailPdfBtn">📄 Xu\u1ea5t PDF + QR</button>' +
+            '</div>' +
+            '<button type="button" class="btn btn-outline" id="lmsSubDetailCloseBtn">\u0110\u00f3ng</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    const closeModal = function () {
+      if (host && document.getElementById("lmsSubDetailModal")) host.innerHTML = "";
+    };
+    const topClose = U().$("lmsSubDetailCloseTop");
+    const botClose = U().$("lmsSubDetailCloseBtn");
+    const a4Btn = U().$("lmsSubDetailA4Btn");
+    const pdfBtn = U().$("lmsSubDetailPdfBtn");
+    const overlay = U().$("lmsSubDetailModal");
+    if (topClose) topClose.addEventListener("click", closeModal);
+    if (botClose) botClose.addEventListener("click", closeModal);
+    if (overlay) overlay.addEventListener("click", function (ev) { if (ev.target === overlay) closeModal(); });
+    if (a4Btn) a4Btn.addEventListener("click", function () { openStudentA4PreviewModal(sub.id); });
+    if (pdfBtn) pdfBtn.addEventListener("click", function () { exportStudentA4Pdf(sub.id); });
+    return true;
+  }
+
   function handleClick(e) {
     const navBtn = e.target.closest ? e.target.closest("[data-lms-nav]") : null;
     if (navBtn) {
@@ -4116,18 +4248,11 @@
       );
     }
     else if (act === "view-sub") {
-      const sub = findSubmissionById(b.getAttribute("data-id"));
-      if (sub) {
-        const assign = loadAssignments().find(function (a) { return String(a.id) === String(sub.assignmentId); })
-          || (lmsState.remoteAssignment && String(lmsState.remoteAssignment.id) === String(sub.assignmentId) ? lmsState.remoteAssignment : null);
-        if (assign) {
-          lmsState.activeAssignCode = assign.code;
-          lmsState.lastSubmissionId = sub.id;
-          lmsState.activeAttemptId = sub.id;
-          lmsState.openedViaReviewLink = true;
-          if (window.UETStudio && typeof window.UETStudio.openLmsScreen === "function") window.UETStudio.openLmsScreen("student-assign");
-        }
-      }
+      openSubmissionDetailModal(b.getAttribute("data-id"), {
+        studentId: b.getAttribute("data-st") || "",
+        assignmentId: b.getAttribute("data-as") || "",
+        submittedAt: b.getAttribute("data-ts") || ""
+      });
     }
     else if (act === "start-student-exam") startStudentExam(b.getAttribute("data-id"));
     else if (act === "pick-student-opt") {
@@ -4239,6 +4364,7 @@
     getActiveAssignCode: function () { return lmsState.activeAssignCode || ""; },
     getActiveAttemptId: function () { return lmsState.lastSubmissionId || lmsState.activeAttemptId || ""; },
     openParentReceipt: openParentReceipt,
+    openSubmissionDetailModal: openSubmissionDetailModal,
     openAssignModalForQuiz: openAssignModalForQuiz,
     generateQrSvg: generateQrSvg,
     generateQrPngDataUrl: generateQrPngDataUrl,
