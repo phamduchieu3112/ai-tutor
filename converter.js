@@ -63,10 +63,12 @@
     "",
     "`ERROR_INVALID_CONTENT: <concise reason>`",
     "",
-    "## 5. Output Packaging, `.md` File Export & Discipline",
+    "## 5. Output Packaging, 1-to-1 Multi-File Separation & `.md` File Export",
     "",
-    "- **Downloadable `.md` File First (If Supported):** If your environment supports creating or exporting downloadable files (e.g., Python/Code Interpreter file creation or Canvas/Artifact export), save the complete standardized output as a downloadable `.md` file named `<sanitized_title>.md` AND also provide the raw Markdown code block below.",
-    "- **Mandatory Single Raw ` ```markdown ` Code Block Wrapper:** ALWAYS wrap the entire standardized output inside ONE single fenced code block starting with ` ```markdown ` and ending with ` ``` ` (escape any inner code blocks with `~~~~` so the outer block never breaks). NEVER output un-fenced Markdown directly into the chat stream, because chat interfaces visually render un-fenced Markdown and strip raw symbols (`###`, `>`, `**`) when copied.",
+    "- **STRICT 1-TO-1 MULTI-FILE SEPARATION RULE:** If the user uploads **N files**, treat EACH uploaded file as an **independent exam/document** and output **N separate, standalone results** — NEVER merge questions, passages, or answer keys from multiple uploaded files into a single document.",
+    "- **Per-File Numbering & Metadata:** Reset question numbering to `Câu 1` at the start of EACH file and compute its own exact `total_questions` inside its own YAML frontmatter (`--- title: ... ---`).",
+    "- **Downloadable `.md` File(s) First (If Supported):** If your environment supports creating or exporting downloadable files (e.g., Python/Code Interpreter file creation or Canvas/Artifact export), save EACH exam as its own separate downloadable `.md` file named after its extracted `title` (sanitized filename, e.g., `<Document_Title>.md` — N uploaded files = N separate `.md` files) AND also provide the raw Markdown code block(s) below.",
+    "- **Mandatory Raw ` ```markdown ` Code Block Wrapper:** ALWAYS wrap each standardized document inside its own fenced code block starting with ` ```markdown ` and ending with ` ``` ` (for N files, output N separate labeled ` ```markdown ` code blocks, each titled with its `<Document_Title>.md`; escape any inner code blocks with `~~~~` so the outer block never breaks). NEVER output un-fenced Markdown directly into the chat stream, because chat interfaces visually render un-fenced Markdown and strip raw symbols (`###`, `>`, `**`) when copied.",
     "- No greeting, introduction, commentary, or conclusion.",
     "- Do not repeat the title unnecessarily.",
     "",
@@ -154,7 +156,9 @@
     activeImgIdx: 0,
     imgZoom: 100,
     pasteText: "",          // optional quick-paste text/markdown
-    questions: [],          // { id, number, qType, text, type, options[5], correct[], tfStatements[], tfAnswers{}, answerText, contextId, instruction, section, level, tag, time, image, explanation, verified, suspect, checkNote }
+    questions: [],          // { id, number, examId, examTitle, sourceFilename, qType, text, type, options[5], correct[], tfStatements[], tfAnswers{}, answerText, contextId, instruction, section, level, tag, time, image, explanation, verified, suspect, checkNote }
+    exams: [],              // [{ id, title, subject, sourceFilename, docMeta, contexts, rawMarkdown, studyNoteMarkdown }]
+    activeExamId: "all",    // "all" | exam.id
     docMeta: { title: "", subject: "", mode: "EXAM", total_questions: 0, duration_minutes: 45 },
     contexts: {},           // id -> { id, questions, content }
     pinnedContextId: "",
@@ -2123,39 +2127,233 @@
     throw new Error(formatFriendlyGeminiError(lastErrorMsg || "Kh\u00f4ng th\u1ec3 k\u1ebft n\u1ed1i AI."));
   }
 
+  function stripFileExt(name) {
+    return String(name || "").replace(/\.[^/.]+$/, "").trim();
+  }
+
+  function sanitizeExportFilename(title, fallback) {
+    const raw = String(title || fallback || "AI_Tutor_Exam").trim();
+    const cleaned = raw
+      .replace(/[\\/:*?"<>|\r\n\t]+/g, " ")
+      .replace(/\s+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 80);
+    return cleaned || String(fallback || "AI_Tutor_Exam");
+  }
+
+  function splitMultiExamMarkdown(rawText) {
+    const src = String(rawText || "").replace(/\r\n/g, "\n").trim();
+    if (!src) return [];
+    // 1. Check if text contains multiple ```markdown ... ``` fenced blocks
+    const fenceRe = /```(?:markdown|md)[ \t]*\n([\s\S]*?)\n```(?=[ \t]*(?:\n|$))/gi;
+    const fencedBlocks = [];
+    let fm;
+    while ((fm = fenceRe.exec(src)) !== null) {
+      const inner = String(fm[1] || "").replace(/^~~~~([a-zA-Z0-9_+-]*)[ \t]*$/gm, "```$1").trim();
+      if (inner) fencedBlocks.push(inner);
+    }
+    if (fencedBlocks.length > 1) return fencedBlocks;
+
+    // 2. Unwrap single fence if present, then check for multiple YAML frontmatter blocks (--- ... title: ... ---)
+    const body = fencedBlocks.length === 1
+      ? fencedBlocks[0]
+      : ((D() && typeof D().unwrapMarkdownFence === "function") ? D().unwrapMarkdownFence(src, true) : src).trim();
+    const yamlStarts = [];
+    const lines = body.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim() === "---") {
+        // Verify this opens a YAML frontmatter block (next 8 lines contain title: or mode: and a closing ---)
+        let hasKey = false;
+        let closeIdx = -1;
+        for (let j = i + 1; j < Math.min(lines.length, i + 12); j++) {
+          const lt = lines[j].trim();
+          if (lt === "---") { closeIdx = j; break; }
+          if (/^(?:title|mode|subject|total_questions)\s*:/i.test(lt)) hasKey = true;
+        }
+        if (hasKey && closeIdx !== -1) {
+          yamlStarts.push(i);
+          i = closeIdx;
+        }
+      }
+    }
+    if (yamlStarts.length > 1) {
+      const parts = [];
+      for (let k = 0; k < yamlStarts.length; k++) {
+        const start = yamlStarts[k];
+        const end = k + 1 < yamlStarts.length ? yamlStarts[k + 1] : lines.length;
+        const seg = lines.slice(start, end).join("\n").trim();
+        if (seg) parts.push(seg);
+      }
+      if (parts.length > 1) return parts;
+    }
+    return [body];
+  }
+
+  function getExamGroups() {
+    if (Array.isArray(cState.exams) && cState.exams.length > 0) {
+      return cState.exams.map(function (ex, idx) {
+        const qs = cState.questions.filter(function (q) { return q && q.examId === ex.id; });
+        return {
+          id: ex.id,
+          index: idx,
+          title: ex.title || (ex.docMeta && ex.docMeta.title) || stripFileExt(ex.sourceFilename) || ("\u0110\u1ec1 s\u1ed1 " + (idx + 1)),
+          subject: ex.subject || (ex.docMeta && ex.docMeta.subject) || cState.docMeta.subject || "",
+          sourceFilename: ex.sourceFilename || "",
+          docMeta: ex.docMeta || { title: ex.title || "", subject: ex.subject || "", mode: "EXAM", total_questions: qs.length, duration_minutes: 45 },
+          contexts: ex.contexts || {},
+          rawMarkdown: ex.rawMarkdown || "",
+          studyNoteMarkdown: ex.studyNoteMarkdown || "",
+          questions: qs
+        };
+      }).filter(function (g) { return g.questions.length > 0 || (g.docMeta && g.docMeta.mode === "STUDY_NOTE") || g.studyNoteMarkdown; });
+    }
+    if (cState.questions.length > 0 || cState.studyNoteMarkdown || (cState.docMeta && cState.docMeta.mode === "STUDY_NOTE")) {
+      return [{
+        id: "exam_single",
+        index: 0,
+        title: (cState.docMeta && cState.docMeta.title) || ("B\u1ed9 \u0111\u1ec1 AI Converter " + dateStamp()),
+        subject: (cState.docMeta && cState.docMeta.subject) || "",
+        sourceFilename: (cState.files[0] && cState.files[0].name) || "",
+        docMeta: cState.docMeta,
+        contexts: cState.contexts || {},
+        rawMarkdown: cState.rawMarkdown || "",
+        studyNoteMarkdown: cState.studyNoteMarkdown || "",
+        questions: cState.questions
+      }];
+    }
+    return [];
+  }
+
+  function getActiveScopeQuestions() {
+    if (cState.exams.length > 1 && cState.activeExamId && cState.activeExamId !== "all") {
+      return cState.questions.filter(function (q) { return q && q.examId === cState.activeExamId; });
+    }
+    return cState.questions;
+  }
+
   function mergeChunkDocsToState(baseQuestions, isComplete) {
     if (!D()) return;
-    const parser = D().createIncrementalParser();
-    const combinedMd = cState.chunkStates
-      .map(function (st) { return st.markdown || ""; })
-      .filter(Boolean)
-      .join("\n\n");
-    cState.rawMarkdown = combinedMd;
-    const parsedDoc = isComplete ? parser.parseFull(combinedMd) : parser.append(combinedMd);
-    if (parsedDoc.error) {
-      U().showToast(parsedDoc.error, "error");
-    }
-    if (parsedDoc.meta && (parsedDoc.meta.title || parsedDoc.meta.mode === "STUDY_NOTE")) {
-      cState.docMeta = parsedDoc.meta;
-    }
-    cState.contexts = parsedDoc.contexts || {};
-    cState.studyNoteMarkdown = parsedDoc.studyNoteMarkdown || "";
-    cState.streamingTail = isComplete ? "" : (parsedDoc.streamingTail || "");
-
-    // Preserve cached explanations & user edits
-    const nextQs = parsedDoc.questions.map(function (q) {
-      const cacheKey = makeExplainCacheKey(q);
-      if (!q.explanation && cState.explainCache[cacheKey]) {
-        q.explanation = cState.explainCache[cacheKey];
+    // Group chunk states by examId so each uploaded file is parsed independently (1-to-1)
+    const examOrder = [];
+    const chunksByExam = {};
+    cState.chunkStates.forEach(function (st) {
+      const eid = st.examId || "exam_default";
+      if (!chunksByExam[eid]) {
+        chunksByExam[eid] = {
+          id: eid,
+          title: st.examTitle || stripFileExt(st.sourceFilename) || "",
+          sourceFilename: st.sourceFilename || "",
+          chunks: []
+        };
+        examOrder.push(eid);
       }
-      return q;
+      chunksByExam[eid].chunks.push(st);
     });
-    if (nextQs.length > 0 || isComplete) {
-      cState.questions = baseQuestions.concat(nextQs);
+
+    const combinedAllMd = [];
+    const mergedContexts = {};
+    const parsedExams = [];
+    const allParsedQs = [];
+    const isMultiExam = examOrder.length > 1 || (cState.appendMode && cState.exams.length > 0);
+    let lastTail = "";
+
+    // Keep existing exams when appendMode is active
+    const existingExams = cState.appendMode && Array.isArray(cState.exams) ? cState.exams.slice() : [];
+    const existingExamMap = {};
+    existingExams.forEach(function (ex) {
+      existingExamMap[ex.id] = ex;
+      if (ex.contexts) {
+        Object.keys(ex.contexts).forEach(function (ck) { mergedContexts[ck] = ex.contexts[ck]; });
+      }
+    });
+
+    examOrder.forEach(function (eid, eIdx) {
+      const grp = chunksByExam[eid];
+      const examMd = grp.chunks.map(function (st) { return st.markdown || ""; }).filter(Boolean).join("\n\n");
+      if (examMd) combinedAllMd.push(examMd);
+      const parser = D().createIncrementalParser();
+      const parsedDoc = isComplete ? parser.parseFull(examMd) : parser.append(examMd);
+      if (parsedDoc.error) U().showToast(parsedDoc.error, "error");
+      if (!isComplete && parsedDoc.streamingTail) lastTail = parsedDoc.streamingTail;
+
+      const resolvedTitle = (parsedDoc.meta && parsedDoc.meta.title) || grp.title || ("\u0110\u1ec1 s\u1ed1 " + (existingExams.length + eIdx + 1));
+      const resolvedSubj = (parsedDoc.meta && parsedDoc.meta.subject) || "";
+      const examContexts = {};
+      const ctxMap = {};
+      Object.keys(parsedDoc.contexts || {}).forEach(function (cid) {
+        const nsId = isMultiExam ? (eid + "__" + cid) : cid;
+        const cObj = Object.assign({}, parsedDoc.contexts[cid], { id: nsId, displayId: cid, examId: eid });
+        examContexts[nsId] = cObj;
+        mergedContexts[nsId] = cObj;
+        ctxMap[cid] = nsId;
+      });
+
+      const examQs = (parsedDoc.questions || []).map(function (q, qIdx) {
+        const cacheKey = makeExplainCacheKey(q);
+        if (!q.explanation && cState.explainCache[cacheKey]) {
+          q.explanation = cState.explainCache[cacheKey];
+        }
+        q.examId = eid;
+        q.examTitle = resolvedTitle;
+        q.sourceFilename = grp.sourceFilename || "";
+        q.examLocalIndex = qIdx + 1;
+        if (q.contextId && ctxMap[q.contextId]) q.contextId = ctxMap[q.contextId];
+        return q;
+      });
+
+      allParsedQs.push.apply(allParsedQs, examQs);
+      parsedExams.push({
+        id: eid,
+        title: resolvedTitle,
+        subject: resolvedSubj,
+        sourceFilename: grp.sourceFilename || "",
+        docMeta: Object.assign({}, parsedDoc.meta || {}, {
+          title: resolvedTitle,
+          subject: resolvedSubj,
+          total_questions: examQs.length
+        }),
+        contexts: examContexts,
+        rawMarkdown: examMd,
+        studyNoteMarkdown: parsedDoc.studyNoteMarkdown || ""
+      });
+    });
+
+    cState.rawMarkdown = combinedAllMd.join("\n\n");
+    cState.contexts = mergedContexts;
+    cState.streamingTail = isComplete ? "" : lastTail;
+
+    // Combine base exams (appendMode / Excel) + parsed exams
+    const finalExams = [];
+    const seenEx = {};
+    existingExams.forEach(function (ex) {
+      if (ex && ex.id && !seenEx[ex.id]) { seenEx[ex.id] = true; finalExams.push(ex); }
+    });
+    parsedExams.forEach(function (ex) {
+      if (ex && ex.id && !seenEx[ex.id]) { seenEx[ex.id] = true; finalExams.push(ex); }
+      else if (ex && ex.id && seenEx[ex.id]) {
+        const idx = finalExams.findIndex(function (x) { return x.id === ex.id; });
+        if (idx !== -1) finalExams[idx] = ex;
+      }
+    });
+    cState.exams = finalExams;
+
+    if (finalExams.length > 0) {
+      const firstEx = finalExams[0];
+      cState.docMeta = firstEx.docMeta || cState.docMeta;
+      cState.studyNoteMarkdown = firstEx.studyNoteMarkdown || "";
+      if (finalExams.length > 1 && (cState.activeExamId === "all" || !finalExams.some(function (x) { return x.id === cState.activeExamId; }))) {
+        cState.activeExamId = firstEx.id;
+      } else if (finalExams.length === 1) {
+        cState.activeExamId = "all";
+      }
     }
-    if (!cState.pinnedContextId) {
+
+    if (allParsedQs.length > 0 || isComplete) {
+      cState.questions = baseQuestions.concat(allParsedQs);
+    }
+    if (!cState.pinnedContextId || !cState.contexts[cState.pinnedContextId]) {
       const firstCtx = Object.keys(cState.contexts)[0];
-      if (firstCtx) cState.pinnedContextId = firstCtx;
+      cState.pinnedContextId = firstCtx || "";
     }
   }
 
@@ -2526,6 +2724,8 @@
     let stopped = false;
 
     if (!cState.appendMode) {
+      cState.exams = [];
+      cState.activeExamId = "all";
       cState.contexts = {};
       cState.pinnedContextId = "";
       cState.studyNoteMarkdown = "";
@@ -2544,15 +2744,34 @@
       cState.progressPct = 5;
       renderConverter();
 
-      // ---------- 1. EXCEL (.xlsx/.xls/.csv) DIRECT IMPORT ----------
+      // ---------- 1. EXCEL (.xlsx/.xls/.csv) DIRECT IMPORT (1-TO-1 PER FILE) ----------
       const excelCollected = [];
       for (let ei = 0; ei < excelItems.length; ei++) {
         if (signal.aborted) { stopped = true; break; }
         try {
-          const exQs = await parseExcelFileAsync(excelItems[ei].file);
+          const exItem = excelItems[ei];
+          const exQs = await parseExcelFileAsync(exItem.file);
           if (exQs.length > 0) {
+            const exId = "exam_xlsx_" + exItem.id;
+            const exTitle = stripFileExt(exItem.name) || ("\u0110\u1ec1 Excel " + (ei + 1));
+            exQs.forEach(function (q, qIdx) {
+              q.examId = exId;
+              q.examTitle = exTitle;
+              q.sourceFilename = exItem.name;
+              q.examLocalIndex = qIdx + 1;
+            });
+            cState.exams.push({
+              id: exId,
+              title: exTitle,
+              subject: cState.subject !== "auto" ? cState.subject : "",
+              sourceFilename: exItem.name,
+              docMeta: { title: exTitle, subject: cState.subject !== "auto" ? cState.subject : "", mode: "EXAM", total_questions: exQs.length, duration_minutes: 45 },
+              contexts: {},
+              rawMarkdown: "",
+              studyNoteMarkdown: ""
+            });
             excelCollected.push.apply(excelCollected, exQs);
-            summaries.push("Excel (" + excelItems[ei].name + "): " + exQs.length + " c\u00e2u");
+            summaries.push("Excel (" + exItem.name + "): " + exQs.length + " c\u00e2u");
           }
         } catch (exErr) {
           U().showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc t\u1ec7p Excel \"" + excelItems[ei].name + "\": " + (exErr.message || "T\u1ec7p l\u1ed7i"), "error");
@@ -2560,13 +2779,18 @@
       }
       if (excelCollected.length > 0) {
         cState.questions = baseQuestions.concat(excelCollected);
+        if (cState.exams.length > 1) cState.activeExamId = cState.exams[0].id;
       }
 
-      // ---------- 2. PREPARE STREAMING CHUNK QUEUE (VISION + DIGITAL DOCUMENTS) ----------
+      // ---------- 2. PREPARE STREAMING CHUNK QUEUE (1-TO-1 PER UPLOADED FILE) ----------
       const tasks = [];
 
       // 2A. Images -> Vision batches (2 images per chunk for high accuracy & low latency)
       if (!stopped && imageItems.length > 0) {
+        const imgExamId = "exam_img_" + Date.now();
+        const imgExamTitle = imageItems.length === 1
+          ? (stripFileExt(imageItems[0].name) || "\u0110\u1ec1 t\u1eeb \u1ea3nh")
+          : ("\u0110\u1ec1 t\u1eeb " + imageItems.length + " \u1ea3nh");
         const IMG_BATCH = 2;
         for (let i = 0; i < imageItems.length; i += IMG_BATCH) {
           if (signal.aborted) { stopped = true; break; }
@@ -2577,6 +2801,9 @@
           }
           tasks.push({
             index: tasks.length,
+            examId: imgExamId,
+            examTitle: imgExamTitle,
+            sourceFilename: slice[0].name,
             label: "\u1ea2nh " + (i + 1) + (slice.length > 1 ? ("–" + (i + slice.length)) : "") + "/" + imageItems.length,
             isVision: true,
             b64List: b64List,
@@ -2588,11 +2815,35 @@
         }
       }
 
-      // 2B. Digital Documents (PDF with header/footer strip, DOCX, DOC, MD, TXT) & Pasted Text
-      const allTextPages = [];
+      // 2B. Digital Documents (PDF with header/footer strip, DOCX, DOC, MD, TXT) — STRICT 1-TO-1 PER FILE
+      const pushTextPagesForFile = function (pagesArr, examId, examTitle, sourceFilename) {
+        if (!pagesArr || !pagesArr.length || !D()) return;
+        const smartChunks = D().buildSmartChunks(pagesArr, { maxSinglePages: 4, maxSingleWords: 3500, pagesPerChunk: 3, overlapChars: 150 });
+        smartChunks.forEach(function (ch) {
+          tasks.push({
+            index: tasks.length,
+            examId: examId,
+            examTitle: examTitle,
+            sourceFilename: sourceFilename,
+            label: smartChunks.length > 1
+              ? (sourceFilename + " · Ph\u1ea7n " + (ch.index + 1) + "/" + ch.total)
+              : sourceFilename,
+            isVision: false,
+            b64List: null,
+            chunk: ch,
+            status: "pending",
+            error: "",
+            markdown: ""
+          });
+        });
+      };
+
       for (let di = 0; di < docItems.length; di++) {
         if (signal.aborted) { stopped = true; break; }
         const item = docItems[di];
+        const fileExamId = "exam_file_" + item.id;
+        const fileExamTitle = stripFileExt(item.name) || ("\u0110\u1ec1 s\u1ed1 " + (di + 1));
+        const filePages = [];
         cState.progressLabel = "\u0110ang ki\u1ec3m tra SHA-256 cache & \u0111\u1ecdc " + item.name + "...";
         cState.progressPct = Math.round(10 + (di / Math.max(1, docItems.length)) * 15);
         renderConverter();
@@ -2604,7 +2855,24 @@
             const cachedHit = await checkDocCache(fileHash);
             if (cachedHit && cachedHit.parsedText) {
               cState.activeDocId = cachedHit.docId || "";
-              allTextPages.push(cachedHit.parsedText);
+              const cachedUnwrapped = (D() && typeof D().unwrapMarkdownFence === "function") ? D().unwrapMarkdownFence(cachedHit.parsedText, true) : cachedHit.parsedText;
+              if (item.kind === "text" && /^---\s*\n[\s\S]*?mode\s*:/i.test(cachedUnwrapped.trim()) && (/^###\s*C\u00e2u\s*\d+/m.test(cachedUnwrapped) || /mode\s*:\s*["']?STUDY_NOTE/i.test(cachedUnwrapped))) {
+                splitMultiExamMarkdown(cachedHit.parsedText).forEach(function (seg, sIdx) {
+                  tasks.push({
+                    index: tasks.length,
+                    examId: sIdx === 0 ? fileExamId : (fileExamId + "_" + sIdx),
+                    examTitle: sIdx === 0 ? fileExamTitle : (fileExamTitle + " (" + (sIdx + 1) + ")"),
+                    sourceFilename: item.name,
+                    label: item.name + " (Markdown chu\u1ea9n)",
+                    isPreDigitized: true,
+                    status: "done",
+                    error: "",
+                    markdown: seg
+                  });
+                });
+              } else {
+                pushTextPagesForFile([cachedHit.parsedText], fileExamId, fileExamTitle, item.name);
+              }
               U().showToast("⚡ Cache Hit: Đã tái sử dụng nội dung tài liệu \"" + item.name + "\" (không cần OCR/tải lại)!", "success");
               continue;
             }
@@ -2614,26 +2882,32 @@
           if (item.kind === "text") {
             const rawMd = await readFileAsText(item.file);
             extractedForCache = rawMd;
-            const unwrappedMd = (D() && typeof D().unwrapMarkdownFence === "function") ? D().unwrapMarkdownFence(rawMd, true) : rawMd;
+            const segments = splitMultiExamMarkdown(rawMd);
+            const firstSeg = segments[0] || "";
             // If user already uploaded a Digitizer-formatted Markdown file (fenced or unfenced), parse directly (0 token!)
-            if (/^---\s*\n[\s\S]*?mode\s*:/i.test(unwrappedMd.trim()) && (/^###\s*C\u00e2u\s*\d+/m.test(unwrappedMd) || /mode\s*:\s*["']?STUDY_NOTE/i.test(unwrappedMd))) {
-              tasks.push({
-                index: tasks.length,
-                label: item.name + " (Markdown chu\u1ea9n)",
-                isPreDigitized: true,
-                status: "done",
-                error: "",
-                markdown: unwrappedMd
+            if (/^---\s*\n[\s\S]*?mode\s*:/i.test(firstSeg.trim()) && (/^###\s*C\u00e2u\s*\d+/m.test(firstSeg) || /mode\s*:\s*["']?STUDY_NOTE/i.test(firstSeg))) {
+              segments.forEach(function (seg, sIdx) {
+                tasks.push({
+                  index: tasks.length,
+                  examId: sIdx === 0 ? fileExamId : (fileExamId + "_" + sIdx),
+                  examTitle: sIdx === 0 ? fileExamTitle : (fileExamTitle + " (" + (sIdx + 1) + ")"),
+                  sourceFilename: item.name,
+                  label: item.name + (segments.length > 1 ? (" · Đề " + (sIdx + 1)) : " (Markdown chu\u1ea9n)"),
+                  isPreDigitized: true,
+                  status: "done",
+                  error: "",
+                  markdown: seg
+                });
               });
             } else {
-              allTextPages.push(rawMd);
+              filePages.push(rawMd);
             }
           } else if (item.kind === "docx") {
             extractedForCache = await extractDocxText(item.file);
-            allTextPages.push(extractedForCache);
+            filePages.push(extractedForCache);
           } else if (item.kind === "doc") {
             extractedForCache = await extractLegacyDocText(item.file);
-            allTextPages.push(extractedForCache);
+            filePages.push(extractedForCache);
           } else if (item.kind === "pdf") {
             const pdfRes = await extractPdfText(item.file);
             if (pdfRes.isScanned && pdfRes.pageImages && pdfRes.pageImages.length > 0) {
@@ -2642,6 +2916,9 @@
                 const slice = pdfRes.pageImages.slice(pi, pi + IMG_BATCH);
                 tasks.push({
                   index: tasks.length,
+                  examId: fileExamId,
+                  examTitle: fileExamTitle,
+                  sourceFilename: item.name,
                   label: item.name + " (Trang scan " + (pi + 1) + (slice.length > 1 ? ("–" + (pi + slice.length)) : "") + ")",
                   isVision: true,
                   b64List: slice,
@@ -2655,6 +2932,9 @@
               const pdfB64 = await readFileAsBase64(item.file);
               tasks.push({
                 index: tasks.length,
+                examId: fileExamId,
+                examTitle: fileExamTitle,
+                sourceFilename: item.name,
                 label: item.name + " (PDF Vision)",
                 isVision: true,
                 b64List: [{ mimeType: "application/pdf", data: pdfB64 }],
@@ -2665,12 +2945,15 @@
               });
             } else if (Array.isArray(pdfRes.pages) && pdfRes.pages.length > 0) {
               const validPages = pdfRes.pages.filter(function (pg) { return pg && pg.trim(); });
-              validPages.forEach(function (pg) { allTextPages.push(pg); });
+              validPages.forEach(function (pg) { filePages.push(pg); });
               extractedForCache = validPages.join("\n\n");
             } else if (pdfRes.text) {
               extractedForCache = pdfRes.text;
-              allTextPages.push(pdfRes.text);
+              filePages.push(pdfRes.text);
             }
+          }
+          if (filePages.length > 0) {
+            pushTextPagesForFile(filePages, fileExamId, fileExamTitle, item.name);
           }
           if (fileHash && extractedForCache && extractedForCache.trim()) {
             saveDocCache(fileHash, { fileName: item.name, mimeType: item.file.type || "", parsedText: extractedForCache });
@@ -2681,35 +2964,25 @@
       }
 
       if (!stopped && pasted) {
-        const unwrappedPasted = (D() && typeof D().unwrapMarkdownFence === "function") ? D().unwrapMarkdownFence(pasted, true) : pasted;
-        if (/^---\s*\n[\s\S]*?mode\s*:/i.test(unwrappedPasted.trim()) && (/^###\s*C\u00e2u\s*\d+/m.test(unwrappedPasted) || /mode\s*:\s*["']?STUDY_NOTE/i.test(unwrappedPasted))) {
-          tasks.push({
-            index: tasks.length,
-            label: "Markdown chu\u1ea9n \u0111\u00e3 d\u00e1n",
-            isPreDigitized: true,
-            status: "done",
-            error: "",
-            markdown: unwrappedPasted
+        const pastedSegments = splitMultiExamMarkdown(pasted);
+        const firstSeg = pastedSegments[0] || "";
+        if (/^---\s*\n[\s\S]*?mode\s*:/i.test(firstSeg.trim()) && (/^###\s*C\u00e2u\s*\d+/m.test(firstSeg) || /mode\s*:\s*["']?STUDY_NOTE/i.test(firstSeg))) {
+          pastedSegments.forEach(function (seg, sIdx) {
+            tasks.push({
+              index: tasks.length,
+              examId: "exam_pasted_" + Date.now() + "_" + sIdx,
+              examTitle: pastedSegments.length > 1 ? ("V\u0103n b\u1ea3n d\u00e1n · \u0110\u1ec1 " + (sIdx + 1)) : "Markdown chu\u1ea9n \u0111\u00e3 d\u00e1n",
+              sourceFilename: "pasted_" + (sIdx + 1) + ".md",
+              label: pastedSegments.length > 1 ? ("Markdown d\u00e1n · \u0110\u1ec1 " + (sIdx + 1)) : "Markdown chu\u1ea9n \u0111\u00e3 d\u00e1n",
+              isPreDigitized: true,
+              status: "done",
+              error: "",
+              markdown: seg
+            });
           });
         } else {
-          allTextPages.push(pasted);
+          pushTextPagesForFile([pasted], "exam_pasted_" + Date.now(), "V\u0103n b\u1ea3n \u0111\u00e3 d\u00e1n", "pasted.txt");
         }
-      }
-
-      if (allTextPages.length > 0 && D()) {
-        const smartChunks = D().buildSmartChunks(allTextPages, { maxSinglePages: 4, maxSingleWords: 3500, pagesPerChunk: 3, overlapChars: 150 });
-        smartChunks.forEach(function (ch) {
-          tasks.push({
-            index: tasks.length,
-            label: smartChunks.length > 1 ? ("Ph\u1ea7n " + (ch.index + 1) + "/" + ch.total + " (Trang " + ch.pageStart + "–" + ch.pageEnd + ")") : "To\u00e0n b\u1ed9 t\u00e0i li\u1ec7u",
-            isVision: false,
-            b64List: null,
-            chunk: ch,
-            status: "pending",
-            error: "",
-            markdown: ""
-          });
-        });
       }
 
       cState.chunkStates = tasks;
@@ -3009,10 +3282,11 @@
   }
 
   /* ======================== VALIDATION, EXPORT & 1-CLICK IMPORT ======================== */
-  function validateAll() {
+  function validateList(list) {
+    const arr = Array.isArray(list) ? list : [];
     let valid = 0, missingAns = 0, errors = 0;
     const validItems = [];
-    cState.questions.forEach(function (q) {
+    arr.forEach(function (q) {
       const qt = q.qType || "MCQ";
       const effText = String(q.text || "").trim() || String(q.instruction || "").replace(/\*\*/g, "").trim();
       if (!effText) { errors++; return; }
@@ -3044,26 +3318,69 @@
       valid++;
       validItems.push(Object.assign({}, withText, { options: nonEmptyOpts, correct: cleanCorr }));
     });
-    return { total: cState.questions.length, valid: valid, missingAns: missingAns, errors: errors, validItems: validItems };
+    return { total: arr.length, valid: valid, missingAns: missingAns, errors: errors, validItems: validItems };
+  }
+
+  function validateAll() {
+    return validateList(cState.questions);
+  }
+
+  function triggerStaggeredDownloads(downloadJobs) {
+    downloadJobs.forEach(function (job, idx) {
+      if (idx === 0) {
+        job();
+      } else {
+        setTimeout(job, idx * 180);
+      }
+    });
+  }
+
+  function makeUniqueBaseName(rawTitle, fallback, usedNames) {
+    const base = sanitizeExportFilename(rawTitle, fallback);
+    if (!usedNames[base]) {
+      usedNames[base] = 1;
+      return base;
+    }
+    usedNames[base]++;
+    return base + "_" + usedNames[base];
   }
 
   function doExportMarkdown() {
-    let md = (cState.rawMarkdown || "").trim();
-    if (!md && D()) {
-      md = D().exportToMarkdown({
-        meta: cState.docMeta,
-        contexts: cState.contexts,
-        questions: cState.questions,
-        studyNoteMarkdown: cState.studyNoteMarkdown
-      });
-    }
-    if (!md) {
+    const groups = getExamGroups();
+    if (groups.length === 0) {
       U().showToast("Ch\u01b0a c\u00f3 n\u1ed9i dung Markdown \u0111\u1ec3 t\u1ea3i xu\u1ed1ng.", "warning");
       return;
     }
-    const fname = "AI_Tutor_Digitized_" + dateStamp() + ".md";
-    U().downloadBlob(new Blob([md], { type: "text/markdown;charset=utf-8;" }), fname);
-    U().showToast("\u0110\u00e3 t\u1ea3i xu\u1ed1ng " + fname + "!", "success");
+    const stamp = dateStamp();
+    const usedNames = {};
+    const jobs = [];
+    groups.forEach(function (g, idx) {
+      let md = (g.rawMarkdown || "").trim();
+      if (!md && D()) {
+        md = D().exportToMarkdown({
+          meta: g.docMeta || { title: g.title, subject: g.subject, mode: "EXAM", total_questions: g.questions.length, duration_minutes: 45 },
+          contexts: g.contexts || {},
+          questions: g.questions || [],
+          studyNoteMarkdown: g.studyNoteMarkdown || ""
+        });
+      }
+      if (!md) return;
+      const fname = makeUniqueBaseName(g.title, "AI_Tutor_De_" + (idx + 1) + "_" + stamp, usedNames) + ".md";
+      jobs.push(function () {
+        U().downloadBlob(new Blob([md], { type: "text/markdown;charset=utf-8;" }), fname);
+      });
+    });
+    if (jobs.length === 0) {
+      U().showToast("Ch\u01b0a c\u00f3 n\u1ed9i dung Markdown \u0111\u1ec3 t\u1ea3i xu\u1ed1ng.", "warning");
+      return;
+    }
+    triggerStaggeredDownloads(jobs);
+    U().showToast(
+      jobs.length > 1
+        ? ("\u0110\u00e3 xu\u1ea5t " + jobs.length + " file .md ri\u00eang bi\u1ec7t (1 file / 1 \u0111\u1ec1)!")
+        : "\u0110\u00e3 t\u1ea3i xu\u1ed1ng file .md th\u00e0nh c\u00f4ng!",
+      "success"
+    );
   }
 
   function buildImportableQuestion(q, i) {
@@ -3072,7 +3389,7 @@
     const ctxText = ctxObj ? String(ctxObj.content || "").trim() : String(q.context || "").trim();
     const effText = formatCell(q.text) || formatCell(String(q.instruction || "").replace(/\*\*/g, ""));
     return {
-      id: "q_" + Date.now() + "_" + i,
+      id: "q_" + Date.now() + "_" + i + "_" + Math.floor(Math.random() * 1000),
       qType: qt,
       text: effText,
       type: qt === "MCQ" ? (q.correct.length > 1 || q.type === "Checkbox" ? "multiple" : "single") : qt,
@@ -3082,7 +3399,7 @@
       tfAnswers: (q.tfAnswers && typeof q.tfAnswers === "object") ? Object.assign({}, q.tfAnswers) : {},
       answerText: formatCell(q.answerText || ""),
       instruction: formatCell(q.instruction || ""),
-      contextId: q.contextId || "",
+      contextId: (ctxObj && ctxObj.displayId) ? ctxObj.displayId : (q.contextId || ""),
       context: ctxText,
       level: q.level || "",
       tag: q.tag || "",
@@ -3093,31 +3410,53 @@
   }
 
   async function doSaveToLibraryAndDrive() {
-    if (cState.docMeta.mode === "STUDY_NOTE") {
+    const groups = getExamGroups();
+    if (groups.length === 1 && groups[0].docMeta && groups[0].docMeta.mode === "STUDY_NOTE") {
       doExportMarkdown();
       if (window.UETCloud && typeof window.UETCloud.backupToGoogleDrive === "function") {
         try { await window.UETCloud.backupToGoogleDrive(); } catch (e) {}
       }
       return;
     }
-    const v = validateAll();
-    if (v.valid > 0) {
-      const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || cState.docMeta.title || ("B\u1ed9 \u0111\u1ec1 AI Converter " + dateStamp());
-      const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || cState.docMeta.subject || "T\u1ed5ng h\u1ee3p";
-      const mergeId = U().$("convMergeTarget") ? U().$("convMergeTarget").value : "";
-      const normalized = v.validItems.map(buildImportableQuestion);
-      if (normalized.length > 0) {
-        U().addOrMergeDeck({ mode: mergeId ? "merge" : "new", title: title, tag: tag, targetDeckId: mergeId, questions: normalized });
+    let savedDeckCount = 0;
+    if (groups.length > 1) {
+      groups.forEach(function (g, idx) {
+        const gv = validateList(g.questions);
+        if (gv.valid === 0) return;
+        const deckTitle = g.title || ("B\u1ed9 \u0111\u1ec1 " + (idx + 1) + " - " + dateStamp());
+        const deckTag = g.subject || (U().$("convDeckTag") ? U().$("convDeckTag").value.trim() : "") || "T\u1ed5ng h\u1ee3p";
+        const normalized = gv.validItems.map(buildImportableQuestion);
+        if (normalized.length > 0) {
+          U().addOrMergeDeck({ mode: "new", title: deckTitle, tag: deckTag, targetDeckId: "", questions: normalized });
+          savedDeckCount++;
+        }
+      });
+    } else {
+      const v = validateAll();
+      if (v.valid > 0) {
+        const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || cState.docMeta.title || ("B\u1ed9 \u0111\u1ec1 AI Converter " + dateStamp());
+        const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || cState.docMeta.subject || "T\u1ed5ng h\u1ee3p";
+        const mergeId = U().$("convMergeTarget") ? U().$("convMergeTarget").value : "";
+        const normalized = v.validItems.map(buildImportableQuestion);
+        if (normalized.length > 0) {
+          U().addOrMergeDeck({ mode: mergeId ? "merge" : "new", title: title, tag: tag, targetDeckId: mergeId, questions: normalized });
+          savedDeckCount = 1;
+        }
       }
     }
     if (window.UETCloud && typeof window.UETCloud.backupToGoogleDrive === "function") {
       try {
         await window.UETCloud.backupToGoogleDrive();
       } catch (e) {
-        U().showToast("\u0110\u00e3 l\u01b0u v\u00e0o th\u01b0 vi\u1ec7n m\u00e1y. C\u00f3 th\u1ec3 k\u1ebft n\u1ed1i Google Drive trong m\u1ee5c Sao l\u01b0u.", "info");
+        U().showToast("\u0110\u00e3 l\u01b0u " + savedDeckCount + " b\u1ed9 \u0111\u1ec1 v\u00e0o th\u01b0 vi\u1ec7n m\u00e1y. C\u00f3 th\u1ec3 k\u1ebft n\u1ed1i Google Drive trong m\u1ee5c Sao l\u01b0u.", "info");
       }
     } else {
-      U().showToast("\u0110\u00e3 l\u01b0u v\u00e0o th\u01b0 vi\u1ec7n AI Tutor!", "success");
+      U().showToast(
+        savedDeckCount > 1
+          ? ("\u0110\u00e3 l\u01b0u " + savedDeckCount + " b\u1ed9 \u0111\u1ec1 ri\u00eang bi\u1ec7t v\u00e0o th\u01b0 vi\u1ec7n AI Tutor!")
+          : "\u0110\u00e3 l\u01b0u v\u00e0o th\u01b0 vi\u1ec7n AI Tutor!",
+        "success"
+      );
     }
   }
 
@@ -3135,63 +3474,134 @@
     } else cb();
   }
 
+  function buildWorksheetRows(list) {
+    const rows = [U().XLSX_HEADERS];
+    list.forEach(function (q) {
+      const opts = [0, 1, 2, 3, 4].map(function (k) { return formatCell((q.options && q.options[k]) || ""); });
+      const qt = q.qType || "MCQ";
+      let ansStr = "";
+      if (qt === "MCQ" && q.correct && q.correct.length) {
+        ansStr = cState.ansFormat === "letter"
+          ? q.correct.map(function (c) { return U().LETTERS.charAt(c); }).join(",")
+          : q.correct.map(function (c) { return String(c + 1); }).join(",");
+      } else if (qt === "TF_GROUP" && q.tfAnswers && Object.keys(q.tfAnswers).length) {
+        ansStr = Object.keys(q.tfAnswers).map(function (k) { return k + ":" + (q.tfAnswers[k] ? "\u0110" : "S"); }).join(" | ");
+      } else if (q.answerText) {
+        ansStr = formatCell(q.answerText);
+      }
+      const typeLabel = qt === "MCQ"
+        ? (q.correct && (q.correct.length > 1 || q.type === "Checkbox") ? "Checkbox" : "Multiple Choice")
+        : qt;
+      rows.push([
+        formatCell(q.text),
+        typeLabel,
+        opts[0], opts[1], opts[2], opts[3], opts[4],
+        ansStr,
+        parseInt(q.time, 10) > 0 ? parseInt(q.time, 10) : cState.defaultTime,
+        q.image || "",
+        formatCell(q.explanation)
+      ]);
+    });
+    return rows;
+  }
+
   function doExport(ext, skipWarn) {
     if (typeof XLSX === "undefined") { U().showToast("Th\u01b0 vi\u1ec7n SheetJS ch\u01b0a t\u1ea3i xong.", "error"); return; }
     const run = function () {
-      const v = validateAll();
-      const list = cState.scope === "answered" ? v.validItems : cState.questions.map(function (q) {
-        const nonEmpty = q.options.map(function (o) { return String(o || "").trim(); }).filter(Boolean);
-        return Object.assign({}, q, { options: nonEmpty, correct: q.correct.filter(function (c) { return c >= 0 && c < nonEmpty.length; }) });
-      });
-      if (list.length === 0) { U().showToast("Kh\u00f4ng c\u00f3 c\u00e2u h\u1ecfi h\u1ee3p l\u1ec7 \u0111\u1ec3 xu\u1ea5t.", "warning"); return; }
-      const chunks = [];
-      if (cState.splitSize > 0 && list.length > cState.splitSize) {
-        for (let i = 0; i < list.length; i += cState.splitSize) chunks.push(list.slice(i, i + cState.splitSize));
-      } else chunks.push(list);
+      const groups = getExamGroups();
+      if (groups.length === 0) { U().showToast("Kh\u00f4ng c\u00f3 c\u00e2u h\u1ecfi h\u1ee3p l\u1ec7 \u0111\u1ec3 xu\u1ea5t.", "warning"); return; }
       const stamp = dateStamp();
-      chunks.forEach(function (ch, idx) {
-        const rows = [U().XLSX_HEADERS];
-        ch.forEach(function (q) {
-          const opts = [0, 1, 2, 3, 4].map(function (k) { return formatCell(q.options[k] || ""); });
-          const ansStr = q.correct.length
-            ? (cState.ansFormat === "letter" ? q.correct.map(function (c) { return U().LETTERS.charAt(c); }).join(",") : q.correct.map(function (c) { return String(c + 1); }).join(","))
-            : "";
-          rows.push([
-            formatCell(q.text),
-            q.correct.length > 1 || q.type === "Checkbox" ? "Checkbox" : "Multiple Choice",
-            opts[0], opts[1], opts[2], opts[3], opts[4],
-            ansStr,
-            parseInt(q.time, 10) > 0 ? parseInt(q.time, 10) : cState.defaultTime,
-            q.image || "",
-            formatCell(q.explanation)
-          ]);
-        });
-        const ws = XLSX.utils.aoa_to_sheet(rows);
-        const fname = chunks.length > 1 ? ("AI_Tutor_" + stamp + "_phan_" + (idx + 1)) : ("AI_Tutor_" + stamp);
-        if (ext === "xlsx") {
-          const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, "Questions");
-          XLSX.writeFile(wb, fname + ".xlsx");
+      const usedNames = {};
+      const downloadJobs = [];
+
+      groups.forEach(function (g, gIdx) {
+        const gv = validateList(g.questions);
+        const list = cState.scope === "answered"
+          ? gv.validItems
+          : g.questions.map(function (q) {
+              const nonEmpty = (q.options || []).map(function (o) { return String(o || "").trim(); }).filter(Boolean);
+              return Object.assign({}, q, {
+                options: nonEmpty,
+                correct: (q.correct || []).filter(function (c) { return c >= 0 && c < nonEmpty.length; })
+              });
+            });
+        if (list.length === 0) return;
+
+        const chunks = [];
+        if (groups.length === 1 && cState.splitSize > 0 && list.length > cState.splitSize) {
+          for (let i = 0; i < list.length; i += cState.splitSize) chunks.push(list.slice(i, i + cState.splitSize));
         } else {
-          const csv = "\uFEFF" + XLSX.utils.sheet_to_csv(ws);
-          U().downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), fname + ".csv");
+          chunks.push(list);
         }
+
+        const baseName = makeUniqueBaseName(
+          g.title,
+          groups.length > 1 ? ("AI_Tutor_De_" + (gIdx + 1) + "_" + stamp) : ("AI_Tutor_" + stamp),
+          usedNames
+        );
+
+        chunks.forEach(function (ch, idx) {
+          const rows = buildWorksheetRows(ch);
+          const ws = XLSX.utils.aoa_to_sheet(rows);
+          const fname = chunks.length > 1 ? (baseName + "_phan_" + (idx + 1)) : baseName;
+          downloadJobs.push(function () {
+            if (ext === "xlsx") {
+              const wb = XLSX.utils.book_new();
+              XLSX.utils.book_append_sheet(wb, ws, "Questions");
+              XLSX.writeFile(wb, fname + ".xlsx");
+            } else {
+              const csv = "\uFEFF" + XLSX.utils.sheet_to_csv(ws);
+              U().downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8;" }), fname + ".csv");
+            }
+          });
+        });
       });
-      U().showToast("\u0110\u00e3 xu\u1ea5t " + chunks.length + " file " + ext.toUpperCase() + " chu\u1ea9n AI Tutor!", "success");
+
+      if (downloadJobs.length === 0) {
+        U().showToast("Kh\u00f4ng c\u00f3 c\u00e2u h\u1ecfi h\u1ee3p l\u1ec7 \u0111\u1ec3 xu\u1ea5t.", "warning");
+        return;
+      }
+      triggerStaggeredDownloads(downloadJobs);
+      U().showToast(
+        downloadJobs.length > 1
+          ? ("\u0110\u00e3 xu\u1ea5t " + downloadJobs.length + " file " + ext.toUpperCase() + " ri\u00eang bi\u1ec7t (1 file / 1 \u0111\u1ec1) chu\u1ea9n AI Tutor!")
+          : ("\u0110\u00e3 xu\u1ea5t 1 file " + ext.toUpperCase() + " chu\u1ea9n AI Tutor!"),
+        "success"
+      );
     };
     if (skipWarn) run(); else warnIfUnverified(run);
   }
 
   function doOneClickImport() {
+    const groups = getExamGroups();
     const v = validateAll();
     if (v.valid === 0) {
       U().showToast("Ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi h\u1ee3p l\u1ec7 c\u00f3 \u0111\u00e1p \u00e1n \u0111\u1ec3 nh\u1eadp. H\u00e3y ch\u1ea1y AI gi\u1ea3i \u0111\u00e1p \u00e1n ho\u1eb7c ch\u1ecdn \u0111\u00e1p \u00e1n tr\u01b0\u1edbc.", "warning");
       return;
     }
-    const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || ("B\u1ed9 \u0111\u1ec1 AI Converter " + dateStamp());
-    const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || "T\u1ed5ng h\u1ee3p";
-    const mergeId = U().$("convMergeTarget") ? U().$("convMergeTarget").value : "";
     warnIfUnverified(function () {
+      if (groups.length > 1) {
+        let count = 0;
+        groups.forEach(function (g, idx) {
+          const gv = validateList(g.questions);
+          if (gv.valid === 0) return;
+          const deckTitle = g.title || ("B\u1ed9 \u0111\u1ec1 " + (idx + 1) + " - " + dateStamp());
+          const deckTag = g.subject || (U().$("convDeckTag") ? U().$("convDeckTag").value.trim() : "") || "T\u1ed5ng h\u1ee3p";
+          U().addOrMergeDeck({
+            mode: "new",
+            title: deckTitle,
+            tag: deckTag,
+            targetDeckId: "",
+            questions: gv.validItems.map(buildImportableQuestion)
+          });
+          count++;
+        });
+        U().showToast("\u0110\u00e3 nh\u1eadp " + count + " b\u1ed9 \u0111\u1ec1 ri\u00eang bi\u1ec7t v\u00e0o th\u01b0 vi\u1ec7n!", "success");
+        return;
+      }
+      const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || cState.docMeta.title || ("B\u1ed9 \u0111\u1ec1 AI Converter " + dateStamp());
+      const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || cState.docMeta.subject || "T\u1ed5ng h\u1ee3p";
+      const mergeId = U().$("convMergeTarget") ? U().$("convMergeTarget").value : "";
       const normalized = v.validItems.map(buildImportableQuestion);
       U().addOrMergeDeck({
         mode: mergeId ? "merge" : "new",
@@ -3359,7 +3769,7 @@
           '</div>' +
           '<div class="conv-advanced-actions">' +
             '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="open-fallback">🌐 Convert via External AI / Prompt</button>' +
-            '<label class="btn conv-btn-ghost btn-sm file-btn">📄 Nh\u1eadp nhanh .md<input type="file" id="convDirectMdInput" accept=".md,.txt,text/markdown,text/plain" hidden></label>' +
+            '<label class="btn conv-btn-ghost btn-sm file-btn">📄 Nh\u1eadp nhanh .md (h\u1ed7 tr\u1ee3 nhi\u1ec1u file)<input type="file" id="convDirectMdInput" accept=".md,.txt,text/markdown,text/plain" multiple hidden></label>' +
           '</div>' +
         '</div>';
       }
@@ -3386,23 +3796,46 @@
 
     // 3. Question Review & Editor Workspace (Sleek Action Toolbar + Content)
     if (hasLoadedData || cState.busy) {
-      h += '<section class="panel conv-workspace-panel">' +
-        '<div class="conv-workspace-toolbar">' +
+      const examGroups = getExamGroups();
+      const hasMultiExams = examGroups.length > 1;
+      const activeScopeQs = getActiveScopeQuestions();
+      const scopeValid = validateList(activeScopeQs);
+      const scopeVerifiedCnt = activeScopeQs.filter(function (q) { return q.verified; }).length;
+      const scopeSuspectCnt = activeScopeQs.filter(function (q) { return q.suspect; }).length;
+
+      h += '<section class="panel conv-workspace-panel">';
+
+      // Minimalist Exam Switcher Pill Bar when N > 1 exams are loaded
+      if (hasMultiExams) {
+        h += '<div class="conv-exam-switcher" role="tablist" aria-label="Danh s\u00e1ch \u0111\u1ec1 \u0111\u00e3 t\u00e1ch ri\u00eang">' +
+          '<span class="conv-exam-switcher-lbl">📚 ' + examGroups.length + ' \u0111\u1ec1 ri\u00eang bi\u1ec7t:</span>' +
+          examGroups.map(function (g, gi) {
+            const isAct = cState.activeExamId === g.id;
+            const shortTitle = g.title.length > 34 ? (g.title.slice(0, 32) + "\u2026") : g.title;
+            return '<button type="button" role="tab" aria-selected="' + (isAct ? "true" : "false") + '" class="conv-exam-pill' + (isAct ? " active" : "") + '" data-cact="switch-exam" data-exam-id="' + U().esc(g.id) + '" title="' + U().esc(g.title + (g.sourceFilename ? (" (" + g.sourceFilename + ")") : "")) + '">' +
+              '<strong>\u0110\u1ec1 ' + (gi + 1) + ':</strong> ' + U().esc(shortTitle) + ' <span class="conv-exam-pill-cnt">(' + g.questions.length + ' c\u00e2u)</span>' +
+            '</button>';
+          }).join("") +
+          '<button type="button" role="tab" aria-selected="' + (cState.activeExamId === "all" ? "true" : "false") + '" class="conv-exam-pill' + (cState.activeExamId === "all" ? " active" : "") + '" data-cact="switch-exam" data-exam-id="all">T\u1ea5t c\u1ea3 (' + cState.questions.length + ' c\u00e2u)</button>' +
+        '</div>';
+      }
+
+      h += '<div class="conv-workspace-toolbar">' +
           '<div class="conv-ws-left">' +
             '<h2 class="conv-ws-title">Ki\u1ec3m duy\u1ec7t &amp; Ch\u1ec9nh s\u1eeda c\u00e2u h\u1ecfi</h2>' +
             '<div class="conv-status-pills">' +
-              '<span class="conv-pill">T\u1ed5ng: <strong>' + v.total + '</strong></span>' +
-              '<span class="conv-pill is-ok">H\u1ee3p l\u1ec7: <strong>' + v.valid + '</strong></span>' +
-              '<span class="conv-pill' + ((v.missingAns + v.errors) > 0 ? ' is-warn' : '') + '">Thi\u1ebfu \u0110/A: <strong>' + (v.missingAns + v.errors) + '</strong></span>' +
-              '<span class="conv-pill is-ok">\u0110\u00e3 ki\u1ec3m tra: <strong>' + verifiedCnt + '/' + v.total + '</strong></span>' +
-              (suspectCnt > 0 ? '<span class="conv-pill is-bad">\u26a0\ufe0f Nghi ng\u1edd: <strong>' + suspectCnt + '</strong></span>' : "") +
+              '<span class="conv-pill">T\u1ed5ng: <strong>' + scopeValid.total + '</strong></span>' +
+              '<span class="conv-pill is-ok">H\u1ee3p l\u1ec7: <strong>' + scopeValid.valid + '</strong></span>' +
+              '<span class="conv-pill' + ((scopeValid.missingAns + scopeValid.errors) > 0 ? ' is-warn' : '') + '">Thi\u1ebfu \u0110/A: <strong>' + (scopeValid.missingAns + scopeValid.errors) + '</strong></span>' +
+              '<span class="conv-pill is-ok">\u0110\u00e3 ki\u1ec3m tra: <strong>' + scopeVerifiedCnt + '/' + scopeValid.total + '</strong></span>' +
+              (scopeSuspectCnt > 0 ? '<span class="conv-pill is-bad">\u26a0\ufe0f Nghi ng\u1edd: <strong>' + scopeSuspectCnt + '</strong></span>' : "") +
             '</div>' +
           '</div>' +
           '<div class="conv-ws-right">' +
             '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="open-quick-ans">N\u1ea1p \u0111\u00e1p \u00e1n nhanh</button>' +
             '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="solve-missing"' + (cState.busy || v.missingAns === 0 ? " disabled" : "") + '>🤖 AI gi\u1ea3i thi\u1ebfu \u0110/A (' + v.missingAns + ')</button>' +
             '<button type="button" class="btn conv-btn-ghost btn-sm" data-cact="double-check"' + (cState.busy || cState.questions.length === 0 ? " disabled" : "") + '>' + (U().can("doubleCheck") ? "" : "🔒 ") + 'AI Double-Check</button>' +
-            '<button type="button" class="btn btn-primary btn-sm conv-btn-export-primary" data-cact="open-export">Xu\u1ea5t file \u25be</button>' +
+            '<button type="button" class="btn btn-primary btn-sm conv-btn-export-primary" data-cact="open-export">' + (hasMultiExams ? ('Xu\u1ea5t ' + examGroups.length + ' file ri\u00eang \u25be') : 'Xu\u1ea5t file \u25be') + '</button>' +
           '</div>' +
         '</div>';
 
@@ -3410,10 +3843,10 @@
         '<div class="conv-subbar-filters">' +
           '<input type="search" id="convSearch" placeholder="T\u00ecm theo s\u1ed1 c\u00e2u ho\u1eb7c t\u1eeb kh\u00f3a..." value="' + U().esc(cState.search) + '">' +
           '<select id="convFilter">' +
-            '<option value="all"' + (cState.filter === "all" ? " selected" : "") + '>T\u1ea5t c\u1ea3 (' + v.total + ')</option>' +
-            '<option value="unverified"' + (cState.filter === "unverified" ? " selected" : "") + '>Ch\u01b0a duy\u1ec7t (' + (v.total - verifiedCnt) + ')</option>' +
-            '<option value="suspect"' + (cState.filter === "suspect" ? " selected" : "") + '>\u26a0\ufe0f Nghi ng\u1edd sai (' + suspectCnt + ')</option>' +
-            '<option value="missing"' + (cState.filter === "missing" ? " selected" : "") + '>Thi\u1ebfu \u0111\u00e1p \u00e1n (' + v.missingAns + ')</option>' +
+            '<option value="all"' + (cState.filter === "all" ? " selected" : "") + '>T\u1ea5t c\u1ea3 (' + scopeValid.total + ')</option>' +
+            '<option value="unverified"' + (cState.filter === "unverified" ? " selected" : "") + '>Ch\u01b0a duy\u1ec7t (' + (scopeValid.total - scopeVerifiedCnt) + ')</option>' +
+            '<option value="suspect"' + (cState.filter === "suspect" ? " selected" : "") + '>\u26a0\ufe0f Nghi ng\u1edd sai (' + scopeSuspectCnt + ')</option>' +
+            '<option value="missing"' + (cState.filter === "missing" ? " selected" : "") + '>Thi\u1ebfu \u0111\u00e1p \u00e1n (' + scopeValid.missingAns + ')</option>' +
           '</select>' +
         '</div>' +
         '<div class="conv-subbar-tools">' +
@@ -3429,6 +3862,7 @@
 
       const filtered = cState.questions.map(function (q, idx) { return { q: q, idx: idx }; }).filter(function (item) {
         const q = item.q;
+        if (hasMultiExams && cState.activeExamId && cState.activeExamId !== "all" && q.examId !== cState.activeExamId) return false;
         if (cState.filter === "unverified" && q.verified) return false;
         if (cState.filter === "suspect" && !q.suspect) return false;
         if (cState.filter === "missing") {
@@ -3440,7 +3874,7 @@
         }
         const kw = cState.search.trim().toLowerCase();
         if (!kw) return true;
-        return String(item.idx + 1) === kw || q.text.toLowerCase().indexOf(kw) !== -1 || q.options.some(function (o) { return o.toLowerCase().indexOf(kw) !== -1; });
+        return String(q.examLocalIndex || (item.idx + 1)) === kw || String(item.idx + 1) === kw || q.text.toLowerCase().indexOf(kw) !== -1 || q.options.some(function (o) { return o.toLowerCase().indexOf(kw) !== -1; });
       });
 
       if (cState.viewMode === "digitizer" && (filtered.length > 0 || cState.docMeta.mode === "STUDY_NOTE" || cState.chunkStates.length > 0 || (cState.busy && cState.streamingTail))) {
@@ -3744,10 +4178,14 @@
     }
 
     // 3. EXAM Mode: Smart Context Pinning Split-Screen
-    const ctxIds = Object.keys(cState.contexts || {});
+    const activeExObj = (cState.exams.length > 1 && cState.activeExamId && cState.activeExamId !== "all")
+      ? cState.exams.find(function (ex) { return ex.id === cState.activeExamId; })
+      : null;
+    const scopeContexts = (activeExObj && activeExObj.contexts) ? activeExObj.contexts : (cState.contexts || {});
+    const ctxIds = Object.keys(scopeContexts);
     const hasContexts = ctxIds.length > 0;
-    const pinnedId = (cState.pinnedContextId && cState.contexts[cState.pinnedContextId]) ? cState.pinnedContextId : (ctxIds[0] || "");
-    const pinnedCtx = pinnedId ? cState.contexts[pinnedId] : null;
+    const pinnedId = (cState.pinnedContextId && scopeContexts[cState.pinnedContextId]) ? cState.pinnedContextId : (ctxIds[0] || "");
+    const pinnedCtx = pinnedId ? scopeContexts[pinnedId] : null;
 
     const mobileTab = cState.mobileSplitTab === "source" ? "source" : "tutor";
     if (hasContexts) {
@@ -3764,10 +4202,11 @@
         '<div class="digitizer-ctx-head"><strong>📌 Ng\u1eef li\u1ec7u chung (Smart Context Pinning)</strong>' +
           '<div class="digitizer-ctx-tabs">' +
           ctxIds.map(function (cid) {
-            const cObj = cState.contexts[cid];
+            const cObj = scopeContexts[cid];
             const active = cid === pinnedId ? " active" : "";
+            const lbl = (cObj && cObj.displayId) ? cObj.displayId : cid;
             return '<button type="button" class="digitizer-ctx-tab' + active + '" data-cact="pin-ctx" data-ctx="' + U().esc(cid) + '">' +
-              U().esc(cid) + (cObj && cObj.questions ? (' (' + U().esc(cObj.questions) + ')') : '') + '</button>';
+              U().esc(lbl) + (cObj && cObj.questions ? (' (' + U().esc(cObj.questions) + ')') : '') + '</button>';
           }).join("") +
           '</div>' +
         '</div>' +
@@ -3804,9 +4243,9 @@
       out += '<article class="digitizer-q-card' + (q.contextId && q.contextId === pinnedId ? " ctx-linked" : "") + '" data-q-idx="' + idx + '"' + (q.contextId ? (' data-ctx="' + U().esc(q.contextId) + '"') : '') + '>' +
         '<div class="digitizer-q-head">' +
           '<div class="digitizer-q-meta">' +
-            '<strong>C\u00e2u ' + (q.number || (idx + 1)) + '</strong>' +
+            '<strong>C\u00e2u ' + (q.examLocalIndex || q.number || (idx + 1)) + '</strong>' +
             '<span class="badge">' + typeLabel + '</span>' +
-            (q.contextId ? '<button type="button" class="badge badge-ok" style="cursor:pointer;border:none" data-cact="pin-ctx" data-ctx="' + U().esc(q.contextId) + '">📌 ' + U().esc(q.contextId) + '</button>' : '') +
+            (q.contextId ? '<button type="button" class="badge badge-ok" style="cursor:pointer;border:none" data-cact="pin-ctx" data-ctx="' + U().esc(q.contextId) + '">📌 ' + U().esc((cState.contexts[q.contextId] && cState.contexts[q.contextId].displayId) || q.contextId) + '</button>' : '') +
             (q.level ? '<span class="badge">' + U().esc(q.level) + '</span>' : '') +
             (q.tag ? '<span class="badge">' + U().esc(q.tag) + '</span>' : '') +
           '</div>' +
@@ -3916,60 +4355,186 @@
     cards.forEach(function (card) { _ctxObserver.observe(card); });
   }
 
-  /* ======================== LOCAL MARKDOWN IMPORT & MANUAL FALLBACK MODAL (V3.3 Section 2.7) ======================== */
-  function importLocalMarkdown(rawMd, sourceLabel) {
-    const unwrapped = (D() && typeof D().unwrapMarkdownFence === "function")
-      ? D().unwrapMarkdownFence(rawMd, true)
-      : String(rawMd || "").replace(/\r\n/g, "\n").replace(/^\s*```(?:markdown|md)?[ \t]*\n/i, "").replace(/\n```[ \t]*\s*$/, "").replace(/^~~~~([a-zA-Z0-9_+-]*)[ \t]*$/gm, "```$1");
-    const clean = unwrapped.trim();
-    if (!clean) {
-      U().showToast("Ch\u01b0a c\u00f3 n\u1ed9i dung Markdown \u0111\u1ec3 nh\u1eadp.", "warning");
+  function digitizerQToConvItem(q) {
+    if (!q || typeof q !== "object") return null;
+    const qt = q.qType || "MCQ";
+    const opts = Array.isArray(q.options) ? q.options.slice(0, 5) : [];
+    while (opts.length < 5) opts.push("");
+    const corr = Array.isArray(q.correct) ? q.correct.slice() : [];
+    return Object.assign({}, q, {
+      qType: qt,
+      type: q.type || (qt === "MCQ" ? (corr.length > 1 ? "Checkbox" : "Multiple Choice") : qt),
+      text: String(q.text || ""),
+      options: opts,
+      correct: corr,
+      tfStatements: Array.isArray(q.tfStatements) ? q.tfStatements.slice() : [],
+      tfAnswers: (q.tfAnswers && typeof q.tfAnswers === "object") ? Object.assign({}, q.tfAnswers) : {},
+      answerText: String(q.answerText || ""),
+      explanation: String(q.explanation || ""),
+      instruction: String(q.instruction || ""),
+      contextId: String(q.contextId || ""),
+      time: parseInt(q.time, 10) > 0 ? parseInt(q.time, 10) : cState.defaultTime
+    });
+  }
+
+  /* ======================== LOCAL MARKDOWN IMPORT & MANUAL FALLBACK MODAL (V3.4 MULTI-FILE 1-TO-1) ======================== */
+  function importLocalMarkdown(rawMd, sourceLabel, opts) {
+    const o = opts || {};
+    const segments = splitMultiExamMarkdown(rawMd);
+    if (segments.length === 0) {
+      if (!o.silent) U().showToast("Ch\u01b0a c\u00f3 n\u1ed9i dung Markdown \u0111\u1ec3 nh\u1eadp.", "warning");
       return false;
     }
-    if (/^ERROR_INVALID_CONTENT\s*:/i.test(clean)) {
-      U().showToast(clean, "error");
+    if (segments.length === 1 && /^ERROR_INVALID_CONTENT\s*:/i.test(segments[0])) {
+      if (!o.silent) U().showToast(segments[0], "error");
       return false;
     }
-    let loaded = false;
-    if (D() && (/^---\s*\n[\s\S]*?mode\s*:/i.test(clean) || /^###\s*(?:C\u00e2u|Question|B\u00e0i)\s*\d+/m.test(clean) || /^:::context/m.test(clean))) {
-      const parser = D().createIncrementalParser();
-      parser.append(clean);
-      const doc = parser.finish();
-      cState.docMeta = doc.meta || { title: "", subject: "", mode: "EXAM", total_questions: 0, duration_minutes: 45 };
-      cState.contexts = doc.contexts || {};
-      const ctxIds = Object.keys(cState.contexts);
-      cState.pinnedContextId = ctxIds[0] || "";
-      cState.studyNoteMarkdown = doc.studyNoteMarkdown || "";
-      cState.rawMarkdown = clean;
-      const converted = (doc.questions || []).map(digitizerQToConvItem).filter(Boolean);
-      cState.questions = cState.appendMode ? cState.questions.concat(converted) : converted;
-      loaded = cState.questions.length > 0 || cState.docMeta.mode === "STUDY_NOTE";
+
+    const keepExisting = Boolean(o.appendExam || cState.appendMode);
+    const nextExams = keepExisting ? cState.exams.slice() : [];
+    const nextQuestions = keepExisting ? cState.questions.slice() : [];
+    const nextContexts = keepExisting ? Object.assign({}, cState.contexts) : {};
+    const nextChunks = keepExisting ? cState.chunkStates.slice() : [];
+    const willBeMulti = (nextExams.length + segments.length) > 1;
+    let importedExams = 0;
+    let importedQs = 0;
+
+    segments.forEach(function (clean, sIdx) {
+      if (!clean || /^ERROR_INVALID_CONTENT\s*:/i.test(clean)) return;
+      const eid = "exam_md_" + Date.now() + "_" + Math.floor(Math.random() * 10000) + "_" + sIdx;
+      const fallbackTitle = stripFileExt(sourceLabel)
+        ? (segments.length > 1 ? (stripFileExt(sourceLabel) + " - \u0110\u1ec1 " + (sIdx + 1)) : stripFileExt(sourceLabel))
+        : ("\u0110\u1ec1 Markdown " + (nextExams.length + 1));
+
+      let docMeta = { title: fallbackTitle, subject: "", mode: "EXAM", total_questions: 0, duration_minutes: 45 };
+      let examContexts = {};
+      let studyNote = "";
+      let converted = [];
+
+      if (D() && (/^---\s*\n[\s\S]*?mode\s*:/i.test(clean) || /^###\s*(?:C\u00e2u|Question|B\u00e0i)\s*\d+/m.test(clean) || /^:::context/m.test(clean))) {
+        const parser = D().createIncrementalParser();
+        parser.append(clean);
+        const doc = parser.finish();
+        docMeta = Object.assign(docMeta, doc.meta || {});
+        if (!docMeta.title) docMeta.title = fallbackTitle;
+        const ctxMap = {};
+        Object.keys(doc.contexts || {}).forEach(function (cid) {
+          const nsId = willBeMulti ? (eid + "__" + cid) : cid;
+          const cObj = Object.assign({}, doc.contexts[cid], { id: nsId, displayId: cid, examId: eid });
+          examContexts[nsId] = cObj;
+          nextContexts[nsId] = cObj;
+          ctxMap[cid] = nsId;
+        });
+        studyNote = doc.studyNoteMarkdown || "";
+        converted = (doc.questions || []).map(digitizerQToConvItem).filter(Boolean).map(function (q, qIdx) {
+          q.examId = eid;
+          q.examTitle = docMeta.title;
+          q.sourceFilename = sourceLabel || "";
+          q.examLocalIndex = qIdx + 1;
+          if (q.contextId && ctxMap[q.contextId]) q.contextId = ctxMap[q.contextId];
+          return q;
+        });
+      }
+      if (converted.length === 0 && docMeta.mode !== "STUDY_NOTE") {
+        const fallbackQs = parseMarkdown(clean);
+        if (fallbackQs.length > 0) {
+          converted = fallbackQs.map(function (q, qIdx) {
+            q.examId = eid;
+            q.examTitle = docMeta.title;
+            q.sourceFilename = sourceLabel || "";
+            q.examLocalIndex = qIdx + 1;
+            return q;
+          });
+        }
+      }
+      if (converted.length > 0 || docMeta.mode === "STUDY_NOTE") {
+        docMeta.total_questions = converted.length;
+        nextExams.push({
+          id: eid,
+          title: docMeta.title,
+          subject: docMeta.subject || "",
+          sourceFilename: sourceLabel || "",
+          docMeta: docMeta,
+          contexts: examContexts,
+          rawMarkdown: clean,
+          studyNoteMarkdown: studyNote
+        });
+        nextQuestions.push.apply(nextQuestions, converted);
+        nextChunks.push({
+          index: nextChunks.length,
+          examId: eid,
+          examTitle: docMeta.title,
+          sourceFilename: sourceLabel || "",
+          label: docMeta.title + " (0 LLM token)",
+          status: "done",
+          error: "",
+          markdown: clean
+        });
+        importedExams++;
+        importedQs += converted.length;
+      }
+    });
+
+    if (importedExams === 0) {
+      if (!o.silent) U().showToast("Kh\u00f4ng th\u1ec3 ph\u00e2n t\u00edch Markdown. H\u00e3y ki\u1ec3m tra \u0111\u00fang \u0111\u1ecbnh d\u1ea1ng Master Prompt.", "error");
+      return false;
     }
-    if (!loaded) {
-      const fallbackQs = parseMarkdown(clean);
-      if (fallbackQs.length > 0) {
-        cState.questions = cState.appendMode ? cState.questions.concat(fallbackQs) : fallbackQs;
-        cState.rawMarkdown = clean;
-        cState.docMeta = { title: sourceLabel || "Markdown \u0111\u00e3 nh\u1eadp", subject: "", mode: "EXAM", total_questions: cState.questions.length, duration_minutes: 45 };
-        loaded = true;
+
+    cState.exams = nextExams;
+    cState.questions = nextQuestions;
+    cState.contexts = nextContexts;
+    cState.chunkStates = nextChunks;
+    cState.docMeta = nextExams[0].docMeta || cState.docMeta;
+    cState.studyNoteMarkdown = nextExams[0].studyNoteMarkdown || "";
+    cState.rawMarkdown = nextExams.map(function (ex) { return ex.rawMarkdown || ""; }).filter(Boolean).join("\n\n");
+    cState.activeExamId = nextExams.length > 1 ? nextExams[0].id : "all";
+    const ctxIds = Object.keys(nextContexts);
+    cState.pinnedContextId = ctxIds[0] || "";
+    cState.viewMode = "digitizer";
+    cState.lastSummary = "Nh\u1eadp c\u1ee5c b\u1ed9 (0 API call): " + (nextExams.length > 1 ? (nextExams.length + " \u0111\u1ec1 ri\u00eang bi\u1ec7t \u00b7 ") : "") + nextQuestions.length + " c\u00e2u h\u1ecfi";
+    if (!o.skipRender) renderConverter();
+    if (!o.silent) {
+      U().showToast(
+        importedExams > 1
+          ? ("\u0110\u00e3 nh\u1eadp " + importedExams + " \u0111\u1ec1 ri\u00eang bi\u1ec7t (" + importedQs + " c\u00e2u, 0 LLM token)!")
+          : "\u0110\u00e3 nh\u1eadp Markdown c\u1ee5c b\u1ed9 th\u00e0nh c\u00f4ng (0 LLM token)!",
+        "success"
+      );
+    }
+    return true;
+  }
+
+  async function importMultipleMarkdownFiles(fileList) {
+    const files = Array.from(fileList || []).filter(Boolean);
+    if (files.length === 0) return false;
+    if (files.length === 1) {
+      try {
+        const txt = await readFileAsText(files[0]);
+        return importLocalMarkdown(txt, files[0].name);
+      } catch (e) {
+        U().showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc file .md.", "error");
+        return false;
       }
     }
-    if (!loaded) {
-      U().showToast("Kh\u00f4ng th\u1ec3 ph\u00e2n t\u00edch Markdown. H\u00e3y ki\u1ec3m tra \u0111\u00fang \u0111\u1ecbnh d\u1ea1ng Master Prompt.", "error");
-      return false;
+    let okCount = 0;
+    for (let i = 0; i < files.length; i++) {
+      try {
+        const txt = await readFileAsText(files[i]);
+        const ok = importLocalMarkdown(txt, files[i].name, {
+          appendExam: i > 0 || cState.appendMode,
+          silent: true,
+          skipRender: true
+        });
+        if (ok) okCount++;
+      } catch (e) { /* skip unreadable file */ }
     }
-    cState.chunkStates = [{
-      index: 0,
-      label: (sourceLabel || "Markdown c\u1ee5c b\u1ed9") + " (0 LLM token)",
-      status: "done",
-      error: "",
-      markdown: clean
-    }];
-    cState.viewMode = "digitizer";
-    cState.lastSummary = "Nh\u1eadp c\u1ee5c b\u1ed9 (0 API call): " + (cState.docMeta.mode === "STUDY_NOTE" ? "STUDY_NOTE" : (cState.questions.length + " c\u00e2u h\u1ecfi"));
     renderConverter();
-    U().showToast("\u0110\u00e3 nh\u1eadp Markdown c\u1ee5c b\u1ed9 th\u00e0nh c\u00f4ng (0 LLM token)!", "success");
-    return true;
+    if (okCount > 0) {
+      U().showToast("\u0110\u00e3 nh\u1eadp " + okCount + "/" + files.length + " file .md th\u00e0nh " + cState.exams.length + " \u0111\u1ec1 ri\u00eang bi\u1ec7t (0 LLM token)!", "success");
+      return true;
+    }
+    U().showToast("Kh\u00f4ng th\u1ec3 ph\u00e2n t\u00edch c\u00e1c file .md \u0111\u00e3 ch\u1ecdn.", "error");
+    return false;
   }
 
   function openManualFallbackModal(errorReason) {
@@ -4036,7 +4601,7 @@
         '</div>' +
         '<label class="conv-drop" id="fbMdDropZone" style="padding:12px;margin-bottom:8px">' +
           '<strong>' + U().esc(t.dropLabel) + '</strong>' +
-          '<input type="file" id="fbMdFileInput" accept=".md,.txt,text/markdown,text/plain" hidden>' +
+          '<input type="file" id="fbMdFileInput" accept=".md,.txt,text/markdown,text/plain" multiple hidden>' +
         '</label>' +
         '<textarea id="fbMdPasteArea" rows="6" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="' + U().esc(t.pastePh) + '"></textarea>' +
         '<div class="modal-actions">' +
@@ -4054,17 +4619,14 @@
         setTimeout(function () { if (btn) btn.textContent = t.copyBtn; }, 2200);
       }
     });
-    const loadMdFile = function (file) {
-      if (!file) return;
-      readFileAsText(file).then(function (txt) {
-        const area = U().$("fbMdPasteArea");
-        if (area) area.value = txt;
-        if (importLocalMarkdown(txt, file.name)) host.innerHTML = "";
-      }).catch(function () { U().showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc file .md.", "error"); });
+    const loadMdFiles = function (files) {
+      if (!files || !files.length) return;
+      importMultipleMarkdownFiles(files).then(function (ok) {
+        if (ok) host.innerHTML = "";
+      });
     };
     U().on("fbMdFileInput", "change", function (ev) {
-      const f = ev.target.files && ev.target.files[0];
-      if (f) loadMdFile(f);
+      if (ev.target.files && ev.target.files.length) loadMdFiles(ev.target.files);
       ev.target.value = "";
     });
     const dz = U().$("fbMdDropZone");
@@ -4074,8 +4636,7 @@
       dz.addEventListener("drop", function (ev) {
         ev.preventDefault();
         dz.classList.remove("drag-over");
-        const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
-        if (f) loadMdFile(f);
+        if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length) loadMdFiles(ev.dataTransfer.files);
       });
     }
     U().on("fbImportBtn", "click", function () {
@@ -4292,13 +4853,26 @@
       cState.userAnswers[qIdx].showGuide = !cState.userAnswers[qIdx].showGuide;
       renderConverter();
     }
+    else if (act === "switch-exam") {
+      const eid = b.getAttribute("data-exam-id") || "all";
+      cState.activeExamId = eid;
+      cState.page = 1;
+      const activeEx = eid !== "all" ? cState.exams.find(function (ex) { return ex.id === eid; }) : null;
+      if (activeEx && activeEx.contexts) {
+        const firstCtx = Object.keys(activeEx.contexts)[0];
+        if (firstCtx) cState.pinnedContextId = firstCtx;
+      }
+      renderConverter();
+    }
     else if (act === "one-click-import") doOneClickImport();
     else if (act === "send-studio") {
-      const v = validateAll();
+      const scopeQs = getActiveScopeQuestions();
+      const v = validateList(scopeQs);
       if (v.valid === 0) { U().showToast("Ch\u01b0a c\u00f3 c\u00e2u h\u1ecfi h\u1ee3p l\u1ec7 \u0111\u1ec3 m\u1edf trong Creator Studio.", "warning"); return; }
       if (window.UETStudio && typeof window.UETStudio.openFromQuestions === "function") {
-        const title = (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || cState.docMeta.title || ("Quiz " + dateStamp());
-        const tag = (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || cState.docMeta.subject || "AI Converter";
+        const activeEx = cState.activeExamId !== "all" ? cState.exams.find(function (ex) { return ex.id === cState.activeExamId; }) : null;
+        const title = (activeEx && activeEx.title) || (U().$("convDeckTitle") ? U().$("convDeckTitle").value : "").trim() || cState.docMeta.title || ("Quiz " + dateStamp());
+        const tag = (activeEx && activeEx.subject) || (U().$("convDeckTag") ? U().$("convDeckTag").value : "").trim() || cState.docMeta.subject || "AI Converter";
         window.UETStudio.openFromQuestions(title, tag, v.validItems.map(buildImportableQuestion));
       }
     }
@@ -4330,7 +4904,7 @@
     }
     else if (act === "del-q") { cState.questions.splice(Number(b.getAttribute("data-idx")), 1); renderConverter(); }
     else if (act === "verify-all") { cState.questions.forEach(function (q) { q.verified = true; q.suspect = false; }); renderConverter(); U().showToast("\u0110\u00e3 \u0111\u00e1nh d\u1ea5u duy\u1ec7t t\u1ea5t c\u1ea3 c\u00e2u h\u1ecfi.", "success"); }
-    else if (act === "clear-all") { U().showConfirm("X\u00f3a b\u1ea3ng", "X\u00f3a to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi trong AI Converter?", function () { cState.questions = []; cState.contexts = {}; cState.pinnedContextId = ""; cState.studyNoteMarkdown = ""; cState.rawMarkdown = ""; cState.chunkStates = []; cState.userAnswers = {}; cState.docMeta = { title: "", subject: "", mode: "EXAM", total_questions: 0, duration_minutes: 45 }; renderConverter(); }); }
+    else if (act === "clear-all") { U().showConfirm("X\u00f3a b\u1ea3ng", "X\u00f3a to\u00e0n b\u1ed9 c\u00e2u h\u1ecfi trong AI Converter?", function () { cState.questions = []; cState.exams = []; cState.activeExamId = "all"; cState.contexts = {}; cState.pinnedContextId = ""; cState.studyNoteMarkdown = ""; cState.rawMarkdown = ""; cState.chunkStates = []; cState.userAnswers = {}; cState.docMeta = { title: "", subject: "", mode: "EXAM", total_questions: 0, duration_minutes: 45 }; renderConverter(); }); }
     else if (act === "zoom") { cState.imgZoom = U().clamp(cState.imgZoom + Number(b.getAttribute("data-val")), 50, 250); renderConverter(); }
     else if (act === "img-prev") { cState.activeImgIdx = Math.max(0, cState.activeImgIdx - 1); renderConverter(); }
     else if (act === "img-next") { cState.activeImgIdx = Math.min(cState.images.length - 1, cState.activeImgIdx + 1); renderConverter(); }
@@ -4342,9 +4916,8 @@
     if (!t) return;
     if (t.id === "convUnifiedInput") { addUnifiedFiles(t.files); t.value = ""; }
     else if (t.id === "convDirectMdInput") {
-      const f = t.files && t.files[0];
-      if (f) {
-        readFileAsText(f).then(function (txt) { importLocalMarkdown(txt, f.name); }).catch(function () { U().showToast("Kh\u00f4ng th\u1ec3 \u0111\u1ecdc file .md.", "error"); });
+      if (t.files && t.files.length) {
+        importMultipleMarkdownFiles(t.files);
       }
       t.value = "";
     }
